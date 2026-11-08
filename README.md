@@ -29,11 +29,30 @@ See the [product requirements](docs/implementation/PRD.md),
 
 ## Development
 
+Enter the reproducible development shell. It pins Rust 1.96, JDK 21, `cargo-ndk` and the Rust
+standard libraries needed by a Galaxy S23 and the API 37 x86_64 emulator. Android Studio manages
+the SDK and NDK at their standard host location.
+
+```sh
+nix develop
+./scripts/check-android-env.sh
+cargo ndk -t arm64-v8a -t x86_64 check --locked
+```
+
+With `direnv` installed, run `direnv allow` once instead of entering the shell manually.
+
+The environment check expects Android SDK 37.0 and NDK 27.3.13750724. The S23 build verifies the
+native `arm64-v8a` artifact; notification behavior remains a fallback-only compatibility pass until
+the Android adapter is implemented.
+
+Run the regular Rust quality gates with:
+
 ```sh
 cargo fmt --all -- --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked --all-targets
 cargo test --locked --doc
+sh tests/android_env.sh
 ```
 
 ## License
