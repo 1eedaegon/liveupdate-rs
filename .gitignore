@@ -1,0 +1,22 @@
+/target
+**/target
+.gradle/
+.kotlin/
+**/build/
+local.properties
+.idea/
+.vscode/
+.DS_Store
+*.iml
+*.log
+
+# Signing material and local configuration must never be committed.
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.p8
+*.p12
+key.properties
+keystore.properties
