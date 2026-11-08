@@ -49,6 +49,7 @@ jobs:
       - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
       - run: android --sdk="$ANDROID_SDK_ROOT" sdk install platforms/android-37 ndk/27.3.13750724
       - run: echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.3.13750724" >> "$GITHUB_ENV"
+      - run: install -m 0755 .github/scripts/sdkmanager-compat.sh "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
           gradle-version: "8.14.4"
