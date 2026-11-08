@@ -11,10 +11,14 @@ readme = "README.md"
 keywords = ["android", "live-updates", "notifications", "jni", "rust"]
 categories = ["api-bindings", "os::android-apis"]
 include = [
+    "/.envrc",
     "/src/**",
+    "/scripts/**",
     "/tests/**",
     "/Cargo.toml",
     "/Cargo.lock",
+    "/flake.lock",
+    "/flake.nix",
     "/LICENSE-*",
     "/README.md",
     "/docs/**",
