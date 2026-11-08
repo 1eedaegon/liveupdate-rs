@@ -40,6 +40,8 @@ pub enum Fallback {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Visibility {
+    /// The adapter cannot prove what Android revealed to the user.
+    Unknown,
     /// Reveal the full notification content.
     Public,
     /// Hide sensitive content until the device is unlocked.

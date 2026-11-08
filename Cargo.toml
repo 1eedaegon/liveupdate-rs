@@ -12,6 +12,10 @@ keywords = ["android", "live-updates", "notifications", "jni", "rust"]
 categories = ["api-bindings", "os::android-apis"]
 include = [
     "/.envrc",
+    "/android/build.gradle.kts",
+    "/android/consumer-rules.pro",
+    "/android/src/main/**",
+    "/build.gradle.kts",
     "/src/**",
     "/scripts/**",
     "/tests/**",
@@ -19,16 +23,25 @@ include = [
     "/Cargo.lock",
     "/flake.lock",
     "/flake.nix",
+    "/gradle.properties",
     "/LICENSE-*",
     "/README.md",
+    "/settings.gradle.kts",
     "/docs/**",
 ]
 
+[features]
+default = []
+android = ["dep:jni", "dep:ndk-context"]
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-
-[dev-dependencies]
 serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = { version = "0.22.4", default-features = false, optional = true }
+ndk-context = { version = "0.1.1", optional = true }
 
 [lints.rust]
 missing_docs = "warn"

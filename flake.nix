@@ -31,6 +31,7 @@
           packages = with pkgs; [
             cargo-llvm-cov
             cargo-ndk
+            gradle
             jdk21
             rustToolchain
           ];
