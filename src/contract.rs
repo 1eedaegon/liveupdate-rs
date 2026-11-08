@@ -12,6 +12,20 @@ pub struct Capabilities {
     pub promotion_enabled: bool,
 }
 
+impl Capabilities {
+    /// Whether a regular notification may be posted, including as a fallback.
+    #[must_use]
+    pub fn can_post(&self) -> bool {
+        self.notifications_enabled
+    }
+
+    /// Whether the application can request promoted ongoing presentation.
+    #[must_use]
+    pub fn can_promote(&self) -> bool {
+        self.supported && self.can_post() && self.promotion_enabled
+    }
+}
+
 /// What to do when the system cannot promote an ongoing notification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

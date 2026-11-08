@@ -31,6 +31,37 @@ fn capabilities_use_the_stable_camel_case_contract() {
 }
 
 #[test]
+fn capability_helpers_separate_regular_posting_from_promotion() {
+    let regular_notification = Capabilities {
+        supported: true,
+        notifications_enabled: true,
+        promotion_enabled: false,
+    };
+    assert!(regular_notification.can_post());
+    assert!(!regular_notification.can_promote());
+
+    let promoted = Capabilities {
+        promotion_enabled: true,
+        ..regular_notification
+    };
+    assert!(promoted.can_promote());
+
+    let promotion_unsupported = Capabilities {
+        supported: false,
+        ..promoted
+    };
+    assert!(promotion_unsupported.can_post());
+    assert!(!promotion_unsupported.can_promote());
+
+    let notifications_disabled = Capabilities {
+        notifications_enabled: false,
+        ..promoted
+    };
+    assert!(!notifications_disabled.can_post());
+    assert!(!notifications_disabled.can_promote());
+}
+
+#[test]
 fn platform_policy_enums_use_the_stable_contract() {
     for (value, expected) in [
         (serde_json::to_value(Fallback::None).unwrap(), json!("none")),
