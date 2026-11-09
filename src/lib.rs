@@ -25,3 +25,8 @@ pub use model::{
     ActivityRecord, ActivityState, Backend, EndPolicy, MAX_SAFE_INTEGER, MAX_TIMESTAMP, Snapshot,
     StartRequest, Template, Timer,
 };
+
+// LU-DOCS-1
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+pub struct ReadmeDoctests;

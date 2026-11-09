@@ -4,12 +4,15 @@ use crate::{
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::Mutex,
+    sync::{Mutex, PoisonError},
 };
 use uuid::Uuid;
 
 const ACTIVE_LIMIT: usize = 32;
 const TOMBSTONE_LIMIT: usize = 128;
+/// Android can still list notifications of terminal records, whose cancellation is asynchronous,
+/// so observations are bounded by every record that can be kept, as the adapter bounds them.
+const OBSERVATION_LIMIT: usize = ACTIVE_LIMIT + TOMBSTONE_LIMIT;
 
 /// Thread-safe Rust owner of Android live update lifecycle and ordering.
 pub struct LiveUpdate<D> {
@@ -58,7 +61,12 @@ impl<D: Driver> LiveUpdate<D> {
     }
 
     fn serialized<T>(&self, action: impl FnOnce(&D) -> Result<T>) -> Result<T> {
-        let _guard = self.operations.lock().map_err(|_| Error::native())?;
+        // The lock guards no data: a driver that panicked left only durable receipts, which every
+        // operation reconciles, so a poisoned lock is taken over instead of failing forever.
+        let _guard = self
+            .operations
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         action(&self.driver)
     }
 }
@@ -167,7 +175,7 @@ fn end(driver: &impl Driver, id: &str, policy: EndPolicy) -> Result<ActivityReco
         post_failed: false,
         ..previous
     };
-    save(driver, &replace(&records, &ended))?;
+    save(driver, &retire(&records, &ended))?;
     driver.cancel(id)?;
     Ok(ended.public())
 }
@@ -303,7 +311,7 @@ fn checked_records(records: Vec<DriverRecord>) -> Result<Vec<DriverRecord>> {
 }
 
 fn checked_observations(observations: Vec<Observation>) -> Result<BTreeMap<String, Observation>> {
-    if observations.len() > ACTIVE_LIMIT {
+    if observations.len() > OBSERVATION_LIMIT {
         return Err(Error::native());
     }
     let mut checked = BTreeMap::new();
@@ -373,6 +381,17 @@ fn replace(records: &[DriverRecord], replacement: &DriverRecord) -> Vec<DriverRe
         .collect()
 }
 
+/// Replaces a record that just became terminal and moves it last, so it is the newest tombstone
+/// and the oldest one is evicted first.
+fn retire(records: &[DriverRecord], terminal: &DriverRecord) -> Vec<DriverRecord> {
+    records
+        .iter()
+        .filter(|record| record.id != terminal.id)
+        .cloned()
+        .chain([terminal.clone()])
+        .collect()
+}
+
 fn find_record(records: &[DriverRecord], id: &str) -> Result<DriverRecord> {
     records
         .iter()
@@ -399,3 +418,6 @@ fn not_found() -> Error {
 fn failure(code: ErrorCode, message: &'static str) -> Error {
     Error::new(code, message)
 }
+
+#[cfg(test)]
+mod tests;

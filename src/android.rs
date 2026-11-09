@@ -3,7 +3,10 @@ use jni::{
     Env, JavaVM, jni_sig, jni_str,
     objects::{Global, JClass, JObject, JString, JValue},
 };
-use std::sync::Mutex;
+use std::{
+    panic::catch_unwind,
+    sync::{Mutex, PoisonError},
+};
 
 const BRIDGE_CLASS: &str = "io.github.eedaegon.liveupdate.LiveUpdateBridge";
 static CONTEXT_INITIALIZATION: Mutex<()> = Mutex::new(());
@@ -20,10 +23,16 @@ impl AndroidBridge {
     ///
     /// The Android host must initialize [`ndk_context`] before this method is
     /// called. Android native activity and common Rust window runtimes normally
-    /// do this while loading the application's native library.
+    /// do this while loading the application's native library. Called earlier,
+    /// it returns [`crate::ErrorCode::NativeError`] (`ndk-context` panics, and
+    /// this method catches that panic unless the build aborts on panic), and a
+    /// later call after the initialization succeeds.
     pub fn new() -> Result<Self> {
-        let _initialization = CONTEXT_INITIALIZATION.lock().map_err(|_| Error::native())?;
-        let android = ndk_context::android_context();
+        let android = catch_unwind(ndk_context::android_context).map_err(|_| Error::native())?;
+        // The lock guards no data, so a panic that poisoned it leaves nothing to repair.
+        let _initialization = CONTEXT_INITIALIZATION
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         // SAFETY: ndk-context is initialized by the Android host and guarantees
         // a valid process JavaVM pointer for the lifetime of the application.
         let vm = unsafe { JavaVM::from_raw(android.vm().cast()) };

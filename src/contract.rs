@@ -64,3 +64,53 @@ pub enum PromotionState {
     #[serde(other)]
     Unknown,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    // LU-CAP-1
+    #[test]
+    fn posting_needs_notifications_and_promotion_needs_all_three() {
+        for supported in [false, true] {
+            for notifications_enabled in [false, true] {
+                for promotion_enabled in [false, true] {
+                    let capabilities = Capabilities {
+                        supported,
+                        notifications_enabled,
+                        promotion_enabled,
+                    };
+                    assert_eq!(capabilities.can_post(), notifications_enabled);
+                    assert_eq!(
+                        capabilities.can_promote(),
+                        supported && notifications_enabled && promotion_enabled
+                    );
+                }
+            }
+        }
+    }
+
+    // LU-CAP-5
+    #[test]
+    fn promotion_states_read_unknown_names_as_unknown() {
+        for (name, state) in [
+            ("promoted", PromotionState::Promoted),
+            ("notPromoted", PromotionState::NotPromoted),
+            ("notApplicable", PromotionState::NotApplicable),
+            ("unknown", PromotionState::Unknown),
+            ("demoted", PromotionState::Unknown),
+        ] {
+            assert_eq!(
+                serde_json::from_value::<PromotionState>(json!(name)).unwrap(),
+                state
+            );
+        }
+        assert_eq!(
+            serde_json::to_value(Visibility::Unknown).unwrap(),
+            json!("unknown")
+        );
+        assert!(serde_json::from_value::<Visibility>(json!("hidden")).is_err());
+        assert!(serde_json::from_value::<Fallback>(json!("silent")).is_err());
+    }
+}

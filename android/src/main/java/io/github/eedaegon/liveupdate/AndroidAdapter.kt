@@ -21,10 +21,20 @@ private const val RECORD_EXTRA = "io.github.1eedaegon.liveupdate.record"
 private const val NOTIFICATION_ID = 1
 private const val MAX_RECORDS = 160
 private const val MAX_RECORD_BYTES = 1_048_576
+private const val PROMOTION_API = 36
 private const val INVALID_MESSAGE = "Invalid live update request."
 private const val NATIVE_MESSAGE = "The Android live update adapter failed."
 
-internal class AndroidAdapter(context: Context) : ManagedAdapter {
+/**
+ * Android framework calls for the Rust lifecycle.
+ *
+ * [sdk] is the API level whose behavior the adapter follows. It is the device's own level; tests
+ * lower it to check, on a newer device, what an Android release without Live Updates gets.
+ */
+internal class AndroidAdapter(
+    context: Context,
+    private val sdk: Int = Build.VERSION.SDK_INT,
+) : ManagedAdapter {
     private val application = context.applicationContext
     private val manager = application.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     private val preferences = application.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
@@ -32,7 +42,7 @@ internal class AndroidAdapter(context: Context) : ManagedAdapter {
     override fun capabilities(): JSONObject {
         ensureChannel()
         return JSONObject()
-            .put("supported", Build.VERSION.SDK_INT >= 36)
+            .put("supported", sdk >= PROMOTION_API)
             .put("notificationsEnabled", notificationsAllowed())
             .put("promotionEnabled", promotionAllowed())
     }
@@ -103,7 +113,7 @@ internal class AndroidAdapter(context: Context) : ManagedAdapter {
             .setExtras(Bundle().apply { putString(RECORD_EXTRA, record.toString()) })
         contentIntent()?.let(builder::setContentIntent)
         applyTemplate(builder, snapshot)
-        if (Build.VERSION.SDK_INT >= 36 && requested) {
+        if (sdk >= PROMOTION_API && requested) {
             builder.addExtras(Bundle().apply {
                 putBoolean(Notification.EXTRA_REQUEST_PROMOTED_ONGOING, true)
             })
@@ -117,32 +127,25 @@ internal class AndroidAdapter(context: Context) : ManagedAdapter {
     }
 
     private fun ensureChannel() {
-        if (Build.VERSION.SDK_INT >= 26) {
-            manager.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_LOW),
-            )
-        }
+        manager.createNotificationChannel(
+            NotificationChannel(CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_LOW),
+        )
     }
 
     private fun notificationsAllowed(): Boolean {
         if (!manager.areNotificationsEnabled()) return false
-        if (Build.VERSION.SDK_INT < 26) return true
         return manager.getNotificationChannel(CHANNEL_ID)?.importance != NotificationManager.IMPORTANCE_NONE
     }
 
     private fun promotionAllowed(): Boolean {
-        if (Build.VERSION.SDK_INT < 36 || !manager.canPostPromotedNotifications()) return false
+        if (sdk < PROMOTION_API || Build.VERSION.SDK_INT < PROMOTION_API) return false
+        if (!manager.canPostPromotedNotifications()) return false
         val importance = manager.getNotificationChannel(CHANNEL_ID)?.importance
             ?: NotificationManager.IMPORTANCE_LOW
         return importance > NotificationManager.IMPORTANCE_MIN
     }
 
-    @Suppress("DEPRECATION")
-    private fun builder(): Notification.Builder = if (Build.VERSION.SDK_INT >= 26) {
-        Notification.Builder(application, CHANNEL_ID)
-    } else {
-        Notification.Builder(application).setPriority(Notification.PRIORITY_LOW)
-    }
+    private fun builder(): Notification.Builder = Notification.Builder(application, CHANNEL_ID)
 
     private fun contentIntent(): PendingIntent? {
         val launch = application.packageManager.getLaunchIntentForPackage(application.packageName)
@@ -188,7 +191,7 @@ internal class AndroidAdapter(context: Context) : ManagedAdapter {
     @SuppressLint("InlinedApi")
     private fun promotionState(notification: Notification, requested: Boolean): String = when {
         !requested -> "notApplicable"
-        Build.VERSION.SDK_INT >= 36 && notification.flags and Notification.FLAG_PROMOTED_ONGOING != 0 -> "promoted"
+        sdk >= PROMOTION_API && notification.flags and Notification.FLAG_PROMOTED_ONGOING != 0 -> "promoted"
         else -> "notPromoted"
     }
 

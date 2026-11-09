@@ -155,6 +155,7 @@ dependencies = [
  "jni",
  "liveupdate",
  "ndk-context",
+ "serde",
  "serde_json",
 ]
 

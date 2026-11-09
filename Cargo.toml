@@ -16,6 +16,7 @@ include = [
     "/android/consumer-rules.pro",
     "/android/src/main/**",
     "/build.gradle.kts",
+    "/CHANGELOG.md",
     "/src/**",
     "/scripts/**",
     "/tests/**",
@@ -28,6 +29,7 @@ include = [
     "/README.md",
     "/settings.gradle.kts",
     "/docs/**",
+    "/tools/**",
 ]
 
 [features]

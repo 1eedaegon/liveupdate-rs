@@ -7,8 +7,13 @@ publish = false
 [lib]
 crate-type = ["cdylib"]
 
+[features]
+# Exposes the LLVM profiler runtime's write function; build with `-C instrument-coverage`.
+coverage = []
+
 [dependencies]
 jni = { version = "0.22.4", default-features = false }
 liveupdate = { path = "../..", features = ["android"] }
 ndk-context = "0.1.1"
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"

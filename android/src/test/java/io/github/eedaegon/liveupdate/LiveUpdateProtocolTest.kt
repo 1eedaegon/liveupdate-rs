@@ -3,19 +3,26 @@ package io.github.eedaegon.liveupdate
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
+private const val NATIVE_MESSAGE = "The Android live update adapter failed."
+private const val MEBIBYTE = 1_048_576
+
 class LiveUpdateProtocolTest {
+    // LU-BRIDGE-6
     @Test
-    fun `dispatches every stable driver command`() {
+    fun dispatchesEveryStableDriverCommand() {
         val adapter = FakeAdapter()
 
         assertEquals(true, ok(LiveUpdateProtocol.dispatch(adapter, "capabilities", "{}"))
             .getJSONObject("data").getBoolean("supported"))
         assertEquals(1, ok(LiveUpdateProtocol.dispatch(adapter, "read", "{}"))
             .getJSONArray("data").length())
-        ok(LiveUpdateProtocol.dispatch(adapter, "write", "{\"records\":[]}"))
+        assertTrue(ok(LiveUpdateProtocol.dispatch(adapter, "write", "{\"records\":[]}"))
+            .isNull("data"))
         assertEquals(1, ok(LiveUpdateProtocol.dispatch(adapter, "observe", "{}"))
             .getJSONArray("data").length())
         ok(LiveUpdateProtocol.dispatch(adapter, "post", "{\"record\":{\"id\":\"one\"}}"))
@@ -24,61 +31,141 @@ class LiveUpdateProtocolTest {
         assertEquals(listOf("write:0", "post:one", "cancel:one"), adapter.mutations)
     }
 
+    // LU-BRIDGE-6
     @Test
-    fun `rejects unknown commands fields and invalid identifiers`() {
+    fun rejectsUnknownCommandsFieldsAndInvalidIdentifiers() {
         val adapter = FakeAdapter()
         for ((command, payload) in listOf(
             "unknown" to "{}",
+            "Read" to "{}",
             "read" to "{\"extra\":true}",
+            "capabilities" to "{\"records\":[]}",
+            "observe" to "{\"id\":\"one\"}",
+            "write" to "{}",
             "write" to "{\"records\":[],\"extra\":true}",
             "post" to "{\"record\":{}}",
+            "post" to "{\"record\":{\"id\":7}}",
+            "post" to "{\"record\":{\"id\":null}}",
+            "post" to "{}",
             "cancel" to "{\"id\":\" \"}",
+            "cancel" to "{\"id\":\"\"}",
+            "cancel" to "{\"id\":\"${"x".repeat(257)}\"}",
+            "cancel" to "{}",
         )) {
-            val error = JSONObject(LiveUpdateProtocol.dispatch(adapter, command, payload))
-            assertEquals("error", error.getString("status"))
-            assertEquals("INVALID_INPUT", error.getJSONObject("error").getString("code"))
+            assertError("INVALID_INPUT", LiveUpdateProtocol.dispatch(adapter, command, payload))
         }
-        assertFalse(adapter.mutations.isNotEmpty())
+        assertTrue(adapter.mutations.isEmpty())
+        ok(LiveUpdateProtocol.dispatch(adapter, "cancel", "{\"id\":\"${"x".repeat(256)}\"}"))
     }
 
+    // LU-BRIDGE-6, LU-LIMIT-3
     @Test
-    fun `sanitizes unexpected adapter and parser failures`() {
+    fun boundsPayloadBytesAndRecordCounts() {
+        val adapter = FakeAdapter()
+        val records = JSONArray().apply { repeat(161) { put(JSONObject()) } }
+        assertError("INVALID_INPUT", LiveUpdateProtocol.dispatch(
+            adapter, "write", JSONObject().put("records", records).toString(),
+        ))
+        val full = JSONArray().apply { repeat(160) { put(JSONObject()) } }
+        ok(LiveUpdateProtocol.dispatch(adapter, "write", JSONObject().put("records", full).toString()))
+
+        // The bound counts UTF-8 bytes: a three-byte character is three bytes.
+        val wrapper = "{\"id\":\"\"}".length
+        val threeByte = "{\"id\":\"${"가".repeat((MEBIBYTE - wrapper) / 3 + 1)}\"}"
+        assertTrue(threeByte.length < MEBIBYTE)
+        assertError("INVALID_INPUT", LiveUpdateProtocol.dispatch(adapter, "cancel", threeByte))
+        val padding = " ".repeat(MEBIBYTE - "{}".length)
+        ok(LiveUpdateProtocol.dispatch(adapter, "read", "{$padding}"))
+        assertError("INVALID_INPUT", LiveUpdateProtocol.dispatch(adapter, "read", "{ $padding}"))
+        assertEquals(listOf("write:160"), adapter.mutations)
+    }
+
+    // LU-ERR-3
+    @Test
+    fun sanitizesUnexpectedAdapterAndParserFailures() {
         val adapter = FakeAdapter(fail = true)
-        val expected = "The Android live update adapter failed."
 
         for ((command, payload) in listOf(
             "read" to "{}",
             "read" to "not-json",
+            "read" to "[]",
+            "write" to "{\"records\":{}}",
+            "post" to "{\"record\":[]}",
+            "cancel" to "{\"id\":[]}",
         )) {
-            val error = JSONObject(LiveUpdateProtocol.dispatch(adapter, command, payload))
-                .getJSONObject("error")
-            assertEquals("NATIVE_ERROR", error.getString("code"))
-            assertEquals(expected, error.getString("message"))
+            val error = assertError("NATIVE_ERROR", LiveUpdateProtocol.dispatch(adapter, command, payload))
+            assertEquals(NATIVE_MESSAGE, error.getString("message"))
         }
     }
 
+    // LU-ERR-3
     @Test
-    fun `preserves stable adapter errors`() {
+    fun preservesStableAdapterErrors() {
         val adapter = object : FakeAdapter() {
             override fun post(record: JSONObject) {
                 throw AdapterFailure("PERMISSION_DENIED", "Notifications are disabled.")
             }
         }
 
-        val response = JSONObject(LiveUpdateProtocol.dispatch(
+        val response = assertError("PERMISSION_DENIED", LiveUpdateProtocol.dispatch(
             adapter,
             "post",
             "{\"record\":{\"id\":\"one\"}}",
-        )).getJSONObject("error")
+        ))
 
-        assertEquals("PERMISSION_DENIED", response.getString("code"))
         assertEquals("Notifications are disabled.", response.getString("message"))
+    }
+
+    // LU-ERR-4
+    @Test
+    fun adapterFailuresOnlyTakeTheStableCodes() {
+        for (code in listOf(
+            "INVALID_INPUT", "CONFLICT", "NOT_FOUND", "STALE_REVISION", "PERMISSION_DENIED",
+            "UNSUPPORTED_FEATURE", "SYSTEM_LIMIT", "NATIVE_ERROR",
+        )) {
+            assertEquals(code, AdapterFailure(code, "message").code)
+        }
+        for (code in listOf("TIMEOUT", "invalid_input", "")) {
+            assertThrows(IllegalArgumentException::class.java) { AdapterFailure(code, "message") }
+        }
+    }
+
+    // LU-BRIDGE-6
+    @Test
+    fun optionalStringsAreStringsOnly() {
+        val json = JSONObject("{\"text\":\"a\",\"number\":1,\"nothing\":null,\"object\":{}}")
+        assertEquals("a", json.optionalString("text"))
+        assertNull(json.optionalString("number"))
+        assertNull(json.optionalString("nothing"))
+        assertNull(json.optionalString("object"))
+        assertNull(json.optionalString("missing"))
+    }
+
+    // LU-BRIDGE-6
+    @Test
+    fun answersWithTheStableEnvelope() {
+        val response = JSONObject(LiveUpdateProtocol.dispatch(FakeAdapter(), "cancel", "{\"id\":\"one\"}"))
+        assertEquals(setOf("status", "data"), response.keys().asSequence().toSet())
+        val error = JSONObject(LiveUpdateProtocol.dispatch(FakeAdapter(), "unknown", "{}"))
+        assertEquals(setOf("status", "error"), error.keys().asSequence().toSet())
+        assertEquals(
+            setOf("code", "message"),
+            error.getJSONObject("error").keys().asSequence().toSet(),
+        )
     }
 
     private fun ok(raw: String): JSONObject {
         val response = JSONObject(raw)
-        assertEquals("ok", response.getString("status"))
+        assertEquals(raw, "ok", response.getString("status"))
         return response
+    }
+
+    private fun assertError(code: String, raw: String): JSONObject {
+        val response = JSONObject(raw)
+        assertEquals(raw.take(200), "error", response.getString("status"))
+        val error = response.getJSONObject("error")
+        assertEquals(raw.take(200), code, error.getString("code"))
+        return error
     }
 }
 
