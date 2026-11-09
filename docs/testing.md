@@ -90,12 +90,12 @@ keys, and leaves a record of each full pass as an artifact (`tests/ci/cache.sh`)
 merges a pull request finds the pull request's pass for the same inputs and skips the suite. A run by
 hand can ignore every cache (`fresh`) or rerun the suite (`retest`).
 
-`.github/workflows/release.yml` runs on `v*` tags: it requires a successful CI run on main for the tag's
+`.github/workflows/publish.yml` runs on `v*` tags: it requires a successful CI run on main for the tag's
 exact commit, attaches the AAR to the GitHub release, and publishes to crates.io only when run by hand
 with `publish` checked and the repository variable `CRATES_IO_PUBLISH` set to `true`, after the AAR is
 attached, from the `crates-io` environment. Two settings belong to the repository's owner: the
 `crates-io` environment should require a reviewer, and the crates.io Trusted Publisher should name this
-repository, `release.yml` and that environment, so that no other job can mint a token.
+repository, `publish.yml` and that environment, so that no other job can mint a token.
 
 ## Devices
 

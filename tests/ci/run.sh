@@ -7,9 +7,9 @@
 #   - the `if:` of the steps that look for, run, record and upload the emulator suite's pass, so a skipped
 #     or failed suite never leaves a record;
 #   - each job's own `if:`, and that no suite's failure is swallowed (`|| true`, `continue-on-error`);
-#   - release.yml publishes to crates.io only by hand, with `publish` and CRATES_IO_PUBLISH, after the guard
+#   - publish.yml publishes to crates.io only by hand, with `publish` and CRATES_IO_PUBLISH, after the guard
 #     and the AAR, from the `crates-io` environment;
-#   - no workflow runs on pull_request_target, only release.yml's AAR job may write contents, and every
+#   - no workflow runs on pull_request_target, only publish.yml's AAR job may write contents, and every
 #     action is pinned to a commit SHA.
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
@@ -158,26 +158,26 @@ for swallow in ("|| true", "|| :", "continue-on-error", "set +e"):
 
 # The release: crates.io only by hand, with `publish` checked and the repository variable set, after
 # the AAR, from its environment, and the OIDC token only for that job.
-release = (root / ".github/workflows/release.yml").read_text()
+release = (root / ".github/workflows/publish.yml").read_text()
 publish = release[release.index("\n  crates-io:\n"):]
 if "    needs: [validate, aar]\n" not in publish or "    environment: crates-io\n" not in publish:
-    fail("release.yml's crates-io job must need validate and aar and run in the crates-io environment")
+    fail("publish.yml's crates-io job must need validate and aar and run in the crates-io environment")
 aar_job = release[release.index("\n  aar:\n"):release.index("\n  crates-io:\n")]
 if release.count("contents: write") != 1 or "contents: write" not in aar_job:
-    fail("only release.yml's aar job may write contents")
+    fail("only publish.yml's aar job may write contents")
 for required in ('gh release download "$TAG"', 'cmp "$aar"', 'cmp "$aar.sha256"'):
     if required not in aar_job:
-        fail(f"release.yml cannot safely reuse an existing release asset: missing {required!r}")
+        fail(f"publish.yml cannot safely reuse an existing release asset: missing {required!r}")
 if "--clobber" in aar_job:
-    fail("release.yml may not overwrite an existing release asset")
+    fail("publish.yml may not overwrite an existing release asset")
 if "    if: github.event_name == 'workflow_dispatch' && inputs.publish && vars.CRATES_IO_PUBLISH == 'true'\n" not in publish:
-    fail("release.yml publishes to crates.io without a manual run, `publish` and CRATES_IO_PUBLISH")
+    fail("publish.yml publishes to crates.io without a manual run, `publish` and CRATES_IO_PUBLISH")
 if release.count("id-token: write") != 1 or "id-token: write" not in publish:
-    fail("release.yml grants the OIDC token to a job other than crates-io")
+    fail("publish.yml grants the OIDC token to a job other than crates-io")
 if "rust-lang/crates-io-auth-action@" not in publish or "cargo publish --locked" not in publish:
-    fail("release.yml does not publish through Trusted Publishing")
+    fail("publish.yml does not publish through Trusted Publishing")
 if "no successful CI run on main for" not in release or "git merge-base --is-ancestor" not in release:
-    fail("release.yml does not require main's CI for the tag's commit")
+    fail("publish.yml does not require main's CI for the tag's commit")
 
 # Triggers, permissions and pinned actions.
 if "contents: write" in text:
