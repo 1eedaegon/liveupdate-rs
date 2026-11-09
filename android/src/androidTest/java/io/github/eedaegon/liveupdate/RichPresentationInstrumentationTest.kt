@@ -248,10 +248,17 @@ class RichPresentationInstrumentationTest {
         val samsung = JSONObject().put("primary", "Order").put("secondary", "Preparing")
         adapter.post(v2Record("samsung", "standard", v2Snapshot(style, samsungNowBar = samsung)))
         val extras = Device.waitForShown("samsung").extras
-        assertEquals(1, extras.getInt("android.ongoingActivityNoti.style"))
-        assertEquals("Order", extras.getCharSequence("android.ongoingActivityNoti.primaryInfo"))
-        assertEquals("Preparing", extras.getCharSequence("android.ongoingActivityNoti.secondaryInfo"))
-        assertEquals("Order", extras.getString("android.ongoingActivityNoti.nowbarPrimaryInfo"))
+        if (Build.MANUFACTURER.equals("samsung", ignoreCase = true)) {
+            assertEquals(1, extras.getInt("android.ongoingActivityNoti.style"))
+            assertEquals("Order", extras.getCharSequence("android.ongoingActivityNoti.primaryInfo"))
+            assertEquals("Preparing", extras.getCharSequence("android.ongoingActivityNoti.secondaryInfo"))
+            assertEquals("Order", extras.getString("android.ongoingActivityNoti.nowbarPrimaryInfo"))
+        } else {
+            assertFalse(extras.containsKey("android.ongoingActivityNoti.style"))
+            assertFalse(extras.containsKey("android.ongoingActivityNoti.primaryInfo"))
+            assertFalse(extras.containsKey("android.ongoingActivityNoti.secondaryInfo"))
+            assertFalse(extras.containsKey("android.ongoingActivityNoti.nowbarPrimaryInfo"))
+        }
     }
 
     // LU-V2-VALID-2
