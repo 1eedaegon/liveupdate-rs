@@ -1,4 +1,4 @@
-use crate::{Capabilities, Driver, DriverRecord, Error, Observation, Result};
+use crate::{Capabilities, Driver, DriverRecord, Error, EventBatch, Observation, Result};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 const MAX_BRIDGE_BYTES: usize = 1_048_576;
@@ -56,6 +56,12 @@ impl<B: Bridge> Driver for JsonDriver<B> {
     fn cancel(&self, id: &str) -> Result<()> {
         self.request("cancel", &CancelRequest { id })
     }
+
+    fn drain_events(&self) -> Result<EventBatch> {
+        let events: EventBatch = self.request("events", &Empty {})?;
+        events.validate()?;
+        Ok(events)
+    }
 }
 
 impl<B: Bridge> JsonDriver<B> {
@@ -106,4 +112,74 @@ struct CancelRequest<'id> {
 enum Response<T> {
     Ok { data: T },
     Error { error: Error },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ErrorCode;
+    use std::sync::Mutex;
+
+    struct Reply {
+        response: String,
+        calls: Mutex<usize>,
+    }
+
+    impl Bridge for Reply {
+        fn invoke(&self, _command: &str, _payload: &str) -> Result<String> {
+            *self.calls.lock().unwrap() += 1;
+            Ok(self.response.clone())
+        }
+    }
+
+    fn driver(response: String) -> JsonDriver<Reply> {
+        JsonDriver::new(Reply {
+            response,
+            calls: Mutex::new(0),
+        })
+    }
+
+    /// An `ok` envelope padded with trailing whitespace to exactly `length` bytes.
+    fn padded(length: usize) -> String {
+        let envelope = r#"{"status":"ok","data":null}"#;
+        format!("{envelope}{}", " ".repeat(length - envelope.len()))
+    }
+
+    // LU-BRIDGE-3
+    #[test]
+    fn a_reply_of_exactly_one_mebibyte_is_read_and_one_byte_more_is_not() {
+        assert_eq!(MAX_BRIDGE_BYTES, 1_048_576);
+        assert!(driver(padded(MAX_BRIDGE_BYTES)).cancel("id").is_ok());
+        let error = driver(padded(MAX_BRIDGE_BYTES + 1))
+            .cancel("id")
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::NativeError);
+    }
+
+    // LU-BRIDGE-2
+    #[test]
+    fn a_request_over_one_mebibyte_never_reaches_the_bridge() {
+        let driver = driver(padded(40));
+        let id = "i".repeat(MAX_BRIDGE_BYTES);
+        assert_eq!(driver.cancel(&id).unwrap_err(), Error::native());
+        assert_eq!(*driver.bridge.calls.lock().unwrap(), 0);
+        driver
+            .cancel(&"i".repeat(MAX_BRIDGE_BYTES - r#"{"id":""}"#.len()))
+            .unwrap();
+        assert_eq!(*driver.into_inner().calls.lock().unwrap(), 1);
+    }
+
+    // LU-BRIDGE-1
+    #[test]
+    fn requests_serialize_as_the_adapter_expects() {
+        assert_eq!(serde_json::to_string(&Empty {}).unwrap(), "{}");
+        assert_eq!(
+            serde_json::to_string(&CancelRequest { id: "a\"b" }).unwrap(),
+            r#"{"id":"a\"b"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&WriteRequest { records: &[] }).unwrap(),
+            r#"{"records":[]}"#
+        );
+    }
 }

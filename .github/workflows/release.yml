@@ -1,0 +1,157 @@
+name: Release
+
+# A `v*` tag validates the release and attaches the AAR to its GitHub release: the tag matches the crate's
+# version, main's CI passed for the tag's exact commit, the tests pass and the crate packages. Publishing
+# to crates.io needs a run by hand with `publish` checked, the repository variable CRATES_IO_PUBLISH set to
+# `true`, the AAR attached, and an approval of the `crates-io` environment. Trusted Publishing on
+# crates.io should name this repository, release.yml and that environment, and the environment should
+# require a reviewer (docs/testing.md). Until then it publishes nothing to crates.io.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag (for example v0.1.0)
+        required: true
+        type: string
+      publish:
+        description: Publish the validated version to crates.io
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  TOOLCHAIN: 1.96.0
+  ANDROID_API: "37.0"
+
+jobs:
+  validate:
+    name: Validate the release
+    if: github.repository == '1eedaegon/liveupdate-rs'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      sha: ${{ steps.guard.outputs.sha }}
+      version: ${{ steps.guard.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+      - run: rustup toolchain install "$TOOLCHAIN" --profile minimal && rustup default "$TOOLCHAIN"
+      - name: The tag, the version, and main's CI for the exact commit
+        id: guard
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -eu
+          printf '%s' "$TAG" | grep -qE '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$' || { echo "not a vSEMVER tag: $TAG"; exit 1; }
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "liveupdate") | .version')
+          [ "v$version" = "$TAG" ] || { echo "Cargo.toml has $version, the tag is $TAG"; exit 1; }
+          sha=$(git rev-parse "$TAG^{commit}")
+          git fetch --quiet origin main
+          git merge-base --is-ancestor "$sha" origin/main || { echo "$sha is not on main"; exit 1; }
+          runs=$(gh api "repos/$REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$sha&branch=main&status=success&per_page=100" \
+            --jq '[.workflow_runs[] | select(.event == "push" or .event == "workflow_dispatch")] | length')
+          [ "$runs" -gt 0 ] || { echo "no successful CI run on main for $sha"; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - run: cargo test --locked
+      # Builds the packaged crate from its .crate file, as crates.io would get it.
+      - run: cargo package --locked
+
+  # The release AAR, checked by tests/android/aar.sh, on the GitHub release of the tag.
+  aar:
+    name: Attach the AAR
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+      - run: android --sdk="$ANDROID_SDK_ROOT" sdk install "platforms/android-$ANDROID_API"
+      - run: test -f "$ANDROID_SDK_ROOT/platforms/android-$ANDROID_API/android.jar"
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          gradle-version: "8.14.4"
+          cache-disabled: true
+      - run: gradle :android:assembleRelease --no-daemon
+      - run: sh tests/android/aar.sh
+      - name: Upload to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -eu
+          aar="liveupdate-android-$VERSION.aar"
+          cp android/build/outputs/aar/android-release.aar "$aar"
+          sha256sum "$aar" > "$aar.sha256"
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            case $VERSION in *-*) prerelease=--prerelease ;; *) prerelease= ;; esac
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" $prerelease \
+              --notes "The crate is \`liveupdate = \"$VERSION\"\` on crates.io; the AAR is attached. See CHANGELOG.md."
+          fi
+          assets=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          has_aar=false
+          has_sha=false
+          for asset in $assets; do
+            [ "$asset" = "$aar" ] && has_aar=true
+            [ "$asset" = "$aar.sha256" ] && has_sha=true
+          done
+          if [ "$has_aar" = true ] || [ "$has_sha" = true ]; then
+            [ "$has_aar" = true ] && [ "$has_sha" = true ] || {
+              echo "the release has only one of $aar and $aar.sha256" >&2
+              exit 1
+            }
+            existing=$(mktemp -d)
+            trap 'rm -rf "$existing"' EXIT
+            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --pattern "$aar" --pattern "$aar.sha256" --dir "$existing"
+            cmp "$aar" "$existing/$aar"
+            cmp "$aar.sha256" "$existing/$aar.sha256"
+          else
+            gh release upload "$TAG" "$aar" "$aar.sha256" --repo "$GITHUB_REPOSITORY"
+          fi
+
+  crates-io:
+    name: Publish to crates.io
+    needs: [validate, aar]
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && vars.CRATES_IO_PUBLISH == 'true'
+    runs-on: ubuntu-latest
+    environment: crates-io
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          persist-credentials: false
+      - run: rustup toolchain install "$TOOLCHAIN" --profile minimal && rustup default "$TOOLCHAIN"
+      - uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
+        id: auth
+      - run: cargo publish --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}

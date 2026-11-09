@@ -1,14 +1,19 @@
 //! Compatibility tests for the serialized public contract.
 
-use liveupdate::{Capabilities, Fallback, PromotionState, Visibility};
+use liveupdate::{
+    ActivityState, Capabilities, DriverRecord, Fallback, Observation, PresentationCapabilities,
+    PromotionState, Snapshot, StartRequest, Template, Timer, Visibility,
+};
 use serde_json::json;
 
+// LU-CAP-1
 #[test]
 fn capabilities_use_the_stable_camel_case_contract() {
     let capabilities = Capabilities {
         supported: true,
         notifications_enabled: true,
         promotion_enabled: false,
+        presentation: PresentationCapabilities::default(),
     };
 
     assert_eq!(
@@ -16,7 +21,18 @@ fn capabilities_use_the_stable_camel_case_contract() {
         json!({
             "supported": true,
             "notificationsEnabled": true,
-            "promotionEnabled": false
+            "promotionEnabled": false,
+            "presentation": {
+                "standard": false,
+                "bigText": false,
+                "timer": false,
+                "progressStyle": false,
+                "metricStyle": false,
+                "actions": false,
+                "images": false,
+                "events": false,
+                "samsungNowBar": false
+            }
         })
     );
     assert_eq!(
@@ -30,12 +46,14 @@ fn capabilities_use_the_stable_camel_case_contract() {
     );
 }
 
+// LU-CAP-1, LU-FALLBACK-1
 #[test]
 fn capability_helpers_separate_regular_posting_from_promotion() {
     let regular_notification = Capabilities {
         supported: true,
         notifications_enabled: true,
         promotion_enabled: false,
+        presentation: PresentationCapabilities::default(),
     };
     assert!(regular_notification.can_post());
     assert!(!regular_notification.can_promote());
@@ -61,6 +79,7 @@ fn capability_helpers_separate_regular_posting_from_promotion() {
     assert!(!notifications_disabled.can_promote());
 }
 
+// LU-BRIDGE-1
 #[test]
 fn platform_policy_enums_use_the_stable_contract() {
     for (value, expected) in [
@@ -102,8 +121,80 @@ fn platform_policy_enums_use_the_stable_contract() {
     }
 }
 
+// LU-CAP-5
 #[test]
 fn an_unrecognized_promotion_state_is_forward_compatible() {
     let state: PromotionState = serde_json::from_str("\"futureState\"").unwrap();
     assert_eq!(state, PromotionState::Unknown);
+}
+
+// LU-BRIDGE-1
+#[test]
+fn records_cross_the_bridge_with_the_names_the_adapter_reads() {
+    let snapshot = Snapshot {
+        revision: 2,
+        title: "Delivery".into(),
+        status: "Soon".into(),
+        progress: None,
+        timer: Some(Timer {
+            started_at: 10,
+            ends_at: 20,
+        }),
+        stale_at: Some(30),
+        presentation: None,
+    };
+    let record = DriverRecord {
+        id: "id".into(),
+        origin: StartRequest {
+            activity_key: "delivery:1".into(),
+            schema_version: 1,
+            template: Template::Timer,
+            fallback: Fallback::None,
+            visibility: Visibility::Secret,
+            snapshot: snapshot.clone(),
+        },
+        snapshot: snapshot.clone(),
+        state: ActivityState::Unknown,
+        promotion_requested: true,
+        promotion_state: PromotionState::Unknown,
+        awaiting_observation: true,
+        post_failed: false,
+    };
+    let snapshot_json = json!({
+        "revision": 2,
+        "title": "Delivery",
+        "status": "Soon",
+        "timer": { "startedAt": 10, "endsAt": 20 },
+        "staleAt": 30
+    });
+    assert_eq!(
+        serde_json::to_value(&record).unwrap(),
+        json!({
+            "id": "id",
+            "origin": {
+                "activityKey": "delivery:1",
+                "schemaVersion": 1,
+                "template": "timer",
+                "fallback": "none",
+                "visibility": "secret",
+                "snapshot": snapshot_json
+            },
+            "snapshot": snapshot_json,
+            "state": "unknown",
+            "promotionRequested": true,
+            "promotionState": "unknown",
+            "awaitingObservation": true,
+            "postFailed": false
+        })
+    );
+    let observation: Observation = serde_json::from_value(json!({
+        "id": "id",
+        "snapshot": snapshot_json,
+        "state": "stale",
+        "promotionRequested": true,
+        "promotionState": "notPromoted"
+    }))
+    .unwrap();
+    assert_eq!(observation.snapshot, snapshot);
+    assert_eq!(observation.state, ActivityState::Stale);
 }

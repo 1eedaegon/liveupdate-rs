@@ -30,6 +30,7 @@
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
             cargo-llvm-cov
+            cargo-mutants
             cargo-ndk
             gradle
             jdk21

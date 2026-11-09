@@ -9,7 +9,9 @@ mod client;
 mod contract;
 mod driver;
 mod error;
+mod event;
 mod model;
+mod presentation;
 
 #[cfg(all(feature = "android", target_os = "android"))]
 mod android;
@@ -18,10 +20,21 @@ mod android;
 pub use android::{AndroidBridge, AndroidDriver};
 pub use bridge::{Bridge, JsonDriver};
 pub use client::LiveUpdate;
-pub use contract::{Capabilities, Fallback, PromotionState, Visibility};
+pub use contract::{Capabilities, Fallback, PresentationCapabilities, PromotionState, Visibility};
 pub use driver::{Driver, DriverRecord, Observation};
 pub use error::{Error, ErrorCode, Result};
+pub use event::{ActivityEvent, EventBatch, EventKind, MAX_EVENTS};
 pub use model::{
     ActivityRecord, ActivityState, Backend, EndPolicy, MAX_SAFE_INTEGER, MAX_TIMESTAMP, Snapshot,
     StartRequest, Template, Timer,
 };
+pub use presentation::{
+    AndroidPresentation, BigTextStyle, IconSource, MAX_ACTIONS, MAX_METRICS, MAX_PROGRESS_ELEMENTS,
+    Metric, MetricStyle, MetricValue, NotificationAction, PresentationStyle, ProgressPoint,
+    ProgressSegment, ProgressStyle, SamsungNowBar, SemanticStyle, TimerStyle,
+};
+
+// LU-DOCS-1
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+pub struct ReadmeDoctests;

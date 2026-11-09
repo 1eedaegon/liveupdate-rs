@@ -5,38 +5,191 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      fresh:
+        description: Ignore every cache and every recorded pass, and build and test everything from scratch
+        type: boolean
+        default: false
+      retest:
+        description: Run the emulator suite even when it passed for the same inputs
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
+# Each commit on main gets a run of its own that nothing cancels: release.yml needs a successful main run
+# for the exact commit of a release tag.
 concurrency:
   group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
+env:
+  # The Rust of every job but the MSRV check; part of the emulator suite's record.
+  TOOLCHAIN: 1.96.0
+  NDK: 27.3.13750724
+  CARGO_NDK: 4.1.2
+  ANDROID_API: "37.0"
+  AVD: liveupdate_api37
+  # The JDK and Gradle of the Android jobs; both are part of the emulator suite's record.
+  JAVA: "21"
+  GRADLE: 8.14.4
+
 jobs:
-  rust:
-    name: Rust
+  # Which parts the push or pull request changed. A change to docs alone runs the light spec job, and the
+  # run still succeeds. tests/ci/run.sh checks these patterns.
+  changes:
+    name: What changed
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.areas.outputs.rust }}
+      android: ${{ steps.areas.outputs.android }}
+      spec: ${{ steps.areas.outputs.spec }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: areas
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.sha }}
+        run: |
+          all() { for area in rust android spec; do echo "$area=true" >> "$GITHUB_OUTPUT"; done; echo "every part: $1"; }
+          if [ "$EVENT" = workflow_dispatch ]; then all "run by hand"; exit 0; fi
+          if [ -z "$BASE" ] || [ "$BASE" = 0000000000000000000000000000000000000000 ]; then all "no base to compare"; exit 0; fi
+          if ! files=$(git diff --name-only "$BASE" "$HEAD"); then all "git diff failed"; exit 0; fi
+          printf '%s\n' "$files"
+          # The workflows, the CI scripts they run and the toolchain shell concern every part.
+          if grep -qE '^(\.github/workflows/|tests/ci/|flake\.(nix|lock)$)' <<< "$files"; then all "workflow or CI scripts"; exit 0; fi
+          area() { grep -qE "$2" <<< "$files" && echo "$1=true" >> "$GITHUB_OUTPUT" || echo "$1=false" >> "$GITHUB_OUTPUT"; }
+          # Every Rust source and manifest, the example, the Rust tests and the environment check they run,
+          # and the native test library, which this job formats.
+          area rust '^(src/|examples/|tests/[^/]+\.(rs|sh)$|tests/common/|android/native-test/|Cargo\.(toml|lock)$|rust-toolchain\.toml$|\.cargo/|scripts/)'
+          # What reaches the device: the crate (src/android.rs and the lifecycle it drives), the AAR and its
+          # Gradle build, the native test library, and the emulator scripts.
+          area android '^(src/|examples/|android/|Cargo\.(toml|lock)$|rust-toolchain\.toml$|\.cargo/|build\.gradle\.kts$|settings\.gradle\.kts$|gradle\.properties$|tests/android/)'
+          # The specification and every test it maps, and the docs that tests/docs.rs reads.
+          area spec '^(src/|examples/|tests/|android/src/|docs/|tools/|README\.md$|CHANGELOG\.md$)'
+          cat "$GITHUB_OUTPUT"
+
+  # Every requirement of docs/spec.md has a test that names it next to its definition; CI's own patterns,
+  # keys and record steps are as tests/ci/run.sh expects; the docs say what they must and the README's
+  # code compiles.
+  spec:
+    name: Specification and docs
+    needs: changes
+    if: needs.changes.outputs.spec == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy,llvm-tools-preview
-      - run: rustup default 1.96.0
+      - run: sh tools/spec-coverage.sh
+      - run: sh tests/ci/run.sh
+      - run: rustup toolchain install "$TOOLCHAIN" --profile minimal && rustup default "$TOOLCHAIN"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: ${{ !inputs.fresh }}
+        with:
+          cache-bin: false
+      - run: cargo test --locked --test docs
+      - run: cargo test --locked --doc
+
+  rust:
+    name: Rust (Linux)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install "$TOOLCHAIN" --profile minimal --component rustfmt,clippy,llvm-tools-preview
+      - run: rustup default "$TOOLCHAIN"
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+        with:
+          tool: cargo-llvm-cov@0.9.1
+          fallback: none
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: ${{ !inputs.fresh }}
+        with:
+          cache-bin: false
       - run: cargo fmt --all -- --check
+      - run: cargo fmt --manifest-path android/native-test/Cargo.toml -- --check
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
-      - run: cargo test --locked --all-targets
+      # Every unit and integration test, at least 80 % of the lines on the host. src/android.rs only
+      # compiles for Android: the emulator job measures it.
+      - run: cargo llvm-cov --locked --summary-only --fail-under-lines 80
       - run: cargo test --locked --doc
       - run: sh tests/android_env.sh
-      - run: rustup target add aarch64-linux-android x86_64-linux-android
-      - run: cargo check --locked --target aarch64-linux-android --features android
-      - run: cargo check --locked --target x86_64-linux-android --features android
-      - run: cargo install cargo-llvm-cov --version 0.9.1 --locked
-      - run: cargo llvm-cov --locked --summary-only --fail-under-lines 80
       - run: cargo package --locked
 
+  # Every mutant of the host code must fail a test (.cargo/mutants.toml, docs/testing.md). A pull
+  # request tests the mutants of the lines it changes; a run by hand tests all of them. The push that
+  # merges a pull request does not repeat them.
+  mutants:
+    name: Mutation tests
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' && github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: rustup toolchain install "$TOOLCHAIN" --profile minimal && rustup default "$TOOLCHAIN"
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+        with:
+          tool: cargo-mutants@27.1.0
+          fallback: none
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: ${{ !inputs.fresh }}
+        with:
+          cache-bin: false
+      - name: Mutants of the changed lines
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git diff "$BASE" HEAD -- src > "$RUNNER_TEMP/changes.diff"
+          cargo mutants --in-diff "$RUNNER_TEMP/changes.diff" --output "$RUNNER_TEMP" -j 2
+      - name: Every mutant
+        if: github.event_name == 'workflow_dispatch'
+        run: cargo mutants --output "$RUNNER_TEMP" -j 2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always()
+        with:
+          name: mutants
+          path: ${{ runner.temp }}/mutants.out/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # The oldest Rust the crate supports, rust-version in Cargo.toml, on the host and for Android.
+  msrv:
+    name: Rust 1.90 (Linux)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install 1.90.0 --profile minimal --target aarch64-linux-android
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: ${{ !inputs.fresh }}
+        with:
+          cache-bin: false
+      - run: cargo +1.90.0 test --locked
+      - run: cargo +1.90.0 check --locked --target aarch64-linux-android --features android --all-targets
+
+  # The AAR and the Android build of the crate: Kotlin unit tests, lint, the release AAR and its
+  # contents, and src/android.rs through cargo-ndk and Clippy for both ABIs.
   android:
-    name: Android API 37
+    name: Android build
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -45,34 +198,189 @@ jobs:
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.2.0
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: ${{ env.JAVA }}
       - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
-      - run: android --sdk="$ANDROID_SDK_ROOT" sdk install platforms/android-37 ndk/27.3.13750724 emulator system-images/android-37/google_apis/x86_64
-      - run: echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.3.13750724" >> "$GITHUB_ENV"
+      - name: Keys
+        id: keys
+        run: sh tests/ci/cache.sh keys
+      # The SDK packages the runner lacks: the API 37 platform and the emulator. The NDK comes with the
+      # runner.
+      - name: Android SDK packages
+        id: sdk
+        if: ${{ !inputs.fresh }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            /usr/local/lib/android/sdk/platforms/android-${{ env.ANDROID_API }}
+            /usr/local/lib/android/sdk/emulator
+          key: ${{ steps.keys.outputs.sdk }}
+      - name: Install the SDK packages
+        if: steps.sdk.outputs.cache-hit != 'true'
+        run: android --sdk="$ANDROID_SDK_ROOT" sdk install "platforms/android-$ANDROID_API" emulator
+      - name: Check the SDK
+        run: |
+          for path in "platforms/android-$ANDROID_API/android.jar" "ndk/$NDK/source.properties" emulator/emulator; do
+            [ -e "$ANDROID_SDK_ROOT/$path" ] || { echo "missing $ANDROID_SDK_ROOT/$path"; exit 1; }
+          done
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/$NDK" >> "$GITHUB_ENV"
+      - run: rustup toolchain install "$TOOLCHAIN" --profile minimal --component clippy --target aarch64-linux-android --target x86_64-linux-android && rustup default "$TOOLCHAIN"
+      - name: cargo-ndk
+        id: cargo-ndk
+        if: ${{ !inputs.fresh }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/cargo-ndk
+          key: cargo-ndk-${{ env.CARGO_NDK }}-${{ runner.os }}-${{ runner.arch }}-rust${{ env.TOOLCHAIN }}
+      - if: steps.cargo-ndk.outputs.cache-hit != 'true'
+        run: cargo install cargo-ndk --version "$CARGO_NDK" --locked --root ~/.cache/cargo-ndk
+      - run: echo "$HOME/.cache/cargo-ndk/bin" >> "$GITHUB_PATH"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: ${{ !inputs.fresh }}
+        with:
+          workspaces: |
+            . -> target
+            android/native-test -> ../build/native-test-target
+          cache-bin: false
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
-          gradle-version: "8.14.4"
-      - run: rustup toolchain install 1.96.0 --profile minimal
-      - run: rustup default 1.96.0
-      - run: rustup target add aarch64-linux-android x86_64-linux-android
-      - run: cargo install cargo-ndk --version 4.1.2 --locked
+          gradle-version: ${{ env.GRADLE }}
+          cache-disabled: ${{ inputs.fresh == true }}
+      - run: cargo ndk -t arm64-v8a -t x86_64 check --locked --features android --all-targets
+      - run: cargo ndk -t arm64-v8a -t x86_64 clippy --locked --features android --all-targets -- -D warnings
+      - run: cargo ndk -t arm64-v8a -t x86_64 clippy --locked --manifest-path android/native-test/Cargo.toml --features coverage -- -D warnings
       - run: gradle :android:testDebugUnitTest :android:lintDebug :android:assembleRelease --no-daemon
-      - run: android --sdk="$ANDROID_SDK_ROOT" emulator create medium_phone
-      - name: Run API 37 phone tests
-        timeout-minutes: 20
-        run: |
-          if [ -e /dev/kvm ]; then sudo chown "$USER" /dev/kvm; fi
-          android --sdk="$ANDROID_SDK_ROOT" emulator start --cold --headless medium_phone
-          gradle :android:coverageVerification --no-daemon
-      - if: always()
-        run: adb emu kill || true
+      - run: sh tests/android/aar.sh
 
-  msrv:
-    name: Rust 1.90
+  # Every instrumentation test on an API 37 emulator, with Kotlin and Rust coverage (tests/android/run.sh).
+  # It skips a suite that already passed for the same inputs (tests/ci/cache.sh): the record of a pass is
+  # an artifact, so the push to main that merges a pull request finds the pass of the pull request's run.
+  # A skipped suite leaves the job green.
+  emulator:
+    name: Emulator, Android 17 (API 37)
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: rustup toolchain install 1.90.0 --profile minimal
-      - run: cargo +1.90.0 test --locked --all-targets
+      - name: Keys
+        id: keys
+        run: sh tests/ci/cache.sh keys
+      - name: Look for a pass of the suite
+        id: passed
+        if: ${{ !inputs.fresh && !inputs.retest }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ steps.keys.outputs.emulator }}
+        run: sh tests/ci/cache.sh passed "$NAME"
+      - if: steps.passed.outputs.found != 'true'
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.2.0
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA }}
+      - if: steps.passed.outputs.found != 'true'
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+      - name: Android SDK packages
+        id: sdk
+        if: ${{ steps.passed.outputs.found != 'true' && !inputs.fresh }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            /usr/local/lib/android/sdk/platforms/android-${{ env.ANDROID_API }}
+            /usr/local/lib/android/sdk/emulator
+          key: ${{ steps.keys.outputs.sdk }}
+      # The system image and the AVD made from it, saved after its first boot.
+      - name: System image and AVD
+        id: avd
+        if: ${{ steps.passed.outputs.found != 'true' && !inputs.fresh }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            /usr/local/lib/android/sdk/system-images/android-${{ env.ANDROID_API }}/google_apis/x86_64
+            ~/.android/avd/${{ env.AVD }}.avd
+            ~/.android/avd/${{ env.AVD }}.ini
+          key: ${{ steps.keys.outputs.avd }}
+      - name: Install the SDK packages
+        if: ${{ steps.passed.outputs.found != 'true' && steps.sdk.outputs.cache-hit != 'true' }}
+        run: android --sdk="$ANDROID_SDK_ROOT" sdk install "platforms/android-$ANDROID_API" emulator
+      - name: Install the system image
+        if: ${{ steps.passed.outputs.found != 'true' && steps.avd.outputs.cache-hit != 'true' }}
+        run: android --sdk="$ANDROID_SDK_ROOT" sdk install "system-images/android-$ANDROID_API/google_apis/x86_64"
+      - name: Check the SDK
+        if: steps.passed.outputs.found != 'true'
+        run: |
+          for path in "platforms/android-$ANDROID_API/android.jar" "ndk/$NDK/source.properties" emulator/emulator \
+            "system-images/android-$ANDROID_API/google_apis/x86_64/system.img"; do
+            [ -e "$ANDROID_SDK_ROOT/$path" ] || { echo "missing $ANDROID_SDK_ROOT/$path"; exit 1; }
+          done
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/$NDK" >> "$GITHUB_ENV"
+          grep -h Pkg.Revision "$ANDROID_SDK_ROOT/emulator/source.properties" \
+            "$ANDROID_SDK_ROOT/system-images/android-$ANDROID_API/google_apis/x86_64/source.properties"
+      - if: steps.passed.outputs.found != 'true'
+        run: rustup toolchain install "$TOOLCHAIN" --profile minimal --component llvm-tools-preview --target x86_64-linux-android && rustup default "$TOOLCHAIN"
+      - name: cargo-ndk
+        id: cargo-ndk
+        if: ${{ steps.passed.outputs.found != 'true' && !inputs.fresh }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/cargo-ndk
+          key: cargo-ndk-${{ env.CARGO_NDK }}-${{ runner.os }}-${{ runner.arch }}-rust${{ env.TOOLCHAIN }}
+      - if: ${{ steps.passed.outputs.found != 'true' && steps.cargo-ndk.outputs.cache-hit != 'true' }}
+        run: cargo install cargo-ndk --version "$CARGO_NDK" --locked --root ~/.cache/cargo-ndk
+      - if: steps.passed.outputs.found != 'true'
+        run: echo "$HOME/.cache/cargo-ndk/bin" >> "$GITHUB_PATH"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: ${{ steps.passed.outputs.found != 'true' && !inputs.fresh }}
+        with:
+          workspaces: android/native-test -> ../build/native-test-target
+          cache-bin: false
+      - if: steps.passed.outputs.found != 'true'
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          gradle-version: ${{ env.GRADLE }}
+          cache-disabled: ${{ inputs.fresh == true }}
+      - name: Start the emulator
+        if: steps.passed.outputs.found != 'true'
+        run: |
+          if [ -e /dev/kvm ]; then sudo chown "$USER" /dev/kvm; fi
+          [ -f "$HOME/.android/avd/$AVD.ini" ] || sh tests/android/avd.sh create "$AVD" "$ANDROID_API"
+          sh tests/android/avd.sh start "$AVD" 5554
+      # On the emulator the steps above made: every instrumentation test, the Kotlin coverage gate of
+      # android/build.gradle.kts (95 % of the lines), and at least 90 % of src/android.rs's lines run on
+      # the device.
+      - name: Emulator suite
+        if: steps.passed.outputs.found != 'true'
+        timeout-minutes: 30
+        run: sh tests/android/run.sh
+        env:
+          ANDROID_SERIAL: emulator-5554
+          EXPECTED_SDK: "37"
+          OUT: ${{ runner.temp }}/device-suite
+      - name: Stop the emulator
+        if: ${{ always() && steps.passed.outputs.found != 'true' }}
+        run: sh tests/android/avd.sh stop emulator-5554
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: ${{ always() && steps.passed.outputs.found != 'true' }}
+        with:
+          name: device-suite
+          path: |
+            ${{ runner.temp }}/device-suite/
+            android/build/reports/jacoco/
+          retention-days: 14
+          if-no-files-found: ignore
+      - name: Record the pass of the suite
+        id: record
+        if: steps.passed.outputs.found != 'true'
+        run: sh tests/ci/cache.sh record "$RUNNER_TEMP/device-suite/passed.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: steps.record.outputs.recorded == 'true'
+        with:
+          name: ${{ steps.keys.outputs.emulator }}
+          path: ${{ runner.temp }}/passed-emulator/
+          retention-days: 90
+          if-no-files-found: error

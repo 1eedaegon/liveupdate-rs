@@ -1,125 +1,138 @@
 package io.github.eedaegon.liveupdate
 
 import android.Manifest
+import android.content.Context
+import android.content.ComponentName
+import android.content.ContextWrapper
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import io.github.eedaegon.liveupdate.Device.context
+import io.github.eedaegon.liveupdate.Device.dispatch
+import io.github.eedaegon.liveupdate.Device.failure
+import io.github.eedaegon.liveupdate.Device.record
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
+/** The JSON bridge that the Rust crate calls, against the device's real framework. */
 @RunWith(AndroidJUnit4::class)
 class LiveUpdateBridgeInstrumentationTest {
-    private val instrumentation = InstrumentationRegistry.getInstrumentation()
-    private val context = instrumentation.targetContext
-
     @Before
-    fun prepareNotifications() {
-        if (Build.VERSION.SDK_INT >= 33) {
-            instrumentation.uiAutomation.executeShellCommand(
-                "pm grant ${context.packageName} ${Manifest.permission.POST_NOTIFICATIONS}",
-            ).close()
-        }
-        waitForNotificationPermission()
-        dispatch("write", JSONObject().put("records", JSONArray()))
-        dispatch("cancel", JSONObject().put("id", ACTIVITY_ID))
-    }
+    fun prepare() = Device.prepare()
 
     @After
-    fun removeNotification() {
-        dispatch("cancel", JSONObject().put("id", ACTIVITY_ID))
-        dispatch("write", JSONObject().put("records", JSONArray()))
-    }
+    fun clear() = Device.clear()
 
+    // LU-CAP-2, LU-API-2, LU-API-3, LU-V2-CAP-1
     @Test
-    fun capabilitiesReflectTheRunningApi37Device() {
+    fun capabilitiesReflectTheRunningDevice() {
+        val expected = InstrumentationRegistry.getArguments().getString("expectedSdk")
+        if (expected != null) assertEquals(expected.toInt(), Build.VERSION.SDK_INT)
         val capabilities = dispatch("capabilities").getJSONObject("data")
 
         assertTrue(capabilities.getBoolean("notificationsEnabled"))
         assertEquals(Build.VERSION.SDK_INT >= 36, capabilities.getBoolean("supported"))
+        val promotion = Build.VERSION.SDK_INT >= 36 && Device.manager.canPostPromotedNotifications()
+        assertEquals(promotion, capabilities.getBoolean("promotionEnabled"))
+        val presentation = capabilities.getJSONObject("presentation")
+        assertTrue(presentation.getBoolean("standard"))
+        assertTrue(presentation.getBoolean("bigText"))
+        assertTrue(presentation.getBoolean("timer"))
+        assertEquals(Build.VERSION.SDK_INT >= 36, presentation.getBoolean("progressStyle"))
+        assertEquals(Build.VERSION.SDK_INT >= 37, presentation.getBoolean("metricStyle"))
+        assertTrue(presentation.getBoolean("actions"))
+        assertTrue(presentation.getBoolean("images"))
+        assertTrue(presentation.getBoolean("events"))
+        assertEquals(
+            Build.VERSION.SDK_INT >= 37 && Build.MANUFACTURER.equals("samsung", ignoreCase = true),
+            presentation.getBoolean("samsungNowBar"),
+        )
     }
 
+    // LU-ADAPTER-1, LU-ADAPTER-6, LU-ADAPTER-8, LU-ADAPTER-9
     @Test
     fun durableRecordPostsObservesAndCancelsThroughThePublicBridge() {
-        val record = record()
+        val record = record(ACTIVITY_ID)
         dispatch("write", JSONObject().put("records", JSONArray().put(record)))
         assertEquals(ACTIVITY_ID, dispatch("read").getJSONArray("data")
             .getJSONObject(0).getString("id"))
 
         dispatch("post", JSONObject().put("record", record))
-        val observed = waitForObservation(present = true).getJSONObject(0)
+        Device.waitForShown(ACTIVITY_ID)
+        val observed = Device.observed().getJSONObject(0)
         assertEquals(ACTIVITY_ID, observed.getString("id"))
         assertEquals("active", observed.getString("state"))
+        assertEquals(false, observed.getBoolean("promotionRequested"))
         assertEquals("notApplicable", observed.getString("promotionState"))
+        assertEquals(record.getJSONObject("snapshot").toString(), observed.getJSONObject("snapshot").toString())
 
         dispatch("cancel", JSONObject().put("id", ACTIVITY_ID))
-        assertEquals(0, waitForObservation(present = false).length())
+        Device.waitForGone(ACTIVITY_ID)
+        assertEquals(0, Device.observed().length())
+        dispatch("cancel", JSONObject().put("id", "never-posted"))
     }
 
+    // LU-ADAPTER-9, LU-BRIDGE-7
     @Test
-    fun nativeRustRunsTheCompleteLifecycleThroughJni() {
-        val result = JSONObject(NativeRust.run(context))
+    fun storageStartsEmptyAndRejectsCorruptContent() {
+        assertEquals(0, dispatch("read").getJSONArray("data").length())
 
-        assertFalse(result.has("error"))
-        assertTrue(result.getBoolean("notificationsEnabled"))
-        assertTrue(result.getString("startedId").isNotBlank())
-        assertEquals(1, result.getLong("updatedRevision"))
-        assertEquals(1, result.getLong("listedRevision"))
-        assertEquals("ended", result.getString("endedState"))
-    }
-
-    private fun waitForObservation(present: Boolean): JSONArray {
-        repeat(40) {
-            val observed = dispatch("observe").getJSONArray("data")
-            if ((observed.length() > 0) == present) return observed
-            Thread.sleep(50)
+        val preferences = context.getSharedPreferences(Device.PREFERENCES, Context.MODE_PRIVATE)
+        val tooMany = JSONArray().apply { repeat(161) { put(JSONObject()) } }.toString()
+        for (corrupt in listOf("not json", "{}", tooMany, "[\"${"x".repeat(1_048_576)}\"]")) {
+            preferences.edit().putString("records", corrupt).commit()
+            failure("read", JSONObject(), "NATIVE_ERROR")
         }
-        throw AssertionError("Notification observation did not become $present")
+        val full = JSONArray().apply { repeat(160) { put(JSONObject()) } }
+        dispatch("write", JSONObject().put("records", full))
+        assertEquals(160, dispatch("read").getJSONArray("data").length())
     }
 
-    private fun waitForNotificationPermission() {
-        repeat(40) {
-            val capabilities = dispatch("capabilities").getJSONObject("data")
-            if (capabilities.getBoolean("notificationsEnabled")) return
-            Thread.sleep(50)
+    // LU-BRIDGE-6
+    @Test
+    fun theBridgeRejectsMalformedCommandsBeforeTheFramework() {
+        failure("unknown", JSONObject(), "INVALID_INPUT")
+        failure("read", JSONObject().put("extra", 1), "INVALID_INPUT")
+        failure("post", JSONObject().put("record", JSONObject()), "INVALID_INPUT")
+        failure("cancel", JSONObject().put("id", " "), "INVALID_INPUT")
+        val response = JSONObject(LiveUpdateBridge.invoke(context, "read", "not json"))
+        assertEquals("NATIVE_ERROR", response.getJSONObject("error").getString("code"))
+        assertEquals(0, Device.manager.activeNotifications.size)
+    }
+
+    // LU-BRIDGE-6
+    @Test
+    fun theBridgeUsesTheApplicationContext() {
+        val wrapper = object : ContextWrapper(context) {
+            override fun getApplicationContext(): Context = context.applicationContext
         }
-        throw AssertionError("Notification permission did not become observable")
+        val response = JSONObject(LiveUpdateBridge.invoke(wrapper, "capabilities", "{}"))
+        assertEquals("ok", response.getString("status"))
     }
 
-    private fun dispatch(command: String, payload: JSONObject = JSONObject()): JSONObject {
-        val response = JSONObject(LiveUpdateBridge.invoke(context, command, payload.toString()))
-        assertEquals(response.toString(), "ok", response.getString("status"))
-        return response
-    }
+    // LU-AAR-1
+    @Test
+    fun theManifestMergesBothNotificationPermissions() {
+        val info = context.packageManager.getPackageInfo(
+            context.packageName,
+            PackageManager.GET_PERMISSIONS,
+        )
+        val requested = info.requestedPermissions!!.toSet()
+        assertTrue(requested.toString(), Manifest.permission.POST_NOTIFICATIONS in requested)
+        assertTrue(requested.toString(), Manifest.permission.POST_PROMOTED_NOTIFICATIONS in requested)
 
-    private fun record(): JSONObject {
-        val snapshot = JSONObject()
-            .put("revision", 0)
-            .put("title", "Mochi's snack delivery")
-            .put("status", "Preparing")
-            .put("progress", 0.25)
-        val origin = JSONObject()
-            .put("activityKey", "delivery:instrumentation")
-            .put("schemaVersion", 1)
-            .put("template", "progress")
-            .put("fallback", "notification")
-            .put("visibility", "private")
-            .put("snapshot", snapshot)
-        return JSONObject()
-            .put("id", ACTIVITY_ID)
-            .put("origin", origin)
-            .put("snapshot", snapshot)
-            .put("state", "unknown")
-            .put("promotionRequested", false)
-            .put("promotionState", "notApplicable")
-            .put("awaitingObservation", true)
-            .put("postFailed", false)
+        val receivers = listOf(LiveUpdateActionReceiver::class.java, LiveUpdateDismissReceiver::class.java)
+        for (receiver in receivers) {
+            val info = context.packageManager.getReceiverInfo(ComponentName(context, receiver), 0)
+            assertEquals(receiver.name, false, info.exported)
+        }
     }
 
     private companion object {

@@ -3,33 +3,25 @@
 Android Live Updates from Rust.
 
 Android exposes promoted ongoing notifications through Java/Kotlin framework APIs, not a pure NDK
-API. `liveupdate` keeps validation, idempotency, revision ordering, durable lifecycle and the public
-API in Rust, while a small Android AAR only talks to `NotificationManager` and
+API. `liveupdate` keeps validation, idempotency, revision ordering, the durable lifecycle and the
+public API in Rust, while a small Android AAR only talks to `NotificationManager` and
 `SharedPreferences`.
 
 ## Install
 
-Add the Rust crate from GitHub while the first crate release is being prepared:
-
 ```toml
-[target.'cfg(target_os = "android")'.dependencies]
-liveupdate = { git = "https://github.com/1eedaegon/liveupdate-rs", features = ["android"] }
+[dependencies]
+liveupdate = { version = "0.1.0", features = ["android"] }
 ```
 
-Build the companion AAR from the same revision:
-
-```sh
-git clone https://github.com/1eedaegon/liveupdate-rs
-cd liveupdate-rs
-nix develop -c gradle :android:assembleRelease --no-daemon
-```
-
-Copy `android/build/outputs/aar/android-release.aar` into your Android app's `app/libs` directory,
-then include it from `app/build.gradle.kts`:
+Put `liveupdate-android-0.1.0.aar` from the [GitHub release](https://github.com/1eedaegon/liveupdate-rs/releases)
+into `app/libs/`. The AAR is written in Kotlin and a file dependency brings no dependencies of its own, so
+add the Kotlin standard library too:
 
 ```kotlin
 dependencies {
-    implementation(files("libs/android-release.aar"))
+    implementation(files("libs/liveupdate-android-0.1.0.aar"))
+    implementation("org.jetbrains.kotlin:kotlin-stdlib:2.2.10") // or newer
 }
 ```
 
@@ -37,22 +29,32 @@ The AAR merges `POST_NOTIFICATIONS` and `POST_PROMOTED_NOTIFICATIONS` into the a
 manifest. Your app still has to request the runtime notification permission on Android 13 and
 newer. The Rust Android runtime must initialize
 [`ndk-context`](https://crates.io/crates/ndk-context); common NativeActivity and Rust window
-runtimes already do this before application code runs.
+runtimes already do this before application code runs. Before that, `LiveUpdate::android()` returns
+`NATIVE_ERROR`, as long as the build unwinds on panic (Rust's default): with `panic = "abort"`, the
+process aborts.
 
 The Android namespace is `io.github.eedaegon.liveupdate` because Android package segments cannot
 start with a digit. The repository, Cargo author and project owner remain `1eedaegon`.
 
 ## Use
 
-Create one `LiveUpdate` client during Android application startup and retain it in application
-state:
+Create one `LiveUpdate` client with `LiveUpdate::android()` during application startup and keep it
+in application state. This is [examples/delivery.rs](examples/delivery.rs), which CI compiles for
+Android:
 
 ```rust
+//! One delivery from start to end. `run_delivery` works with any `Driver`, so tests can pass a fake
+//! one; on Android, `on_android` hands it the client of the companion AAR.
+
 use liveupdate::{
-    EndPolicy, Fallback, LiveUpdate, Result, Snapshot, StartRequest, Template, Visibility,
+    Driver, EndPolicy, Fallback, LiveUpdate, Result, Snapshot, StartRequest, Template, Visibility,
 };
 
-fn run_delivery(updates: &LiveUpdate<liveupdate::AndroidDriver>) -> Result<()> {
+/// Starts, updates and ends one delivery.
+pub fn run_delivery<D: Driver>(updates: &LiveUpdate<D>) -> Result<()> {
+    if !updates.capabilities()?.can_post() {
+        return Ok(()); // Ask for the notification permission first.
+    }
     let activity = updates.start(StartRequest {
         activity_key: "delivery:order-123".into(),
         schema_version: 1,
@@ -66,6 +68,7 @@ fn run_delivery(updates: &LiveUpdate<liveupdate::AndroidDriver>) -> Result<()> {
             progress: Some(0.1),
             timer: None,
             stale_at: None,
+            presentation: None,
         },
     })?;
 
@@ -78,6 +81,7 @@ fn run_delivery(updates: &LiveUpdate<liveupdate::AndroidDriver>) -> Result<()> {
             progress: Some(0.65),
             timer: None,
             stale_at: None,
+            presentation: None,
         },
     )?;
 
@@ -85,13 +89,12 @@ fn run_delivery(updates: &LiveUpdate<liveupdate::AndroidDriver>) -> Result<()> {
     Ok(())
 }
 
-// Call this after Android has initialized ndk-context.
-let updates = LiveUpdate::android()?;
-let capabilities = updates.capabilities()?;
-if capabilities.can_post() {
-    run_delivery(&updates)?;
+/// Call this once the Android runtime has initialized `ndk-context`, and keep the client in
+/// application state.
+#[cfg(target_os = "android")]
+pub fn on_android() -> Result<()> {
+    run_delivery(&LiveUpdate::android()?)
 }
-# Ok::<(), liveupdate::Error>(())
 ```
 
 `activity_key` makes `start` idempotent. A repeated start with the same request returns the same
@@ -108,7 +111,7 @@ Use `Template::Timer` with a `Timer { started_at, ends_at }` instead of `progres
 ```text
 Rust application
     |
-    | start / update / end / list
+    | start / update / end / list / events
     v
 liveupdate Rust lifecycle
     | validates input and revisions
@@ -122,26 +125,35 @@ liveupdate Android AAR
 Android system notification / promoted ongoing UI
     |
     +---- active notification observation ----> Rust reconciliation
+    +---- action / dismissal event queue ------> Rust event drain
 ```
 
 Rust writes the receipt before posting. If the process or framework call fails, the next identical
 operation retries safely. `list` reconciles receipts with Android's active notifications, so a
 notification removed by the user becomes `Dismissed`. At most 32 active records and 128 terminal
-tombstones are retained; malformed or oversized adapter data fails closed as `NATIVE_ERROR`.
+tombstones are retained, the oldest tombstone going first; malformed or oversized adapter data fails
+closed as `NATIVE_ERROR`.
+
+[docs/spec.md](docs/spec.md) lists every requirement with the tests that prove it, and
+[docs/testing.md](docs/testing.md) says how to run them.
 
 ## Limits
 
 - Promoted ongoing presentation requires Android API 36 or newer, enabled notifications, enabled
   promotion settings and OEM system-UI support. A successful post does not guarantee promotion.
-- Galaxy S23 is currently a fallback compatibility target. Firmware that does not expose promoted
-  ongoing notifications receives the regular ongoing notification only when
-  `Fallback::Notification` is selected.
-- The AAR currently supports the system progress and countdown templates. Custom layouts, actions
-  and event streams are not part of this alpha API.
+- A Galaxy S23 (`SM-S911N`) on Android 17 / One UI 9 has passed the API 37 ProgressStyle,
+  MetricStyle, Samsung Now Bar, action, dismissal, image, Rust/JNI and lifecycle suite. Promotion
+  still depends on the user's setting and Samsung's system policy; a structurally promotable post
+  can remain a regular ongoing notification.
+- Schema v2 supports Standard, BigText, rich Progress, Timer and Metric system styles, resource and
+  app-private icons, up to three immutable actions, and durable action/dismissal events through
+  `LiveUpdate::events()`. It deliberately does not accept arbitrary `RemoteViews`, intents, paths or
+  OEM extras.
 - Android removes notifications immediately. `EndPolicy::After` returns `UNSUPPORTED_FEATURE`.
 - Visibility is reported as `Unknown`: requesting private notification content does not prove what
   an OEM system UI actually revealed.
-- Use one retained client per process so operations share the same serialization boundary.
+- Use one retained client per process so operations share the same serialization boundary. Every
+  call blocks its thread for a storage write and a framework call, so keep it off the UI thread.
 
 ## Development
 
@@ -154,12 +166,11 @@ nix develop
 cargo test --locked --all-targets
 cargo ndk -t arm64-v8a -t x86_64 check --locked --features android
 gradle :android:testDebugUnitTest :android:lintDebug :android:assembleRelease --no-daemon
-# With an API 37 emulator or device connected:
-gradle :android:coverageVerification --no-daemon
+sh tools/spec-coverage.sh
 ```
 
-See the [architecture](docs/implementation/architecture.md),
-[Android test matrix](docs/testing.md) and [implementation task list](docs/implementation/task_list.md).
+[docs/testing.md](docs/testing.md) describes the emulator suite with Kotlin and Rust coverage and the
+CI jobs; [CHANGELOG.md](CHANGELOG.md) lists the changes of each version.
 
 ## License
 
