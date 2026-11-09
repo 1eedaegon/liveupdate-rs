@@ -6,8 +6,11 @@
 #     are exact (no restore-keys) and name the API, the image and the AVD script;
 #   - the `if:` of the steps that look for, run, record and upload the emulator suite's pass, so a skipped
 #     or failed suite never leaves a record;
-#   - release.yml publishes to crates.io only by hand, with `publish` and CRATES_IO_PUBLISH, after the guard;
-#   - every action is pinned to a commit SHA.
+#   - each job's own `if:`, and that no suite's failure is swallowed (`|| true`, `continue-on-error`);
+#   - release.yml publishes to crates.io only by hand, with `publish` and CRATES_IO_PUBLISH, after the guard
+#     and the AAR, from the `crates-io` environment;
+#   - no workflow runs on pull_request_target, only release.yml's AAR job may write contents, and every
+#     action is pinned to a commit SHA.
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 workflow=${1:-$root/.github/workflows/ci.yml}
@@ -18,7 +21,7 @@ trap 'rm -rf "$work"' EXIT HUP INT TERM
 (
   cd "$root"
   export RUNNER_TEMP="$work" GITHUB_OUTPUT="$work/output" TOOLCHAIN=1.96.0 NDK=27.3.13750724 CARGO_NDK=4.1.2 \
-    ANDROID_API=37.0
+    ANDROID_API=37.0 JAVA=21 GRADLE=8.14.4
   sh tests/ci/cache.sh keys 2>/dev/null
   sh tests/ci/cache.sh record "$work/missing.txt" >/dev/null
   printf 'tests 31\n' >"$work/summary.txt"
@@ -59,7 +62,10 @@ starts("android", *sources, "android/src/main/java/io/github/eedaegon/liveupdate
        "build.gradle.kts", "settings.gradle.kts", "gradle.properties", "tests/android/run.sh",
        "tests/android/avd.sh", "tests/android/aar.sh", "tests/ci/cache.sh", ".github/workflows/ci.yml")
 starts("rust", *sources, "tests/lifecycle.rs", "tests/common/mod.rs", "tests/docs.rs", "tests/android_env.sh",
-       "scripts/check-android-env.sh", ".github/workflows/ci.yml")
+       "scripts/check-android-env.sh", ".github/workflows/ci.yml", "android/native-test/src/lib.rs",
+       "android/native-test/Cargo.toml", "examples/delivery.rs", ".cargo/mutants.toml")
+starts("android", "examples/delivery.rs")
+starts("spec", "examples/delivery.rs")
 starts("spec", "src/client.rs", "docs/spec.md", "docs/testing.md", "tools/spec-coverage.sh", "README.md",
        "CHANGELOG.md", "tests/ci/run.sh", "tests/lifecycle.rs",
        "android/src/androidTest/java/io/github/eedaegon/liveupdate/NativeRustInstrumentationTest.kt")
@@ -91,7 +97,8 @@ if not re.fullmatch(r"passed-emulator-[0-9a-f]{40}", outputs.get("emulator", "")
 if outputs.get("recorded") != "true" or "recorded=false" not in (work / "output").read_text():
     fail("cache.sh record must refuse a missing summary and accept a present one")
 record = (work / "passed-emulator" / "passed.txt").read_text()
-for line in ["suite emulator", "rust 1.96.0", "ndk 27.3.13750724", "android 37.0 google_apis", "tests 31"]:
+for line in ["suite emulator", "rust 1.96.0", "ndk 27.3.13750724", "java 21 temurin", "gradle 8.14.4",
+             "android 37.0 google_apis", "tests 31"]:
     if line not in record:
         fail(f"the record lacks {line!r}")
 if "restore-keys" in text:
@@ -130,10 +137,39 @@ order = list(steps)
 if order.index("passed") > order.index("Emulator suite") or order.index("Emulator suite") > order.index("record"):
     fail("the emulator job must look for a pass, run the suite, then record it")
 
-# The release: crates.io only by hand, with `publish` checked and the repository variable set, and the
-# OIDC token only for that job.
+# Each job's own condition, and no swallowed failures.
+jobs = dict(re.findall(r"^  ([a-z-]+):\n(?:    (?!if:).*\n)*?    if: (.*)$", text, re.M))
+expected_jobs = {
+    "spec": "needs.changes.outputs.spec == 'true'",
+    "rust": "needs.changes.outputs.rust == 'true'",
+    "msrv": "needs.changes.outputs.rust == 'true'",
+    "mutants": "needs.changes.outputs.rust == 'true' && github.event_name != 'push'",
+    "android": "needs.changes.outputs.android == 'true'",
+    "emulator": "needs.changes.outputs.android == 'true'",
+}
+for name, condition_ in expected_jobs.items():
+    if jobs.get(name) != condition_:
+        fail(f"the {name} job runs if {jobs.get(name)!r}, not {condition_!r}")
+if "changes" in jobs:
+    fail("the changes job must always run")
+for swallow in ("|| true", "|| :", "continue-on-error", "set +e"):
+    if swallow in text:
+        fail(f"ci.yml contains {swallow!r}, which can hide a failed suite")
+
+# The release: crates.io only by hand, with `publish` checked and the repository variable set, after
+# the AAR, from its environment, and the OIDC token only for that job.
 release = (root / ".github/workflows/release.yml").read_text()
 publish = release[release.index("\n  crates-io:\n"):]
+if "    needs: [validate, aar]\n" not in publish or "    environment: crates-io\n" not in publish:
+    fail("release.yml's crates-io job must need validate and aar and run in the crates-io environment")
+aar_job = release[release.index("\n  aar:\n"):release.index("\n  crates-io:\n")]
+if release.count("contents: write") != 1 or "contents: write" not in aar_job:
+    fail("only release.yml's aar job may write contents")
+for required in ('gh release download "$TAG"', 'cmp "$aar"', 'cmp "$aar.sha256"'):
+    if required not in aar_job:
+        fail(f"release.yml cannot safely reuse an existing release asset: missing {required!r}")
+if "--clobber" in aar_job:
+    fail("release.yml may not overwrite an existing release asset")
 if "    if: github.event_name == 'workflow_dispatch' && inputs.publish && vars.CRATES_IO_PUBLISH == 'true'\n" not in publish:
     fail("release.yml publishes to crates.io without a manual run, `publish` and CRATES_IO_PUBLISH")
 if release.count("id-token: write") != 1 or "id-token: write" not in publish:
@@ -143,8 +179,14 @@ if "rust-lang/crates-io-auth-action@" not in publish or "cargo publish --locked"
 if "no successful CI run on main for" not in release or "git merge-base --is-ancestor" not in release:
     fail("release.yml does not require main's CI for the tag's commit")
 
-# Pinned actions.
+# Triggers, permissions and pinned actions.
+if "contents: write" in text:
+    fail("ci.yml grants contents: write")
+if "pull_request_target" in text:
+    fail("ci.yml runs on pull_request_target")
 for path in (root / ".github/workflows").glob("*.yml"):
+    if "pull_request_target" in path.read_text():
+        fail(f"{path.name} runs on pull_request_target")
     for action in re.findall(r"uses: ([^\s#]+)", path.read_text()):
         if not re.fullmatch(r"[\w.-]+/[\w./-]+@[0-9a-f]{40}", action):
             fail(f"{path.name} uses {action}, which is not pinned to a commit")

@@ -1,3 +1,4 @@
+use crate::AndroidPresentation;
 use crate::{
     Error, Result,
     contract::{Fallback, PromotionState, Visibility},
@@ -38,14 +39,18 @@ pub struct Snapshot {
     /// Optional time at which the content becomes stale.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stale_at: Option<u64>,
+    /// Resolved Android system presentation for schema version 2.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub presentation: Option<AndroidPresentation>,
 }
 
 impl Snapshot {
     /// Returns the system template implied by this snapshot.
     pub fn template(&self) -> Result<Template> {
-        match (&self.progress, &self.timer) {
-            (Some(_), None) => Ok(Template::Progress),
-            (None, Some(_)) => Ok(Template::Timer),
+        match (&self.progress, &self.timer, &self.presentation) {
+            (Some(_), None, None) => Ok(Template::Progress),
+            (None, Some(_), None) => Ok(Template::Timer),
+            (None, None, Some(presentation)) => Ok(presentation.template()),
             _ => Err(Error::invalid()),
         }
     }
@@ -59,7 +64,11 @@ impl Snapshot {
         {
             return Err(Error::invalid());
         }
-        match self.template()? {
+        let template = self.template()?;
+        if let Some(presentation) = &self.presentation {
+            return presentation.validate();
+        }
+        match template {
             Template::Progress => {
                 let progress = self.progress.ok_or_else(Error::invalid)?;
                 if !progress.is_finite() || !(0.0..=1.0).contains(&progress) {
@@ -68,12 +77,13 @@ impl Snapshot {
             }
             Template::Timer => {
                 let timer = self.timer.as_ref().ok_or_else(Error::invalid)?;
-                if timer.started_at > MAX_TIMESTAMP
-                    || timer.ends_at > MAX_TIMESTAMP
-                    || timer.ends_at <= timer.started_at
-                {
+                // `started_at` is then below MAX_TIMESTAMP too.
+                if timer.ends_at > MAX_TIMESTAMP || timer.ends_at <= timer.started_at {
                     return Err(Error::invalid());
                 }
+            }
+            Template::Standard | Template::BigText | Template::Metric => {
+                return Err(Error::invalid());
             }
         }
         Ok(())
@@ -84,10 +94,16 @@ impl Snapshot {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Template {
+    /// Standard notification.
+    Standard,
+    /// Expanded long-text notification.
+    BigText,
     /// Progress notification.
     Progress,
     /// Countdown chronometer notification.
     Timer,
+    /// API 37 metric notification.
+    Metric,
 }
 
 /// Input for starting one logical live update.
@@ -96,7 +112,7 @@ pub enum Template {
 pub struct StartRequest {
     /// Stable application key used for idempotent starts.
     pub activity_key: String,
-    /// Contract version; currently exactly `1`.
+    /// Contract version: `1` for legacy progress/timer, `2` for rich Android presentation.
     pub schema_version: u8,
     /// System template that must match the snapshot.
     pub template: Template,
@@ -111,10 +127,13 @@ pub struct StartRequest {
 impl StartRequest {
     /// Validates the complete start request.
     pub fn validate(&self) -> Result<()> {
-        if self.schema_version != 1
+        if !matches!(self.schema_version, 1 | 2)
             || !valid_key(&self.activity_key)
             || self.visibility == Visibility::Unknown
         {
+            return Err(Error::invalid());
+        }
+        if (self.schema_version == 1) != self.snapshot.presentation.is_none() {
             return Err(Error::invalid());
         }
         self.snapshot.validate()?;
@@ -218,7 +237,7 @@ fn valid_key(value: &str) -> bool {
         })
 }
 
-fn valid_text(value: &str, maximum: usize) -> bool {
+pub(crate) fn valid_text(value: &str, maximum: usize) -> bool {
     !value.is_empty()
         && value.chars().count() <= maximum
         && !value.chars().all(is_contract_whitespace)
@@ -255,6 +274,7 @@ mod tests {
             progress: Some(value),
             timer: None,
             stale_at: None,
+            presentation: None,
         }
     }
 

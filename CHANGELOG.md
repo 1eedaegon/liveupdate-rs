@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 0.1.0 - 2026-11-09
+
+- Added schema v2 Android presentations for Standard, BigText, ProgressStyle, Timer and MetricStyle,
+  with strict validation and lower-API fallbacks while retaining schema v1 JSON compatibility.
+- Added safe resource/app-private icons, immutable notification actions, a bounded durable
+  action/dismissal event queue, `LiveUpdate::events()`, detailed presentation capabilities and an
+  explicit Samsung Now Bar mapping.
+- Added Rust contract/integration tests and API 37 instrumentation coverage, including a connected
+  Galaxy S23 run through Rust, JNI and the Android framework.
+
+## 0.1.0-alpha.2
+
 Fixes found while writing the specification and its tests:
 
 - Ending an activity while 128 tombstones were kept evicted the record it had just ended, so a second
@@ -29,6 +41,14 @@ Tests, CI and docs:
 - The README installs the crate from crates.io and the AAR from the GitHub release, and its Rust code
   compiles as a doctest.
 - The planning documents moved from `docs/implementation` to `docs/design`.
+- The README's code is `examples/delivery.rs`, which CI compiles for Android. The README now says to add
+  `kotlin-stdlib`: a file dependency on the AAR does not bring it, and an app without Kotlin fails with
+  `NoClassDefFoundError` at the first call.
+- Mutation tests: every mutant of the host code fails a test (`cargo mutants`, `.cargo/mutants.toml`).
+  Pull requests test the mutants of the lines they change.
+- `update` no longer checks for a record that is `unknown` without awaiting a post: the lifecycle
+  never stores one.
+- Publishing to crates.io waits for the AAR job and runs in the `crates-io` environment.
 
 ## 0.1.0-alpha.1
 

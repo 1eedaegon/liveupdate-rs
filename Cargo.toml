@@ -1,6 +1,6 @@
 [package]
 name = "liveupdate"
-version = "0.1.0-alpha.1"
+version = "0.1.0"
 description = "Android Live Updates from Rust"
 authors = ["1eedaegon"]
 edition = "2024"
@@ -29,8 +29,14 @@ include = [
     "/README.md",
     "/settings.gradle.kts",
     "/docs/**",
+    "/examples/**",
     "/tools/**",
 ]
+
+[[example]]
+name = "delivery"
+crate-type = ["lib"]
+required-features = ["android"]
 
 [features]
 default = []

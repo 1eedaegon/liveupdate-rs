@@ -2,7 +2,7 @@
 //! observation may say, and how one record moves between states.
 
 use super::*;
-use crate::{Template, Visibility};
+use crate::{PresentationCapabilities, Template, Visibility};
 use std::sync::Mutex;
 
 #[derive(Default)]
@@ -18,6 +18,7 @@ impl Driver for Storage {
             supported: true,
             notifications_enabled: true,
             promotion_enabled: true,
+            presentation: PresentationCapabilities::default(),
         })
     }
     fn read(&self) -> Result<Vec<DriverRecord>> {
@@ -53,6 +54,7 @@ fn snapshot(revision: u64) -> Snapshot {
         progress: Some(0.25),
         timer: None,
         stale_at: None,
+        presentation: None,
     }
 }
 
@@ -351,6 +353,7 @@ fn lookups_and_permission_have_their_own_codes() {
         supported: true,
         notifications_enabled: false,
         promotion_enabled: true,
+        presentation: PresentationCapabilities::default(),
     };
     assert_eq!(
         ensure_permission(denied).unwrap_err().code,

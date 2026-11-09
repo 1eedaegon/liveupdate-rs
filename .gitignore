@@ -3,6 +3,7 @@
 .gradle/
 .kotlin/
 **/build/
+.direnv/
 local.properties
 .idea/
 .vscode/
@@ -20,3 +21,6 @@ local.properties
 *.p12
 key.properties
 keystore.properties
+
+# cargo-mutants output.
+mutants.out*/

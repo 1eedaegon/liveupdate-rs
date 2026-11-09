@@ -157,6 +157,7 @@ mod scenarios {
                 record(LiveUpdate::android()?.end(&end.id, end.policy)?)
             }
             "list" => Ok(json!(LiveUpdate::android()?.list()?)),
+            "events" => Ok(json!(LiveUpdate::android()?.events()?)),
             "lifecycle" => lifecycle(&LiveUpdate::android()?),
             "threads" => threads(Arc::new(LiveUpdate::android()?)),
             "calls" => calls(&LiveUpdate::android()?, parse(input)?),
@@ -276,6 +277,7 @@ mod scenarios {
             progress: Some(progress),
             timer: None,
             stale_at: None,
+            presentation: None,
         }
     }
 }

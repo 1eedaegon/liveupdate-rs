@@ -5,8 +5,8 @@ mod common;
 
 use common::{FakeDriver, assert_code, request, snapshot, timer_snapshot};
 use liveupdate::{
-    ActivityState, Capabilities, EndPolicy, ErrorCode, Fallback, LiveUpdate, Observation,
-    PromotionState,
+    ActivityState, Capabilities, DriverRecord, EndPolicy, ErrorCode, Fallback, LiveUpdate,
+    Observation, PromotionState,
 };
 
 // LU-LIST-1
@@ -62,6 +62,31 @@ fn an_observation_sets_the_state_and_the_promotion_of_a_record() {
     assert!(listed.degraded_features.is_empty());
     let stored = &driver.records()[0];
     assert!(!stored.awaiting_observation && !stored.post_failed);
+}
+
+// LU-CAP-4
+#[test]
+fn each_post_makes_the_promotion_state_unknown_until_android_lists_it() {
+    let driver = FakeDriver::default();
+    driver.edit(|state| state.capabilities.promotion_enabled = true);
+    let client = LiveUpdate::new(driver.clone());
+    let started = client.start(request("delivery:1")).unwrap();
+    assert_eq!(started.promotion_state, PromotionState::Promoted);
+
+    driver.edit(|state| state.delay_observation = true);
+    let updated = client.update(&started.id, snapshot(1)).unwrap();
+
+    assert_eq!(updated.promotion_state, PromotionState::Unknown);
+    assert!(updated.degraded_features.is_empty());
+    driver.edit(|state| {
+        let shown = state.observed.get_mut(&started.id).unwrap();
+        shown.snapshot = snapshot(1);
+        shown.promotion_state = PromotionState::NotPromoted;
+    });
+    assert_eq!(
+        client.list().unwrap()[0].promotion_state,
+        PromotionState::NotPromoted
+    );
 }
 
 // LU-LIST-3, LU-START-7
@@ -271,34 +296,41 @@ fn the_oldest_tombstone_is_evicted_first() {
 // LU-LIMIT-3
 #[test]
 fn corrupt_driver_records_fail_closed() {
-    let corruptions: [fn(&mut Vec<liveupdate::DriverRecord>); 6] = [
+    // Each corruption is of the tombstone, which reconciliation does not compare with Android, so
+    // only the check of the stored records can catch it.
+    let corruptions: [fn(&mut Vec<DriverRecord>); 8] = [
         |records| {
-            let mut extra = records[0].clone();
-            extra.id = "unexpected-extra-id".into();
-            extra.origin.activity_key = "activity:extra".into();
-            records.push(extra);
+            for index in 0..2 {
+                let mut extra = records[0].clone();
+                extra.id = format!("unexpected-extra-{index}");
+                extra.origin.activity_key = format!("activity:extra:{index}");
+                records.push(extra);
+            }
         },
-        |records| {
-            let duplicate = records[0].clone();
-            records[1] = duplicate;
-        },
-        |records| records[0].id = " ".into(),
-        |records| records[0].origin.schema_version = 2,
-        |records| records[0].snapshot = timer_snapshot(0),
-        |records| records[0].snapshot.progress = Some(2.0),
+        |records| records.last_mut().unwrap().id = records[0].id.clone(),
+        |records| records.last_mut().unwrap().id = " ".into(),
+        |records| records.last_mut().unwrap().origin.schema_version = 2,
+        |records| records.last_mut().unwrap().snapshot = timer_snapshot(0),
+        |records| records.last_mut().unwrap().snapshot.title = " ".into(),
+        |records| records.last_mut().unwrap().snapshot.progress = Some(f64::NAN),
+        |records| records.last_mut().unwrap().snapshot.progress = Some(2.0),
     ];
     for corrupt in corruptions {
         let driver = FakeDriver::default();
         let client = LiveUpdate::new(driver.clone());
+        let mut started = Vec::new();
         for index in 0..32 {
-            client.start(request(&format!("activity:{index}"))).unwrap();
+            started.push(client.start(request(&format!("activity:{index}"))).unwrap());
         }
+        client.end(&started[31].id, EndPolicy::Immediate).unwrap();
+        assert!(driver.records().last().unwrap().state == ActivityState::Ended);
         driver.edit(|state| corrupt(&mut state.records));
-        let stored = driver.records();
+        // Compared by writes: a NaN snapshot is not equal to itself.
+        let writes = driver.edit(|state| state.writes);
 
         assert_code(client.list(), ErrorCode::NativeError);
         assert_code(client.start(request("other")), ErrorCode::NativeError);
-        assert_eq!(driver.records(), stored);
+        assert_eq!(driver.edit(|state| state.writes), writes);
     }
 
     let driver = FakeDriver::default();
@@ -308,13 +340,31 @@ fn corrupt_driver_records_fail_closed() {
     driver.edit(|state| {
         let tombstone = state.records[0].clone();
         state.records = (0..129)
-            .map(|index| liveupdate::DriverRecord {
+            .map(|index| DriverRecord {
                 id: format!("tombstone-{index}"),
                 ..tombstone.clone()
             })
             .collect();
     });
     assert_code(client.list(), ErrorCode::NativeError);
+}
+
+// LU-START-1, LU-START-5
+#[test]
+fn a_post_android_lists_late_is_confirmed_and_not_posted_again() {
+    let driver = FakeDriver::default();
+    driver.edit(|state| state.delay_observation = true);
+    let client = LiveUpdate::new(driver.clone());
+
+    let first = client.start(request("delivery:1")).unwrap();
+    let second = client.start(request("delivery:1")).unwrap();
+
+    assert_eq!(first.state, ActivityState::Unknown);
+    assert_eq!(second.id, first.id);
+    assert_eq!(driver.counts().0, 1);
+    let stored = &driver.records()[0];
+    assert!(!stored.post_failed);
+    assert!(stored.awaiting_observation);
 }
 
 // LU-LIMIT-4
@@ -373,11 +423,13 @@ fn without_promotion_the_fallback_posts_a_regular_notification() {
             supported: false,
             notifications_enabled: true,
             promotion_enabled: false,
+            presentation: Default::default(),
         },
         Capabilities {
             supported: true,
             notifications_enabled: true,
             promotion_enabled: false,
+            presentation: Default::default(),
         },
     ] {
         let driver = FakeDriver::default();
@@ -427,11 +479,13 @@ fn capabilities_come_from_the_driver_unchanged() {
             supported: true,
             notifications_enabled: false,
             promotion_enabled: true,
+            presentation: Default::default(),
         },
         Capabilities {
             supported: false,
             notifications_enabled: true,
             promotion_enabled: false,
+            presentation: Default::default(),
         },
     ] {
         driver.edit(|state| state.capabilities = capabilities);

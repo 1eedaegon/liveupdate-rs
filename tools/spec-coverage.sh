@@ -2,8 +2,9 @@
 # Checks that docs/spec.md and the tests agree, test by test. It fails when
 #   - a requirement is defined twice, has no row in the spec's test table, or its row names no test;
 #   - a test in the table does not exist, is not a test (#[test], @Test, a shell check, a doctest item),
-#     sits at another level than the table says, or does not name the requirement next to its
-#     definition: in the comment lines directly above it, or in its own name;
+#     is ignored (#[ignore], @Ignore), returns before it tests anything, sits at another level than
+#     the table says, or does not name the requirement next to its definition: in the comment lines
+#     directly above it, or in its own name;
 #   - a test names a requirement next to its definition but the table does not list it for it;
 #   - a test file mentions an ID anywhere else (in a function body, a stray comment), or names an ID
 #     that docs/spec.md does not define.
@@ -16,13 +17,13 @@ import pathlib, re, sys
 from collections import Counter, defaultdict
 
 root = pathlib.Path(sys.argv[1])
-ID = re.compile(r"\bLU-[A-Z]+-[0-9]+\b")
+ID = re.compile(r"\bLU-(?:V[0-9]+-)?[A-Z]+-[0-9]+\b")
 spec = (root / "docs/spec.md").read_text()
 head, _, table = spec.partition("\n## Tests\n")
 if not table:
     sys.exit("docs/spec.md has no '## Tests' section")
 
-defined = [m.group(1) for m in re.finditer(r"^\| (LU-[A-Z]+-[0-9]+) \|", head, re.M)]
+defined = [m.group(1) for m in re.finditer(r"^\| (LU-(?:V[0-9]+-)?[A-Z]+-[0-9]+) \|", head, re.M)]
 problems = [f"{name} is defined twice" for name, count in Counter(defined).items() if count > 1]
 defined_set = set(defined)
 
@@ -97,7 +98,12 @@ for path in sorted(
             or any(a.strip() in ("#[test]", "@Test") for a in above)
         )
         level = "doc" if doc_item else level_of(relative)
-        tests[(relative, name)] = {"level": level, "ids": ids, "is_test": is_test}
+        ignored = any(a.strip().startswith(("#[ignore", "@Ignore")) for a in above)
+        body = [l.strip() for l in lines[number + 1:number + 4] if l.strip()]
+        returns = bool(body) and re.fullmatch(r"return(\s+Ok\(\(\)\))?;?", body[0]) is not None
+        tests[(relative, name)] = {
+            "level": level, "ids": ids, "is_test": is_test, "ignored": ignored, "returns": returns,
+        }
     for number, line in enumerate(lines):
         if ID.search(line) and number not in placed:
             stray.append(f"{relative}:{number + 1} names {', '.join(ID.findall(line))} away from a test definition")
@@ -107,7 +113,7 @@ ENTRY = re.compile(r"`([^`]+)::([A-Za-z_][A-Za-z0-9_]*)` \((unit|integration|kot
 traced = defaultdict(list)
 rows = set()
 for line in table.splitlines():
-    match = re.match(r"^\| (LU-[A-Z]+-[0-9]+) \| (.*) \|\s*$", line)
+    match = re.match(r"^\| (LU-(?:V[0-9]+-)?[A-Z]+-[0-9]+) \| (.*) \|\s*$", line)
     if not match:
         continue
     requirement, cell = match.groups()
@@ -124,6 +130,10 @@ for line in table.splitlines():
             continue
         if not found["is_test"]:
             problems.append(f"{requirement}: {relative}::{name} is not a test")
+        if found["ignored"]:
+            problems.append(f"{requirement}: {relative}::{name} is ignored")
+        if found["returns"]:
+            problems.append(f"{requirement}: {relative}::{name} returns before it tests anything")
         if found["level"] != level:
             problems.append(f"{requirement}: {relative}::{name} is a {found['level']} test, not {level}")
         if requirement not in found["ids"]:

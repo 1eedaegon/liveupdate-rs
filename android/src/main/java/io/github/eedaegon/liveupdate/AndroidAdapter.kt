@@ -4,20 +4,17 @@ import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
 import android.os.Build
-import android.os.Bundle
+import android.service.notification.StatusBarNotification
 import org.json.JSONArray
 import org.json.JSONObject
-import kotlin.math.roundToInt
 
 private const val CHANNEL_ID = "liveupdate-rs.v1"
 private const val CHANNEL_NAME = "Live updates"
 private const val PREFERENCES = "io.github.1eedaegon.liveupdate"
 private const val RECORDS_KEY = "records"
 private const val TAG_PREFIX = "liveupdate-rs:"
-private const val RECORD_EXTRA = "io.github.1eedaegon.liveupdate.record"
 private const val NOTIFICATION_ID = 1
 private const val MAX_RECORDS = 160
 private const val MAX_RECORD_BYTES = 1_048_576
@@ -45,6 +42,16 @@ internal class AndroidAdapter(
             .put("supported", sdk >= PROMOTION_API)
             .put("notificationsEnabled", notificationsAllowed())
             .put("promotionEnabled", promotionAllowed())
+            .put("presentation", JSONObject()
+                .put("standard", true)
+                .put("bigText", true)
+                .put("timer", true)
+                .put("progressStyle", sdk >= 36)
+                .put("metricStyle", sdk >= 37)
+                .put("actions", true)
+                .put("images", true)
+                .put("events", true)
+                .put("samsungNowBar", sdk >= 37 && Build.MANUFACTURER.equals("samsung", ignoreCase = true)))
     }
 
     override fun read(): JSONArray {
@@ -60,9 +67,12 @@ internal class AndroidAdapter(
         if (!preferences.edit().putString(RECORDS_KEY, raw).commit()) nativeFailure()
     }
 
-    override fun observe(): JSONArray {
+    override fun observe(): JSONArray = observe(manager.activeNotifications)
+
+    /** The adapter's own notifications among [entries], Android's active notifications. */
+    internal fun observe(entries: Array<StatusBarNotification>): JSONArray {
         val observations = JSONArray()
-        for (entry in manager.activeNotifications) {
+        for (entry in entries) {
             if (entry.id != NOTIFICATION_ID || entry.tag?.startsWith(TAG_PREFIX) != true) continue
             if (observations.length() >= MAX_RECORDS) nativeFailure()
             val raw = entry.notification.extras.getString(RECORD_EXTRA) ?: nativeFailure()
@@ -95,36 +105,17 @@ internal class AndroidAdapter(
             throw AdapterFailure("PERMISSION_DENIED", "Notifications are disabled.")
         }
         val id = record.optionalString("id") ?: invalid()
-        val snapshot = record.optJSONObject("snapshot")
-        if (!validId(id) || snapshot == null) invalid()
-        val title = requiredText(snapshot, "title", 120)
-        val status = requiredText(snapshot, "status", 240)
-        val visibility = requestedVisibility(record)
-        val requested = record.optBoolean("promotionRequested", false)
-        val builder = builder()
-            .setSmallIcon(R.drawable.liveupdate_status)
-            .setContentTitle(title)
-            .setContentText(status)
-            .setCategory(Notification.CATEGORY_PROGRESS)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setVisibility(visibility)
-            .setShowWhen(false)
-            .setExtras(Bundle().apply { putString(RECORD_EXTRA, record.toString()) })
-        contentIntent()?.let(builder::setContentIntent)
-        applyTemplate(builder, snapshot)
-        if (sdk >= PROMOTION_API && requested) {
-            builder.addExtras(Bundle().apply {
-                putBoolean(Notification.EXTRA_REQUEST_PROMOTED_ONGOING, true)
-            })
-        }
-        manager.notify(TAG_PREFIX + id, NOTIFICATION_ID, builder.build())
+        if (!validId(id)) invalid()
+        val notification = NotificationRenderer(application, sdk, CHANNEL_ID).build(record)
+        manager.notify(TAG_PREFIX + id, NOTIFICATION_ID, notification)
     }
 
     override fun cancel(id: String) {
         if (!validId(id)) invalid()
         manager.cancel(TAG_PREFIX + id, NOTIFICATION_ID)
     }
+
+    override fun drainEvents(): JSONObject = EventStore(application).drain()
 
     private fun ensureChannel() {
         manager.createNotificationChannel(
@@ -145,45 +136,6 @@ internal class AndroidAdapter(
         return importance > NotificationManager.IMPORTANCE_MIN
     }
 
-    private fun builder(): Notification.Builder = Notification.Builder(application, CHANNEL_ID)
-
-    private fun contentIntent(): PendingIntent? {
-        val launch = application.packageManager.getLaunchIntentForPackage(application.packageName)
-            ?: return null
-        return PendingIntent.getActivity(
-            application,
-            0,
-            launch,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-    }
-
-    private fun applyTemplate(builder: Notification.Builder, snapshot: JSONObject) {
-        val hasProgress = snapshot.has("progress") && !snapshot.isNull("progress")
-        val timer = snapshot.optJSONObject("timer")
-        if (hasProgress == (timer != null)) invalid()
-        if (hasProgress) {
-            val progress = snapshot.getDouble("progress")
-            if (!progress.isFinite() || progress !in 0.0..1.0) invalid()
-            builder.setProgress(1000, (progress * 1000).roundToInt(), false)
-            return
-        }
-        val startedAt = timer?.getLong("startedAt") ?: invalid()
-        val endsAt = timer.getLong("endsAt")
-        if (startedAt < 0 || endsAt <= startedAt) invalid()
-        builder.setWhen(endsAt).setShowWhen(true).setUsesChronometer(true).setChronometerCountDown(true)
-    }
-
-    private fun requestedVisibility(record: JSONObject): Int {
-        val origin = record.optJSONObject("origin") ?: invalid()
-        return when (origin.optionalString("visibility")) {
-            "public" -> Notification.VISIBILITY_PUBLIC
-            "private" -> Notification.VISIBILITY_PRIVATE
-            "secret" -> Notification.VISIBILITY_SECRET
-            else -> invalid()
-        }
-    }
-
     private fun isStale(snapshot: JSONObject): Boolean =
         snapshot.has("staleAt") && !snapshot.isNull("staleAt") &&
             snapshot.getLong("staleAt") <= System.currentTimeMillis()
@@ -195,13 +147,7 @@ internal class AndroidAdapter(
         else -> "notPromoted"
     }
 
-    private fun requiredText(snapshot: JSONObject, name: String, maximum: Int): String {
-        val value = snapshot.optionalString(name) ?: invalid()
-        if (value.isBlank() || value.codePointCount(0, value.length) > maximum) invalid()
-        return value
-    }
-
-    private fun validId(id: String?): Boolean = id != null && id.isNotBlank() && id.length <= 256
+    private fun validId(id: String?): Boolean = id != null && isValidContractText(id, 256)
 
     private fun invalid(): Nothing = throw AdapterFailure("INVALID_INPUT", INVALID_MESSAGE)
 

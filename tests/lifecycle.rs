@@ -329,6 +329,31 @@ fn end_stores_the_ended_record_then_removes_the_notification() {
     }
 }
 
+// LU-END-1
+#[test]
+fn an_ended_record_no_longer_awaits_a_post() {
+    let driver = FakeDriver::default();
+    driver.edit(|state| state.delay_observation = true);
+    let client = LiveUpdate::new(driver.clone());
+    let unseen = client.start(request("delivery:1")).unwrap();
+    driver.edit(|state| state.fail_next_post = true);
+    assert_code(client.start(request("delivery:2")), ErrorCode::NativeError);
+    let failed = driver.records()[1].clone();
+    assert!(driver.records()[0].awaiting_observation && failed.post_failed);
+
+    for id in [&unseen.id, &failed.id] {
+        client.end(id, EndPolicy::Immediate).unwrap();
+    }
+
+    for record in driver.records() {
+        assert_eq!(record.state, ActivityState::Ended);
+        assert!(
+            !record.awaiting_observation && !record.post_failed,
+            "{record:?}"
+        );
+    }
+}
+
 // LU-END-3
 #[test]
 fn delayed_dismissal_is_unsupported_on_android() {

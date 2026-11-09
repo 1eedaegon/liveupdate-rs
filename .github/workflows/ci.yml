@@ -31,6 +31,9 @@ env:
   CARGO_NDK: 4.1.2
   ANDROID_API: "37.0"
   AVD: liveupdate_api37
+  # The JDK and Gradle of the Android jobs; both are part of the emulator suite's record.
+  JAVA: "21"
+  GRADLE: 8.14.4
 
 jobs:
   # Which parts the push or pull request changed. A change to docs alone runs the light spec job, and the
@@ -61,13 +64,14 @@ jobs:
           # The workflows, the CI scripts they run and the toolchain shell concern every part.
           if grep -qE '^(\.github/workflows/|tests/ci/|flake\.(nix|lock)$)' <<< "$files"; then all "workflow or CI scripts"; exit 0; fi
           area() { grep -qE "$2" <<< "$files" && echo "$1=true" >> "$GITHUB_OUTPUT" || echo "$1=false" >> "$GITHUB_OUTPUT"; }
-          # Every Rust source and manifest, the Rust tests and the environment check they run.
-          area rust '^(src/|tests/[^/]+\.(rs|sh)$|tests/common/|Cargo\.(toml|lock)$|rust-toolchain\.toml$|\.cargo/|scripts/)'
+          # Every Rust source and manifest, the example, the Rust tests and the environment check they run,
+          # and the native test library, which this job formats.
+          area rust '^(src/|examples/|tests/[^/]+\.(rs|sh)$|tests/common/|android/native-test/|Cargo\.(toml|lock)$|rust-toolchain\.toml$|\.cargo/|scripts/)'
           # What reaches the device: the crate (src/android.rs and the lifecycle it drives), the AAR and its
           # Gradle build, the native test library, and the emulator scripts.
-          area android '^(src/|android/|Cargo\.(toml|lock)$|rust-toolchain\.toml$|\.cargo/|build\.gradle\.kts$|settings\.gradle\.kts$|gradle\.properties$|tests/android/)'
+          area android '^(src/|examples/|android/|Cargo\.(toml|lock)$|rust-toolchain\.toml$|\.cargo/|build\.gradle\.kts$|settings\.gradle\.kts$|gradle\.properties$|tests/android/)'
           # The specification and every test it maps, and the docs that tests/docs.rs reads.
-          area spec '^(src/|tests/|android/src/|docs/|tools/|README\.md$|CHANGELOG\.md$)'
+          area spec '^(src/|examples/|tests/|android/src/|docs/|tools/|README\.md$|CHANGELOG\.md$)'
           cat "$GITHUB_OUTPUT"
 
   # Every requirement of docs/spec.md has a test that names it next to its definition; CI's own patterns,
@@ -121,6 +125,47 @@ jobs:
       - run: sh tests/android_env.sh
       - run: cargo package --locked
 
+  # Every mutant of the host code must fail a test (.cargo/mutants.toml, docs/testing.md). A pull
+  # request tests the mutants of the lines it changes; a run by hand tests all of them. The push that
+  # merges a pull request does not repeat them.
+  mutants:
+    name: Mutation tests
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' && github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: rustup toolchain install "$TOOLCHAIN" --profile minimal && rustup default "$TOOLCHAIN"
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+        with:
+          tool: cargo-mutants@27.1.0
+          fallback: none
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: ${{ !inputs.fresh }}
+        with:
+          cache-bin: false
+      - name: Mutants of the changed lines
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git diff "$BASE" HEAD -- src > "$RUNNER_TEMP/changes.diff"
+          cargo mutants --in-diff "$RUNNER_TEMP/changes.diff" --output "$RUNNER_TEMP" -j 2
+      - name: Every mutant
+        if: github.event_name == 'workflow_dispatch'
+        run: cargo mutants --output "$RUNNER_TEMP" -j 2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always()
+        with:
+          name: mutants
+          path: ${{ runner.temp }}/mutants.out/
+          retention-days: 14
+          if-no-files-found: ignore
+
   # The oldest Rust the crate supports, rust-version in Cargo.toml, on the host and for Android.
   msrv:
     name: Rust 1.90 (Linux)
@@ -137,7 +182,7 @@ jobs:
         with:
           cache-bin: false
       - run: cargo +1.90.0 test --locked
-      - run: cargo +1.90.0 check --locked --target aarch64-linux-android --features android
+      - run: cargo +1.90.0 check --locked --target aarch64-linux-android --features android --all-targets
 
   # The AAR and the Android build of the crate: Kotlin unit tests, lint, the release AAR and its
   # contents, and src/android.rs through cargo-ndk and Clippy for both ABIs.
@@ -153,7 +198,7 @@ jobs:
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.2.0
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: ${{ env.JAVA }}
       - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
       - name: Keys
         id: keys
@@ -198,10 +243,10 @@ jobs:
           cache-bin: false
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
-          gradle-version: "8.14.4"
+          gradle-version: ${{ env.GRADLE }}
           cache-disabled: ${{ inputs.fresh == true }}
       - run: cargo ndk -t arm64-v8a -t x86_64 check --locked --features android --all-targets
-      - run: cargo ndk -t arm64-v8a -t x86_64 clippy --locked --features android -- -D warnings
+      - run: cargo ndk -t arm64-v8a -t x86_64 clippy --locked --features android --all-targets -- -D warnings
       - run: cargo ndk -t arm64-v8a -t x86_64 clippy --locked --manifest-path android/native-test/Cargo.toml --features coverage -- -D warnings
       - run: gradle :android:testDebugUnitTest :android:lintDebug :android:assembleRelease --no-daemon
       - run: sh tests/android/aar.sh
@@ -237,7 +282,7 @@ jobs:
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.2.0
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: ${{ env.JAVA }}
       - if: steps.passed.outputs.found != 'true'
         uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
       - name: Android SDK packages
@@ -297,7 +342,7 @@ jobs:
       - if: steps.passed.outputs.found != 'true'
         uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
-          gradle-version: "8.14.4"
+          gradle-version: ${{ env.GRADLE }}
           cache-disabled: ${{ inputs.fresh == true }}
       - name: Start the emulator
         if: steps.passed.outputs.found != 'true'

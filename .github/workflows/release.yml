@@ -3,8 +3,9 @@ name: Release
 # A `v*` tag validates the release and attaches the AAR to its GitHub release: the tag matches the crate's
 # version, main's CI passed for the tag's exact commit, the tests pass and the crate packages. Publishing
 # to crates.io needs a run by hand with `publish` checked, the repository variable CRATES_IO_PUBLISH set to
-# `true`, and Trusted Publishing on crates.io set up for this repository and release.yml. Until then it
-# publishes nothing to crates.io.
+# `true`, the AAR attached, and an approval of the `crates-io` environment. Trusted Publishing on
+# crates.io should name this repository, release.yml and that environment, and the environment should
+# require a reviewer (docs/testing.md). Until then it publishes nothing to crates.io.
 
 on:
   push:
@@ -12,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag (for example v0.1.0-alpha.2)
+        description: Existing release tag (for example v0.1.0)
         required: true
         type: string
       publish:
@@ -112,13 +113,34 @@ jobs:
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" $prerelease \
               --notes "The crate is \`liveupdate = \"$VERSION\"\` on crates.io; the AAR is attached. See CHANGELOG.md."
           fi
-          gh release upload "$TAG" "$aar" "$aar.sha256" --repo "$GITHUB_REPOSITORY" --clobber
+          assets=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          has_aar=false
+          has_sha=false
+          for asset in $assets; do
+            [ "$asset" = "$aar" ] && has_aar=true
+            [ "$asset" = "$aar.sha256" ] && has_sha=true
+          done
+          if [ "$has_aar" = true ] || [ "$has_sha" = true ]; then
+            [ "$has_aar" = true ] && [ "$has_sha" = true ] || {
+              echo "the release has only one of $aar and $aar.sha256" >&2
+              exit 1
+            }
+            existing=$(mktemp -d)
+            trap 'rm -rf "$existing"' EXIT
+            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --pattern "$aar" --pattern "$aar.sha256" --dir "$existing"
+            cmp "$aar" "$existing/$aar"
+            cmp "$aar.sha256" "$existing/$aar.sha256"
+          else
+            gh release upload "$TAG" "$aar" "$aar.sha256" --repo "$GITHUB_REPOSITORY"
+          fi
 
   crates-io:
     name: Publish to crates.io
-    needs: validate
+    needs: [validate, aar]
     if: github.event_name == 'workflow_dispatch' && inputs.publish && vars.CRATES_IO_PUBLISH == 'true'
     runs-on: ubuntu-latest
+    environment: crates-io
     permissions:
       contents: read
       id-token: write

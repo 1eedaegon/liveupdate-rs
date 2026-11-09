@@ -1,0 +1,4 @@
+# cargo-mutants (docs/testing.md): every mutant of the crate's host code must fail a test.
+# src/android.rs compiles only for Android, so its mutants never reach the host tests; the emulator
+# suite covers every line of it instead.
+exclude_globs = ["src/android.rs"]

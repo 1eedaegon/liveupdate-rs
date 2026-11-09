@@ -38,5 +38,5 @@ The AAR compiles against the newest stable Android SDK and checks the API level 
 successful post and a promotion are separate outcomes: older or unsupported devices get the fallback
 the caller chose.
 
-Events (taps on actions, dismissals pushed to Rust) are not part of this version; dismissals are
+Events (taps on actions and dismissals) use a bounded durable drain; lifecycle dismissals are also
 found by reconciliation instead.

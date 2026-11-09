@@ -1,4 +1,4 @@
-use crate::{Capabilities, Driver, DriverRecord, Error, Observation, Result};
+use crate::{Capabilities, Driver, DriverRecord, Error, EventBatch, Observation, Result};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 const MAX_BRIDGE_BYTES: usize = 1_048_576;
@@ -55,6 +55,12 @@ impl<B: Bridge> Driver for JsonDriver<B> {
 
     fn cancel(&self, id: &str) -> Result<()> {
         self.request("cancel", &CancelRequest { id })
+    }
+
+    fn drain_events(&self) -> Result<EventBatch> {
+        let events: EventBatch = self.request("events", &Empty {})?;
+        events.validate()?;
+        Ok(events)
     }
 }
 

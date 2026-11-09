@@ -34,6 +34,7 @@ internal interface ManagedAdapter {
     fun observe(): JSONArray
     fun post(record: JSONObject)
     fun cancel(id: String)
+    fun drainEvents(): JSONObject
 }
 
 internal object LiveUpdateProtocol {
@@ -47,6 +48,7 @@ internal object LiveUpdateProtocol {
             "observe" -> emptyPayload(payload) { adapter.observe() }
             "post" -> post(adapter, payload)
             "cancel" -> cancel(adapter, payload)
+            "events" -> emptyPayload(payload) { adapter.drainEvents() }
             else -> invalid()
         }
         success(data).toString()
@@ -90,7 +92,7 @@ internal object LiveUpdateProtocol {
     }
 
     private fun validId(id: String?) {
-        if (id == null || id.isBlank() || id.length > 256) invalid()
+        if (id == null || !isValidContractText(id, 256)) invalid()
     }
 
     private fun success(data: Any) = JSONObject().put("status", "ok").put("data", data)

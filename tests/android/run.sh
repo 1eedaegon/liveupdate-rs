@@ -6,15 +6,19 @@
 # 1. Refuses any device that is not an emulator: every adb call names ANDROID_SERIAL.
 # 2. Builds the test APK, whose Rust library (android/native-test) is built with -C instrument-coverage
 #    for the emulator's ABI, and runs every instrumentation test with JaCoCo coverage. EXPECTED_SDK makes
-#    the tests fail on any other API level.
+#    the tests fail on any other API level. Every test must pass: a failure, an @Ignore or a skip by an
+#    assumption fails the suite (tests/android/instrumentation.py), and so does a device test of
+#    docs/spec.md that did not pass.
 # 3. Pulls JaCoCo's execution data and the Rust profile, then checks the Kotlin line coverage of unit
-#    and instrumentation tests together (android/build.gradle.kts) and the Rust line coverage of
-#    src/android.rs on the device (at least RUST_ANDROID_MIN percent, 90 by default).
+#    and instrumentation tests together (android/build.gradle.kts) and the Rust coverage of
+#    src/android.rs on the device: at least RUST_ANDROID_MIN percent of its lines (90 by default) and
+#    RUST_ANDROID_REGIONS_MIN percent of its regions (85 by default).
 # 4. Writes $OUT/passed.txt only when everything passed. OUT is build/device-suite by default.
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 out=${OUT:-$root/android/build/device-suite}
 minimum=${RUST_ANDROID_MIN:-90}
+regions=${RUST_ANDROID_REGIONS_MIN:-85}
 package=io.github.eedaegon.liveupdate.test
 runner=$package/androidx.test.runner.AndroidJUnitRunner
 sdk=${ANDROID_SDK_ROOT:-${ANDROID_HOME:?ANDROID_HOME or ANDROID_SDK_ROOT names the Android SDK}}
@@ -57,21 +61,21 @@ apk=android/build/outputs/apk/androidTest/debug/android-debug-androidTest.apk
 library=android/build/native-test-target/$triple/debug/libliveupdate_android_native_test.so
 [ -f "$apk" ] && [ -f "$library" ] || { echo "the build left no $apk or $library" >&2; exit 1; }
 
-# One instrumentation run: NAME, then the runner's arguments. Its JaCoCo data lands in
-# android/build/outputs/code_coverage/device/NAME.ec; it prints the number of tests that passed.
+# One instrumentation run: NAME, then the runner's arguments. Its raw output lands in
+# $OUT/instrumentation-NAME.txt and its JaCoCo data in android/build/outputs/code_coverage/device/NAME.ec;
+# it prints the number of tests, all of which passed.
 instrument() {
   name=$1
   shift
   status=0
-  device shell am instrument -w -e coverage true -e coverageFile "/data/data/$package/$name.ec" "$@" "$runner" \
+  device shell am instrument -w -r -e coverage true -e coverageFile "/data/data/$package/$name.ec" "$@" "$runner" \
     | tr -d '\r' >"$out/instrumentation-$name.txt" || status=$?
-  cat "$out/instrumentation-$name.txt" >&2
-  count=$(sed -n 's/^OK (\([0-9]*\) tests\{0,1\})$/\1/p' "$out/instrumentation-$name.txt")
-  if [ "$status" != 0 ] || [ -z "$count" ] || grep -q '^FAILURES!!!' "$out/instrumentation-$name.txt"; then
+  if [ "$status" != 0 ] || ! count=$(python3 -I tests/android/instrumentation.py "$out/instrumentation-$name.txt"); then
     echo "the $name instrumentation run failed" >&2
     device uninstall "$package" >/dev/null 2>&1 || true
     exit 1
   fi
+  echo "$name: $count tests passed" >&2
   device exec-out run-as "$package" cat "/data/data/$package/$name.ec" \
     >"android/build/outputs/code_coverage/device/$name.ec"
   [ -s "android/build/outputs/code_coverage/device/$name.ec" ] || { echo "no JaCoCo data of $name" >&2; exit 1; }
@@ -80,7 +84,8 @@ instrument() {
 
 device uninstall "$package" >/dev/null 2>&1 || true
 device install -r -t -g "$apk"
-passed=$(instrument main ${EXPECTED_SDK:+-e expectedSdk "$EXPECTED_SDK"})
+passed=$(instrument main -e notClass io.github.eedaegon.liveupdate.PermissionInstrumentationTest \
+  ${EXPECTED_SDK:+-e expectedSdk "$EXPECTED_SDK"})
 device exec-out run-as "$package" cat files/liveupdate.profraw >"$out/liveupdate.profraw"
 device logcat -d -s TestRunner:I System.out:I >"$out/logcat.txt" 2>/dev/null || true
 # Revoking the notification permission kills the app, so the class that needs it revoked runs alone.
@@ -88,6 +93,8 @@ device shell pm revoke "$package" android.permission.POST_NOTIFICATIONS
 denied=$(instrument denied -e class io.github.eedaegon.liveupdate.PermissionInstrumentationTest -e notifications denied)
 device uninstall "$package" >/dev/null
 [ -s "$out/liveupdate.profraw" ] || { echo "no Rust profile on $serial" >&2; exit 1; }
+python3 -I tests/android/instrumentation.py --spec docs/spec.md \
+  "$out/instrumentation-main.txt" "$out/instrumentation-denied.txt"
 
 gradle :android:coverageVerification --no-daemon
 kotlin=$(python3 -I - android/build/reports/jacoco/coverageReport/coverageReport.xml <<'PYTHON'
@@ -107,19 +114,23 @@ tools=$(rustc --print sysroot)/lib/rustlib/$host/bin
   | tee "$out/rust-coverage.txt"
 "$tools/llvm-cov" export --summary-only --instr-profile="$out/liveupdate.profdata" "$library" "$root/src" \
   >"$out/rust-coverage.json"
-android=$(python3 -I - "$out/rust-coverage.json" "$minimum" <<'PYTHON'
+android=$(python3 -I - "$out/rust-coverage.json" "$minimum" "$regions" <<'PYTHON'
 import json, sys
-report, minimum = json.load(open(sys.argv[1])), float(sys.argv[2])
-files = {f["filename"].rsplit("/", 1)[-1]: f["summary"]["lines"] for f in report["data"][0]["files"]}
-lines = files.get("android.rs")
-if lines is None:
+report, minimum, regions = json.load(open(sys.argv[1])), float(sys.argv[2]), float(sys.argv[3])
+files = {f["filename"].rsplit("/", 1)[-1]: f["summary"] for f in report["data"][0]["files"]}
+summary = files.get("android.rs")
+if summary is None:
     sys.exit("src/android.rs has no coverage data")
-print(f"{lines['percent']:.2f}% ({lines['covered']}/{lines['count']} lines)")
+lines, covered = summary["lines"], summary["regions"]
+print(f"{lines['percent']:.2f}% ({lines['covered']}/{lines['count']} lines), "
+      f"{covered['percent']:.2f}% ({covered['covered']}/{covered['count']} regions)")
 if lines["percent"] < minimum:
     sys.exit(f"src/android.rs line coverage {lines['percent']:.2f}% is below {minimum}%")
+if covered["percent"] < regions:
+    sys.exit(f"src/android.rs region coverage {covered['percent']:.2f}% is below {regions}%")
 PYTHON
 )
-echo "Rust line coverage of src/android.rs on the device: $android"
+echo "Rust coverage of src/android.rs on the device: $android"
 
 {
   cat "$out/device.txt"

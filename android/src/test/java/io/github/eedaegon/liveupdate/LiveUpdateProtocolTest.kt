@@ -27,6 +27,9 @@ class LiveUpdateProtocolTest {
             .getJSONArray("data").length())
         ok(LiveUpdateProtocol.dispatch(adapter, "post", "{\"record\":{\"id\":\"one\"}}"))
         ok(LiveUpdateProtocol.dispatch(adapter, "cancel", "{\"id\":\"one\"}"))
+        assertEquals("dismissed", ok(LiveUpdateProtocol.dispatch(adapter, "events", "{}"))
+            .getJSONObject("data").getJSONArray("events")
+            .getJSONObject(0).getJSONObject("kind").getString("kind"))
 
         assertEquals(listOf("write:0", "post:one", "cancel:one"), adapter.mutations)
     }
@@ -41,6 +44,7 @@ class LiveUpdateProtocolTest {
             "read" to "{\"extra\":true}",
             "capabilities" to "{\"records\":[]}",
             "observe" to "{\"id\":\"one\"}",
+            "events" to "{\"extra\":true}",
             "write" to "{}",
             "write" to "{\"records\":[],\"extra\":true}",
             "post" to "{\"record\":{}}",
@@ -56,6 +60,33 @@ class LiveUpdateProtocolTest {
         }
         assertTrue(adapter.mutations.isEmpty())
         ok(LiveUpdateProtocol.dispatch(adapter, "cancel", "{\"id\":\"${"x".repeat(256)}\"}"))
+    }
+
+    // LU-VALID-10, LU-BRIDGE-6
+    @Test
+    fun activityIdentifierLimitsCountUnicodeCodePoints() {
+        val adapter = FakeAdapter()
+        val maximum = "😀".repeat(256)
+        val tooLong = maximum + "😀"
+
+        ok(LiveUpdateProtocol.dispatch(
+            adapter,
+            "cancel",
+            JSONObject().put("id", maximum).toString(),
+        ))
+        assertError("INVALID_INPUT", LiveUpdateProtocol.dispatch(
+            adapter,
+            "cancel",
+            JSONObject().put("id", tooLong).toString(),
+        ))
+        for (blank in listOf(" \u3000", "\ufeff")) {
+            assertError("INVALID_INPUT", LiveUpdateProtocol.dispatch(
+                adapter,
+                "cancel",
+                JSONObject().put("id", blank).toString(),
+            ))
+        }
+        assertEquals(listOf("cancel:$maximum"), adapter.mutations)
     }
 
     // LU-BRIDGE-6, LU-LIMIT-3
@@ -92,6 +123,7 @@ class LiveUpdateProtocolTest {
             "write" to "{\"records\":{}}",
             "post" to "{\"record\":[]}",
             "cancel" to "{\"id\":[]}",
+            "events" to "not-json",
         )) {
             val error = assertError("NATIVE_ERROR", LiveUpdateProtocol.dispatch(adapter, command, payload))
             assertEquals(NATIVE_MESSAGE, error.getString("message"))
@@ -195,4 +227,12 @@ private open class FakeAdapter(private val fail: Boolean = false) : ManagedAdapt
     override fun cancel(id: String) {
         mutations += "cancel:$id"
     }
+
+    override fun drainEvents() = JSONObject()
+        .put("events", JSONArray().put(JSONObject()
+            .put("sequence", 1)
+            .put("activityId", "one")
+            .put("occurredAt", 1_000)
+            .put("kind", JSONObject().put("kind", "dismissed"))))
+        .put("dropped", 0)
 }

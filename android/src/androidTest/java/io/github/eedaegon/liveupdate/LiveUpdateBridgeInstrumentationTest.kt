@@ -2,6 +2,7 @@ package io.github.eedaegon.liveupdate
 
 import android.Manifest
 import android.content.Context
+import android.content.ComponentName
 import android.content.ContextWrapper
 import android.content.pm.PackageManager
 import android.os.Build
@@ -29,7 +30,7 @@ class LiveUpdateBridgeInstrumentationTest {
     @After
     fun clear() = Device.clear()
 
-    // LU-CAP-2, LU-API-2, LU-API-3
+    // LU-CAP-2, LU-API-2, LU-API-3, LU-V2-CAP-1
     @Test
     fun capabilitiesReflectTheRunningDevice() {
         val expected = InstrumentationRegistry.getArguments().getString("expectedSdk")
@@ -40,6 +41,19 @@ class LiveUpdateBridgeInstrumentationTest {
         assertEquals(Build.VERSION.SDK_INT >= 36, capabilities.getBoolean("supported"))
         val promotion = Build.VERSION.SDK_INT >= 36 && Device.manager.canPostPromotedNotifications()
         assertEquals(promotion, capabilities.getBoolean("promotionEnabled"))
+        val presentation = capabilities.getJSONObject("presentation")
+        assertTrue(presentation.getBoolean("standard"))
+        assertTrue(presentation.getBoolean("bigText"))
+        assertTrue(presentation.getBoolean("timer"))
+        assertEquals(Build.VERSION.SDK_INT >= 36, presentation.getBoolean("progressStyle"))
+        assertEquals(Build.VERSION.SDK_INT >= 37, presentation.getBoolean("metricStyle"))
+        assertTrue(presentation.getBoolean("actions"))
+        assertTrue(presentation.getBoolean("images"))
+        assertTrue(presentation.getBoolean("events"))
+        assertEquals(
+            Build.VERSION.SDK_INT >= 37 && Build.MANUFACTURER.equals("samsung", ignoreCase = true),
+            presentation.getBoolean("samsungNowBar"),
+        )
     }
 
     // LU-ADAPTER-1, LU-ADAPTER-6, LU-ADAPTER-8, LU-ADAPTER-9
@@ -113,6 +127,12 @@ class LiveUpdateBridgeInstrumentationTest {
         val requested = info.requestedPermissions!!.toSet()
         assertTrue(requested.toString(), Manifest.permission.POST_NOTIFICATIONS in requested)
         assertTrue(requested.toString(), Manifest.permission.POST_PROMOTED_NOTIFICATIONS in requested)
+
+        val receivers = listOf(LiveUpdateActionReceiver::class.java, LiveUpdateDismissReceiver::class.java)
+        for (receiver in receivers) {
+            val info = context.packageManager.getReceiverInfo(ComponentName(context, receiver), 0)
+            assertEquals(receiver.name, false, info.exported)
+        }
     }
 
     private companion object {

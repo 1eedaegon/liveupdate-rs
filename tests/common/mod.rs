@@ -7,8 +7,8 @@
 #![allow(dead_code)]
 
 use liveupdate::{
-    ActivityState, Capabilities, Driver, DriverRecord, Error, ErrorCode, Fallback, Observation,
-    PromotionState, Snapshot, StartRequest, Template, Timer, Visibility,
+    ActivityState, Capabilities, Driver, DriverRecord, Error, ErrorCode, EventBatch, Fallback,
+    Observation, PromotionState, Snapshot, StartRequest, Template, Timer, Visibility,
 };
 use std::{
     collections::BTreeMap,
@@ -43,6 +43,7 @@ pub struct FakeState {
     /// The promotion state Android reports for a post that requested promotion.
     pub promotion_outcome: PromotionState,
     pub panic_next_capabilities: bool,
+    pub events: EventBatch,
 }
 
 impl Default for FakeDriver {
@@ -53,6 +54,7 @@ impl Default for FakeDriver {
                     supported: true,
                     notifications_enabled: true,
                     promotion_enabled: false,
+                    presentation: Default::default(),
                 },
                 records: Vec::new(),
                 observed: BTreeMap::new(),
@@ -69,6 +71,7 @@ impl Default for FakeDriver {
                 lingering: BTreeMap::new(),
                 promotion_outcome: PromotionState::Promoted,
                 panic_next_capabilities: false,
+                events: EventBatch::default(),
             })),
         }
     }
@@ -165,6 +168,12 @@ impl Driver for FakeDriver {
         }
         Ok(())
     }
+
+    fn drain_events(&self) -> liveupdate::Result<EventBatch> {
+        let mut state = self.state.lock().unwrap();
+        state.calls.push("drain_events");
+        Ok(std::mem::take(&mut state.events))
+    }
 }
 
 impl FakeDriver {
@@ -201,6 +210,7 @@ pub fn snapshot(revision: u64) -> Snapshot {
         progress: Some(0.0),
         timer: None,
         stale_at: None,
+        presentation: None,
     }
 }
 

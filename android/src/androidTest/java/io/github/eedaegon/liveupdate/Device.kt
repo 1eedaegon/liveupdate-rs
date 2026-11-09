@@ -113,6 +113,52 @@ internal object Device {
         .put("awaitingObservation", true)
         .put("postFailed", false)
 
+    fun v2Snapshot(
+        style: JSONObject,
+        revision: Long = 0,
+        actions: JSONArray = JSONArray(),
+        shortCriticalText: String? = null,
+        largeIcon: JSONObject? = null,
+        samsungNowBar: JSONObject? = null,
+    ): JSONObject = JSONObject()
+        .put("revision", revision)
+        .put("title", "Mochi's snack delivery")
+        .put("status", "Preparing")
+        .put("presentation", JSONObject()
+            .put("style", style)
+            .put("actions", actions)
+            .apply {
+                if (shortCriticalText != null) put("shortCriticalText", shortCriticalText)
+                if (largeIcon != null) put("largeIcon", largeIcon)
+                if (samsungNowBar != null) put("samsungNowBar", samsungNowBar)
+            })
+
+    fun v2Record(
+        id: String,
+        template: String,
+        snapshot: JSONObject,
+        visibility: String = "private",
+        promotionRequested: Boolean = true,
+    ): JSONObject = JSONObject()
+        .put("id", id)
+        .put("origin", JSONObject()
+            .put("activityKey", "delivery:instrumentation")
+            .put("schemaVersion", 2)
+            .put("template", template)
+            .put("fallback", "notification")
+            .put("visibility", visibility)
+            .put("snapshot", snapshot))
+        .put("snapshot", snapshot)
+        .put("state", "unknown")
+        .put("promotionRequested", promotionRequested)
+        .put("promotionState", if (promotionRequested) "unknown" else "notApplicable")
+        .put("awaitingObservation", true)
+        .put("postFailed", false)
+
+    fun resourceIcon(name: String) = JSONObject().put("kind", "resource").put("value", name)
+
+    fun appFileIcon(path: String) = JSONObject().put("kind", "appFile").put("value", path)
+
     /** JSON text with every object's members in name order, to compare JSON from Rust and Kotlin. */
     fun canonical(value: Any?): String = when (value) {
         is JSONObject -> value.keys().asSequence().sorted()

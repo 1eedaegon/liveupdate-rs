@@ -10,15 +10,15 @@ project started were Kotlin libraries or framework plugins, not a standalone Rus
 
 - A promoted ongoing notification where Android allows one, with a regular ongoing notification as
   the fallback the caller may choose.
-- The system progress and countdown templates.
+- Standard, BigText, rich progress, timer and metric system templates.
 - Typed capabilities, visibility, promotion state and stable error codes.
 - Idempotent keys, ordered revisions, durable receipts and reconciliation after a restart.
 - A Gradle AAR and instructions for native Rust applications.
 
 ## Not in this version
 
-- Actions and event callbacks.
-- Custom `RemoteViews`, and framework components written in Rust.
+- Arbitrary caller-provided intents, callbacks, `RemoteViews` or vendor-extra maps.
+- Android framework components written in Rust.
 - Any promise that a device promotes a notification: OEM system UIs decide.
 - Shared presentation code with iOS ActivityKit.
 

@@ -16,8 +16,8 @@
 #
 # Outputs go to $GITHUB_OUTPUT (standard output when it is not set). The inputs of the emulator suite are
 # the files it reads (nothing generated or ignored counts), the Rust toolchain, the
-# NDK, cargo-ndk, the Android API and system image, the SDK cache's key, and the runner's system,
-# architecture and image ($ImageOS, $ImageVersion).
+# NDK, cargo-ndk, the JDK and Gradle, the Android API and system image, the SDK cache's key, and the
+# runner's system, architecture and image ($ImageOS, $ImageVersion).
 #
 # A record is an artifact, not a cache: a push to main cannot restore the caches of a pull request, but it
 # can find the artifact that the pull request's run left. Only runs of this repository's ci.yml count, not
@@ -36,7 +36,7 @@ put() { printf '%s\n' "$1" >>"${GITHUB_OUTPUT:-/dev/stdout}"; }
 # new files git does not ignore count, with their content in the working tree (in CI, the checkout).
 suite_files() {
   git -C "$root" ls-files --cached --others --exclude-standard -- src Cargo.toml Cargo.lock \
-    rust-toolchain.toml android build.gradle.kts settings.gradle.kts gradle.properties tests/android \
+    rust-toolchain.toml .cargo android build.gradle.kts settings.gradle.kts gradle.properties tests/android \
     | sort -u | while IFS= read -r path; do
       if [ -f "$root/$path" ]; then printf '%s\n' "$path"; fi
     done >"$temp/suite-paths.txt"
@@ -66,6 +66,8 @@ files $files
 rust ${TOOLCHAIN:?TOOLCHAIN names the Rust toolchain}
 ndk ${NDK:?NDK names the Android NDK version}
 cargo-ndk ${CARGO_NDK:?CARGO_NDK names the cargo-ndk version}
+java ${JAVA:?JAVA names the JDK} temurin
+gradle ${GRADLE:?GRADLE names the Gradle version}
 android $api $image_tag $abi
 sdk $sdk
 runner $runner ${ImageVersion:-local}"

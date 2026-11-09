@@ -1,6 +1,7 @@
 use crate::{
     ActivityRecord, ActivityState, Capabilities, Driver, DriverRecord, EndPolicy, Error, ErrorCode,
-    Fallback, Observation, PromotionState, Result, Snapshot, StartRequest, model::valid_id,
+    EventBatch, Fallback, Observation, PromotionState, Result, Snapshot, StartRequest,
+    model::valid_id,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -57,6 +58,15 @@ impl<D: Driver> LiveUpdate<D> {
                 .iter()
                 .map(DriverRecord::public)
                 .collect())
+        })
+    }
+
+    /// Atomically drains Android notification action and dismissal events.
+    pub fn events(&self) -> Result<EventBatch> {
+        self.serialized(|driver| {
+            let events = driver.drain_events()?;
+            events.validate()?;
+            Ok(events)
         })
     }
 
@@ -130,9 +140,7 @@ fn update(driver: &impl Driver, id: &str, snapshot: Snapshot) -> Result<Activity
     snapshot.validate()?;
     let records = reconcile(driver)?;
     let previous = find_record(&records, id)?;
-    if previous.terminal()
-        || (previous.state == ActivityState::Unknown && !previous.awaiting_observation)
-    {
+    if previous.terminal() {
         return Err(not_found());
     }
     if !replaces(&previous, &snapshot)? {
@@ -228,10 +236,9 @@ fn reconcile_record(previous: &DriverRecord, native: Option<&Observation>) -> Re
         if native.snapshot != previous.snapshot {
             return Err(Error::native());
         }
+        // The snapshot and the promotion request match the receipt, as checked above.
         return Ok(DriverRecord {
-            snapshot: native.snapshot.clone(),
             state: native.state,
-            promotion_requested: native.promotion_requested,
             promotion_state: native.promotion_state,
             awaiting_observation: false,
             post_failed: false,

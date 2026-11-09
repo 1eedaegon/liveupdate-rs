@@ -1,9 +1,9 @@
 //! JSON bridge contract tests for managed Android adapters.
 
 use liveupdate::{
-    ActivityState, Bridge, Capabilities, Driver, DriverRecord, EndPolicy, Error, ErrorCode,
-    Fallback, JsonDriver, LiveUpdate, Observation, PromotionState, Snapshot, StartRequest,
-    Template, Visibility,
+    ActivityEvent, ActivityState, Bridge, Capabilities, Driver, DriverRecord, EndPolicy, Error,
+    ErrorCode, EventBatch, EventKind, Fallback, JsonDriver, LiveUpdate, Observation,
+    PresentationCapabilities, PromotionState, Snapshot, StartRequest, Template, Visibility,
 };
 use serde_json::{Value, json};
 use std::{
@@ -73,6 +73,7 @@ fn snapshot() -> Snapshot {
         progress: Some(0.25),
         timer: None,
         stale_at: None,
+        presentation: None,
     }
 }
 
@@ -97,6 +98,15 @@ fn every_driver_operation_uses_a_bounded_stable_command() {
         success(json!([observed])),
         success(Value::Null),
         success(Value::Null),
+        success(json!({
+            "events": [{
+                "sequence": 1,
+                "activityId": "activity-id",
+                "occurredAt": 1000,
+                "kind": { "kind": "dismissed" }
+            }],
+            "dropped": 0
+        })),
     ]);
     let driver = JsonDriver::new(bridge.clone());
 
@@ -106,6 +116,7 @@ fn every_driver_operation_uses_a_bounded_stable_command() {
             supported: true,
             notifications_enabled: true,
             promotion_enabled: true,
+            presentation: PresentationCapabilities::default(),
         }
     );
     assert_eq!(driver.read().unwrap(), vec![record()]);
@@ -113,6 +124,18 @@ fn every_driver_operation_uses_a_bounded_stable_command() {
     assert_eq!(driver.observe().unwrap(), vec![observed]);
     driver.post(&record()).unwrap();
     driver.cancel("activity-id").unwrap();
+    assert_eq!(
+        driver.drain_events().unwrap(),
+        EventBatch {
+            events: vec![ActivityEvent {
+                sequence: 1,
+                activity_id: "activity-id".into(),
+                occurred_at: 1_000,
+                kind: EventKind::Dismissed,
+            }],
+            dropped: 0,
+        }
+    );
 
     assert_eq!(
         bridge.calls(),
@@ -123,6 +146,7 @@ fn every_driver_operation_uses_a_bounded_stable_command() {
             ("observe".into(), json!({})),
             ("post".into(), json!({ "record": record() })),
             ("cancel".into(), json!({ "id": "activity-id" })),
+            ("events".into(), json!({})),
         ]
     );
 }

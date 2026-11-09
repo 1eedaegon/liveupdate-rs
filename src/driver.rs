@@ -1,6 +1,6 @@
 use crate::{
-    ActivityState, Capabilities, PromotionState, Result, Snapshot, StartRequest, Visibility,
-    model::Backend,
+    ActivityState, Capabilities, EventBatch, PromotionState, Result, Snapshot, StartRequest,
+    Visibility, model::Backend,
 };
 use serde::{Deserialize, Serialize};
 
@@ -90,6 +90,12 @@ pub trait Driver: Send + Sync {
     fn post(&self, record: &DriverRecord) -> Result<()>;
     /// Cancels the notification for an activity handle.
     fn cancel(&self, id: &str) -> Result<()>;
+    /// Atomically returns and removes queued Android interaction events.
+    ///
+    /// The default keeps existing custom drivers source-compatible.
+    fn drain_events(&self) -> Result<EventBatch> {
+        Ok(EventBatch::default())
+    }
 }
 
 #[cfg(test)]
@@ -105,6 +111,7 @@ mod tests {
             progress: Some(0.5),
             timer: None,
             stale_at: None,
+            presentation: None,
         };
         DriverRecord {
             id: "id".into(),

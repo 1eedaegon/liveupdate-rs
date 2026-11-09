@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.os.Build
 import android.os.Bundle
+import android.os.Process
+import android.service.notification.StatusBarNotification
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.eedaegon.liveupdate.Device.context
 import io.github.eedaegon.liveupdate.Device.manager
@@ -168,6 +170,17 @@ class AndroidAdapterInstrumentationTest {
         assertEquals("own", observed.getJSONObject(0).getString("id"))
     }
 
+    // LU-LIMIT-4, LU-ADAPTER-6
+    @Test
+    fun observationReadsAtMost160OfTheAdaptersNotifications() {
+        // Android does not let one app show that many notifications, so the entries are built here.
+        val own = (0 until 161).map { index -> entry(Device.TAG_PREFIX + "cap-$index", record("cap-$index")) }
+        val foreign = (0 until 5).map { index -> entry("other-$index", null) }
+
+        assertEquals(160, adapter.observe((own.take(160) + foreign).toTypedArray()).length())
+        assertEquals("NATIVE_ERROR", failureCode { adapter.observe((foreign + own).toTypedArray()) })
+    }
+
     // LU-ADAPTER-6
     @Test
     fun aStaleTimeInThePastIsObservedAsStale() {
@@ -277,6 +290,29 @@ class AndroidAdapterInstrumentationTest {
             builder.setExtras(Bundle().apply { putString("io.github.1eedaegon.liveupdate.record", extra) })
         }
         manager.notify(tag, id, builder.build())
+    }
+
+    private fun entry(tag: String, record: JSONObject?): StatusBarNotification {
+        val builder = Notification.Builder(context, Device.CHANNEL_ID)
+            .setSmallIcon(R.drawable.liveupdate_status)
+            .setContentTitle("Entry")
+        if (record != null) {
+            builder.setExtras(Bundle().apply { putString("io.github.1eedaegon.liveupdate.record", record.toString()) })
+        }
+        // The public constructor; Android builds these entries itself.
+        @Suppress("DEPRECATION")
+        return StatusBarNotification(
+            context.packageName,
+            context.packageName,
+            Device.NOTIFICATION_ID,
+            tag,
+            Process.myUid(),
+            Process.myPid(),
+            0,
+            builder.build(),
+            Process.myUserHandle(),
+            System.currentTimeMillis(),
+        )
     }
 
     private fun failureCode(action: () -> Unit): String =

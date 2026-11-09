@@ -1,8 +1,8 @@
 //! Compatibility tests for the serialized public contract.
 
 use liveupdate::{
-    ActivityState, Capabilities, DriverRecord, Fallback, Observation, PromotionState, Snapshot,
-    StartRequest, Template, Timer, Visibility,
+    ActivityState, Capabilities, DriverRecord, Fallback, Observation, PresentationCapabilities,
+    PromotionState, Snapshot, StartRequest, Template, Timer, Visibility,
 };
 use serde_json::json;
 
@@ -13,6 +13,7 @@ fn capabilities_use_the_stable_camel_case_contract() {
         supported: true,
         notifications_enabled: true,
         promotion_enabled: false,
+        presentation: PresentationCapabilities::default(),
     };
 
     assert_eq!(
@@ -20,7 +21,18 @@ fn capabilities_use_the_stable_camel_case_contract() {
         json!({
             "supported": true,
             "notificationsEnabled": true,
-            "promotionEnabled": false
+            "promotionEnabled": false,
+            "presentation": {
+                "standard": false,
+                "bigText": false,
+                "timer": false,
+                "progressStyle": false,
+                "metricStyle": false,
+                "actions": false,
+                "images": false,
+                "events": false,
+                "samsungNowBar": false
+            }
         })
     );
     assert_eq!(
@@ -41,6 +53,7 @@ fn capability_helpers_separate_regular_posting_from_promotion() {
         supported: true,
         notifications_enabled: true,
         promotion_enabled: false,
+        presentation: PresentationCapabilities::default(),
     };
     assert!(regular_notification.can_post());
     assert!(!regular_notification.can_promote());
@@ -128,6 +141,7 @@ fn records_cross_the_bridge_with_the_names_the_adapter_reads() {
             ends_at: 20,
         }),
         stale_at: Some(30),
+        presentation: None,
     };
     let record = DriverRecord {
         id: "id".into(),

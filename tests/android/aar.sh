@@ -18,9 +18,16 @@ manifest_declares_both_notification_permissions() {
     grep -q "\"android.permission.$permission\"" "$work/AndroidManifest.xml" \
       || fail "the manifest does not declare $permission"
   done
-  if grep -qE '<(activity|receiver|service|provider)' "$work/AndroidManifest.xml"; then
-    fail "the manifest declares a component"
+  if grep -qE '<(activity|service|provider)' "$work/AndroidManifest.xml"; then
+    fail "the manifest declares an unexpected component"
   fi
+  receiver_count=$(grep -c '<receiver' "$work/AndroidManifest.xml" || true)
+  [ "$receiver_count" = 2 ] || fail "the manifest must declare exactly two receivers"
+  for receiver in LiveUpdateActionReceiver LiveUpdateDismissReceiver; do
+    grep -A2 "android:name=\"io.github.eedaegon.liveupdate.$receiver\"" \
+      "$work/AndroidManifest.xml" | grep -q 'android:exported="false"' \
+      || fail "$receiver is missing or exported"
+  done
 }
 
 # LU-AAR-2
@@ -32,7 +39,8 @@ consumer_rules_keep_the_jni_entry_point() {
 # LU-AAR-3
 the_aar_holds_the_bridge_and_its_resources() {
   classes=$(unzip -Z1 "$work/classes.jar")
-  for class in LiveUpdateBridge AndroidAdapter LiveUpdateProtocol AdapterFailure; do
+  for class in LiveUpdateBridge AndroidAdapter LiveUpdateProtocol AdapterFailure \
+    LiveUpdateActionReceiver LiveUpdateDismissReceiver NotificationRenderer EventStore IconResolver; do
     printf '%s\n' "$classes" | grep -qx "io/github/eedaegon/liveupdate/$class.class" \
       || fail "classes.jar lacks $class"
   done

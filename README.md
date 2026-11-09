@@ -11,18 +11,27 @@ public API in Rust, while a small Android AAR only talks to `NotificationManager
 
 ```toml
 [dependencies]
-liveupdate = { version = "0.1.0-alpha.1", features = ["android"] }
+liveupdate = { version = "0.1.0", features = ["android"] }
 ```
 
-Put `liveupdate-android-0.1.0-alpha.1.aar` from the [GitHub release](https://github.com/1eedaegon/liveupdate-rs/releases)
-into `app/libs/` and add `implementation(files("libs/liveupdate-android-0.1.0-alpha.1.aar"))` to the app's dependencies.
+Put `liveupdate-android-0.1.0.aar` from the [GitHub release](https://github.com/1eedaegon/liveupdate-rs/releases)
+into `app/libs/`. The AAR is written in Kotlin and a file dependency brings no dependencies of its own, so
+add the Kotlin standard library too:
+
+```kotlin
+dependencies {
+    implementation(files("libs/liveupdate-android-0.1.0.aar"))
+    implementation("org.jetbrains.kotlin:kotlin-stdlib:2.2.10") // or newer
+}
+```
 
 The AAR merges `POST_NOTIFICATIONS` and `POST_PROMOTED_NOTIFICATIONS` into the application
 manifest. Your app still has to request the runtime notification permission on Android 13 and
 newer. The Rust Android runtime must initialize
 [`ndk-context`](https://crates.io/crates/ndk-context); common NativeActivity and Rust window
 runtimes already do this before application code runs. Before that, `LiveUpdate::android()` returns
-`NATIVE_ERROR`.
+`NATIVE_ERROR`, as long as the build unwinds on panic (Rust's default): with `panic = "abort"`, the
+process aborts.
 
 The Android namespace is `io.github.eedaegon.liveupdate` because Android package segments cannot
 start with a digit. The repository, Cargo author and project owner remain `1eedaegon`.
@@ -30,15 +39,19 @@ start with a digit. The repository, Cargo author and project owner remain `1eeda
 ## Use
 
 Create one `LiveUpdate` client with `LiveUpdate::android()` during application startup and keep it
-in application state. The lifecycle works with any `Driver`, so the same code runs against a fake
-driver in tests:
+in application state. This is [examples/delivery.rs](examples/delivery.rs), which CI compiles for
+Android:
 
 ```rust
+//! One delivery from start to end. `run_delivery` works with any `Driver`, so tests can pass a fake
+//! one; on Android, `on_android` hands it the client of the companion AAR.
+
 use liveupdate::{
     Driver, EndPolicy, Fallback, LiveUpdate, Result, Snapshot, StartRequest, Template, Visibility,
 };
 
-fn run_delivery<D: Driver>(updates: &LiveUpdate<D>) -> Result<()> {
+/// Starts, updates and ends one delivery.
+pub fn run_delivery<D: Driver>(updates: &LiveUpdate<D>) -> Result<()> {
     if !updates.capabilities()?.can_post() {
         return Ok(()); // Ask for the notification permission first.
     }
@@ -55,6 +68,7 @@ fn run_delivery<D: Driver>(updates: &LiveUpdate<D>) -> Result<()> {
             progress: Some(0.1),
             timer: None,
             stale_at: None,
+            presentation: None,
         },
     })?;
 
@@ -67,6 +81,7 @@ fn run_delivery<D: Driver>(updates: &LiveUpdate<D>) -> Result<()> {
             progress: Some(0.65),
             timer: None,
             stale_at: None,
+            presentation: None,
         },
     )?;
 
@@ -74,8 +89,10 @@ fn run_delivery<D: Driver>(updates: &LiveUpdate<D>) -> Result<()> {
     Ok(())
 }
 
+/// Call this once the Android runtime has initialized `ndk-context`, and keep the client in
+/// application state.
 #[cfg(target_os = "android")]
-fn on_android() -> Result<()> {
+pub fn on_android() -> Result<()> {
     run_delivery(&LiveUpdate::android()?)
 }
 ```
@@ -94,7 +111,7 @@ Use `Template::Timer` with a `Timer { started_at, ends_at }` instead of `progres
 ```text
 Rust application
     |
-    | start / update / end / list
+    | start / update / end / list / events
     v
 liveupdate Rust lifecycle
     | validates input and revisions
@@ -108,6 +125,7 @@ liveupdate Android AAR
 Android system notification / promoted ongoing UI
     |
     +---- active notification observation ----> Rust reconciliation
+    +---- action / dismissal event queue ------> Rust event drain
 ```
 
 Rust writes the receipt before posting. If the process or framework call fails, the next identical
@@ -123,11 +141,14 @@ closed as `NATIVE_ERROR`.
 
 - Promoted ongoing presentation requires Android API 36 or newer, enabled notifications, enabled
   promotion settings and OEM system-UI support. A successful post does not guarantee promotion.
-- Galaxy S23 behavior on its current firmware (Android 17, One UI 9) is unverified. Firmware that
-  does not promote ongoing notifications gets the regular ongoing notification only when
-  `Fallback::Notification` is selected.
-- The AAR supports the system progress and countdown templates. Custom layouts, actions and event
-  streams are not part of this alpha API.
+- A Galaxy S23 (`SM-S911N`) on Android 17 / One UI 9 has passed the API 37 ProgressStyle,
+  MetricStyle, Samsung Now Bar, action, dismissal, image, Rust/JNI and lifecycle suite. Promotion
+  still depends on the user's setting and Samsung's system policy; a structurally promotable post
+  can remain a regular ongoing notification.
+- Schema v2 supports Standard, BigText, rich Progress, Timer and Metric system styles, resource and
+  app-private icons, up to three immutable actions, and durable action/dismissal events through
+  `LiveUpdate::events()`. It deliberately does not accept arbitrary `RemoteViews`, intents, paths or
+  OEM extras.
 - Android removes notifications immediately. `EndPolicy::After` returns `UNSUPPORTED_FEATURE`.
 - Visibility is reported as `Unknown`: requesting private notification content does not prove what
   an OEM system UI actually revealed.

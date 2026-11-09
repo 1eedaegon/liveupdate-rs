@@ -1,5 +1,6 @@
 //! What the README and the other docs must say, and what they may no longer say. The README's Rust
-//! code itself compiles as a doctest (`ReadmeDoctests` in src/lib.rs).
+//! code is examples/delivery.rs, which compiles for the host and for Android, and also compiles as a
+//! doctest (`ReadmeDoctests` in src/lib.rs).
 
 use std::path::Path;
 
@@ -40,19 +41,16 @@ fn rust_blocks(markdown: &str) -> Vec<String> {
 
 // LU-DOCS-1
 #[test]
-fn the_readme_shows_its_rust_code_whole() {
-    let blocks = rust_blocks(&read("README.md"));
-    assert!(!blocks.is_empty());
-    for block in blocks {
-        for line in block.lines() {
-            let trimmed = line.trim_start();
-            assert!(
-                !(trimmed == "#" || trimmed.starts_with("# ")),
-                "the README hides a doctest line: {line}"
-            );
-        }
-        assert!(block.contains("LiveUpdate::android()"), "{block}");
-    }
+fn the_readme_shows_the_compiled_example_whole() {
+    // examples/delivery.rs compiles for Android (`cargo ndk check --all-targets --features
+    // android`) and for the host (`cargo clippy --all-targets --all-features`).
+    let example = read("examples/delivery.rs");
+    assert!(example.contains("LiveUpdate::android()"));
+    assert_eq!(
+        rust_blocks(&read("README.md")),
+        [example],
+        "the README's Rust code is not examples/delivery.rs verbatim"
+    );
 }
 
 // LU-DOCS-2
@@ -71,6 +69,21 @@ fn the_readme_installs_this_version_and_its_aar() {
         );
     }
     assert!(prose("CHANGELOG.md").contains(&format!("## {version}")));
+    // The AAR's classes need the Kotlin standard library it was compiled against, or a newer one.
+    let gradle = read("build.gradle.kts");
+    let kotlin = gradle
+        .lines()
+        .find_map(|line| {
+            line.trim()
+                .strip_prefix(r#"id("org.jetbrains.kotlin.android") version ""#)
+        })
+        .and_then(|rest| rest.split('"').next())
+        .expect("build.gradle.kts names the Kotlin plugin's version");
+    let stdlib = format!(r#"implementation("org.jetbrains.kotlin:kotlin-stdlib:{kotlin}")"#);
+    assert!(
+        readme.contains(&stdlib),
+        "README.md does not say {stdlib:?}"
+    );
 }
 
 // LU-DOCS-2
@@ -82,8 +95,9 @@ fn the_docs_state_what_an_app_must_know() {
         "one retained client per process",
         "`EndPolicy::After` returns `UNSUPPORTED_FEATURE`",
         "Visibility is reported as `Unknown`",
-        "Galaxy S23 behavior on its current firmware (Android 17, One UI 9) is unverified",
-        "Before that, `LiveUpdate::android()` returns `NATIVE_ERROR`",
+        "A Galaxy S23 (`SM-S911N`) on Android 17 / One UI 9 has passed",
+        "`LiveUpdate::events()`",
+        "Before that, `LiveUpdate::android()` returns `NATIVE_ERROR`, as long as the build unwinds on panic",
         "docs/spec.md",
     ] {
         assert!(readme.contains(phrase), "README.md does not say {phrase:?}");

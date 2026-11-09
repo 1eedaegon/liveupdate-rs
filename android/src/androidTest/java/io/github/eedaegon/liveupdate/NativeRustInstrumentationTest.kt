@@ -97,6 +97,45 @@ class NativeRustInstrumentationTest {
         assertEquals(started.getString("id"), ok(NativeRust.run("start", request("native:text", snapshot, "timer").toString())).getString("id"))
     }
 
+    // LU-V2-JNI-1, LU-V2-EVENT-4
+    @Test
+    fun richPresentationAndActionEventsCrossRustJniUnchanged() {
+        val action = JSONObject()
+            .put("id", "confirm")
+            .put("title", "확인")
+        val style = JSONObject().put("kind", "progress").put("value", JSONObject()
+            .put("progress", 75)
+            .put("styledByProgress", true)
+            .put("segments", JSONArray()
+                .put(JSONObject().put("length", 50).put("id", 1).put("semanticStyle", "safe"))
+                .put(JSONObject().put("length", 50).put("id", 2).put("semanticStyle", "caution")))
+            .put("points", JSONArray().put(JSONObject().put("position", 50).put("id", 10))))
+        val snapshot = Device.v2Snapshot(
+            style,
+            actions = JSONArray().put(action),
+            shortCriticalText = "75%",
+        )
+        val request = JSONObject()
+            .put("activityKey", "native:rich")
+            .put("schemaVersion", 2)
+            .put("template", "progress")
+            .put("fallback", "notification")
+            .put("visibility", "private")
+            .put("snapshot", snapshot)
+
+        val started = ok(NativeRust.run("start", request.toString()))
+        assertEquals(Device.canonical(snapshot), Device.canonical(started.getJSONObject("snapshot")))
+        val notification = Device.waitForShown(started.getString("id"))
+        notification.actions.single().actionIntent.send()
+        Device.waitUntil("the Rust action event is queued") { EventStore(context).size() == 1 }
+
+        val batch = ok(NativeRust.run("events", ""))
+        val event = batch.getJSONArray("events").getJSONObject(0)
+        assertEquals(started.getString("id"), event.getString("activityId"))
+        assertEquals("confirm", event.getJSONObject("kind").getString("actionId"))
+        assertEquals(0, ok(NativeRust.run("events", "")).getJSONArray("events").length())
+    }
+
     // LU-LIST-3, LU-UPDATE-6
     @Test
     fun aNotificationTheUserRemovesBecomesDismissed() {

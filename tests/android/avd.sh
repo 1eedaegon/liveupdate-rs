@@ -3,9 +3,10 @@
 #
 #   avd.sh create NAME [API]   Writes the AVD NAME for system-images/android-API/google_apis/ABI (API 37.0 by
 #                              default, ABI the host's), with a Pixel 9 Pro XL screen. It writes the AVD's two files
-#                              itself: `android emulator create` takes no system image, and picked API 36.
-#   avd.sh start NAME [PORT]   Boots NAME headless on PORT (5580 by default), waits until Android has booted, and
-#                              prints serial=emulator-PORT.
+#                              itself because `android emulator create` takes only a hardware profile and chooses
+#                              the system image on its own.
+#   avd.sh start NAME [PORT]   Boots NAME headless on PORT (5580 by default), waits until Android has booted (at
+#                              most BOOT_TIMEOUT seconds, 900 by default), and prints serial=emulator-PORT.
 #   avd.sh stop SERIAL         Stops the emulator SERIAL, which must be an emulator.
 #   avd.sh delete NAME         Deletes the AVD NAME.
 #
@@ -67,7 +68,7 @@ start() {
     -no-boot-anim -no-snapshot -gpu swiftshader_indirect -camera-back none -camera-front none >"$log" 2>&1 &
   echo "emulator $name on $serial (log $log)" >&2
   booted=
-  for _ in $(seq 1 180); do
+  for _ in $(seq 1 $((${BOOT_TIMEOUT:-900} / 2))); do
     if [ "$("$adb" -s "$serial" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then
       booted=1
       break
