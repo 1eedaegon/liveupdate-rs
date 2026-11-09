@@ -18,7 +18,7 @@ on:
 permissions:
   contents: read
 
-# Each commit on main gets a run of its own that nothing cancels: release.yml needs a successful main run
+# Each commit on main gets a run of its own that nothing cancels: publish.yml needs a successful main run
 # for the exact commit of a release tag.
 concurrency:
   group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
