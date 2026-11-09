@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.2 - 2026-11-10
+
+- Added `LiveUpdateEvents.setListener` to the AAR: the action and dismiss receivers call the app's one listener once
+  each event is stored, so the app drains `LiveUpdate::events()` at once instead of polling. A listener that throws is
+  logged and the event stays queued.
+
 ## 0.1.1 - 2026-11-10
 
 - Breaking pre-1.0 cleanup: removed the redundant `Backend` enum and `ActivityRecord.backend` field.

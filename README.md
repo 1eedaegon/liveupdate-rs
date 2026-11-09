@@ -11,16 +11,16 @@ public API in Rust, while a small Android AAR only talks to `NotificationManager
 
 ```toml
 [dependencies]
-liveupdate = { version = "0.1.1", features = ["android"] }
+liveupdate = { version = "0.1.2", features = ["android"] }
 ```
 
-Put `liveupdate-android-0.1.1.aar` from the [GitHub release](https://github.com/1eedaegon/liveupdate-rs/releases)
+Put `liveupdate-android-0.1.2.aar` from the [GitHub release](https://github.com/1eedaegon/liveupdate-rs/releases)
 into `app/libs/`. The AAR is written in Kotlin and a file dependency brings no dependencies of its own, so
 add the Kotlin standard library too:
 
 ```kotlin
 dependencies {
-    implementation(files("libs/liveupdate-android-0.1.1.aar"))
+    implementation(files("libs/liveupdate-android-0.1.2.aar"))
     implementation("org.jetbrains.kotlin:kotlin-stdlib:2.2.10") // or newer
 }
 ```
@@ -147,7 +147,8 @@ closed as `NATIVE_ERROR`.
   can remain a regular ongoing notification.
 - Schema v2 supports Standard, BigText, rich Progress, Timer and Metric system styles, resource and
   app-private icons, up to three immutable actions, and durable action/dismissal events through
-  `LiveUpdate::events()`. It deliberately does not accept arbitrary `RemoteViews`, intents, paths or
+  `LiveUpdate::events()`. `LiveUpdateEvents.setListener` in the AAR tells the app as soon as an event is stored,
+  so it can drain without polling. It deliberately does not accept arbitrary `RemoteViews`, intents, paths or
   OEM extras.
 - Android removes notifications immediately. `EndPolicy::After` returns `UNSUPPORTED_FEATURE`.
 - Visibility is reported as `Unknown`: requesting private notification content does not prove what

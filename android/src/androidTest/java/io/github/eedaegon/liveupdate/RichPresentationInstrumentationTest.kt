@@ -171,6 +171,31 @@ class RichPresentationInstrumentationTest {
         assertEquals(0, adapter.drainEvents().getJSONArray("events").length())
     }
 
+    // LU-V2-EVENT-6
+    @Test
+    fun theListenerHearsAnActionAndADismissalOnceEachIsStored() {
+        val queued = java.util.Collections.synchronizedList(mutableListOf<Int>())
+        LiveUpdateEvents.setListener { queued += EventStore(context).size() }
+        try {
+            adapter.post(v2Record("listened", "standard", v2Snapshot(
+                JSONObject().put("kind", "standard"),
+                actions = JSONArray().put(action("confirm", "Confirm", false)),
+            )))
+            val notification = Device.waitForShown("listened")
+
+            notification.actions[0].actionIntent.send()
+            Device.waitUntil("the listener heard the action") { queued.size == 1 }
+            notification.deleteIntent.send()
+            Device.waitUntil("the listener heard the dismissal") { queued.size == 2 }
+
+            // Each call came after its event was stored.
+            assertEquals(listOf(1, 2), queued.toList())
+            assertEquals(2, adapter.drainEvents().getJSONArray("events").length())
+        } finally {
+            LiveUpdateEvents.setListener(null)
+        }
+    }
+
     // LU-V2-EVENT-5
     @Test
     fun eventQueueIsDurableBoundedAndReportsDroppedEntries() {
