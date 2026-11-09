@@ -239,26 +239,25 @@ class RichPresentationInstrumentationTest {
 
     // LU-V2-SAMSUNG-2
     @Test
-    fun samsungNowBarExtrasAreExplicitAndAbsentByDefault() {
+    fun samsungNowBarCapabilityAndExtrasAreVendorGated() {
+        val nonSamsungAdapter = AndroidAdapter(context, manufacturer = "google")
+        assertFalse(nonSamsungAdapter.capabilities()
+            .getJSONObject("presentation").getBoolean("samsungNowBar"))
         val style = JSONObject().put("kind", "standard")
-        adapter.post(v2Record("plain-vendor", "standard", v2Snapshot(style)))
+        nonSamsungAdapter.post(v2Record("plain-vendor", "standard", v2Snapshot(style)))
         val plain = Device.waitForShown("plain-vendor").extras
         assertFalse(plain.containsKey("android.ongoingActivityNoti.style"))
 
+        val samsungAdapter = AndroidAdapter(context, manufacturer = "samsung")
+        assertTrue(samsungAdapter.capabilities()
+            .getJSONObject("presentation").getBoolean("samsungNowBar"))
         val samsung = JSONObject().put("primary", "Order").put("secondary", "Preparing")
-        adapter.post(v2Record("samsung", "standard", v2Snapshot(style, samsungNowBar = samsung)))
+        samsungAdapter.post(v2Record("samsung", "standard", v2Snapshot(style, samsungNowBar = samsung)))
         val extras = Device.waitForShown("samsung").extras
-        if (Build.MANUFACTURER.equals("samsung", ignoreCase = true)) {
-            assertEquals(1, extras.getInt("android.ongoingActivityNoti.style"))
-            assertEquals("Order", extras.getCharSequence("android.ongoingActivityNoti.primaryInfo"))
-            assertEquals("Preparing", extras.getCharSequence("android.ongoingActivityNoti.secondaryInfo"))
-            assertEquals("Order", extras.getString("android.ongoingActivityNoti.nowbarPrimaryInfo"))
-        } else {
-            assertFalse(extras.containsKey("android.ongoingActivityNoti.style"))
-            assertFalse(extras.containsKey("android.ongoingActivityNoti.primaryInfo"))
-            assertFalse(extras.containsKey("android.ongoingActivityNoti.secondaryInfo"))
-            assertFalse(extras.containsKey("android.ongoingActivityNoti.nowbarPrimaryInfo"))
-        }
+        assertEquals(1, extras.getInt("android.ongoingActivityNoti.style"))
+        assertEquals("Order", extras.getCharSequence("android.ongoingActivityNoti.primaryInfo"))
+        assertEquals("Preparing", extras.getCharSequence("android.ongoingActivityNoti.secondaryInfo"))
+        assertEquals("Order", extras.getString("android.ongoingActivityNoti.nowbarPrimaryInfo"))
     }
 
     // LU-V2-VALID-2

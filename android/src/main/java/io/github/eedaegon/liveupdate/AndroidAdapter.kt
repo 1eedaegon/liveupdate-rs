@@ -25,12 +25,13 @@ private const val NATIVE_MESSAGE = "The Android live update adapter failed."
 /**
  * Android framework calls for the Rust lifecycle.
  *
- * [sdk] is the API level whose behavior the adapter follows. It is the device's own level; tests
- * lower it to check, on a newer device, what an Android release without Live Updates gets.
+ * [sdk] and [manufacturer] describe the device behavior the adapter follows. They use the real
+ * device values; tests override them to exercise platform- and vendor-specific paths.
  */
 internal class AndroidAdapter(
     context: Context,
     private val sdk: Int = Build.VERSION.SDK_INT,
+    private val manufacturer: String = Build.MANUFACTURER,
 ) : ManagedAdapter {
     private val application = context.applicationContext
     private val manager = application.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -51,7 +52,7 @@ internal class AndroidAdapter(
                 .put("actions", true)
                 .put("images", true)
                 .put("events", true)
-                .put("samsungNowBar", sdk >= 37 && Build.MANUFACTURER.equals("samsung", ignoreCase = true)))
+                .put("samsungNowBar", sdk >= 37 && manufacturer.equals("samsung", ignoreCase = true)))
     }
 
     override fun read(): JSONArray {
@@ -106,7 +107,7 @@ internal class AndroidAdapter(
         }
         val id = record.optionalString("id") ?: invalid()
         if (!validId(id)) invalid()
-        val notification = NotificationRenderer(application, sdk, CHANNEL_ID).build(record)
+        val notification = NotificationRenderer(application, sdk, CHANNEL_ID, manufacturer).build(record)
         manager.notify(TAG_PREFIX + id, NOTIFICATION_ID, notification)
     }
 

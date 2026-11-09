@@ -31,6 +31,7 @@ internal class NotificationRenderer(
     context: Context,
     private val sdk: Int,
     private val channelId: String,
+    private val manufacturer: String,
 ) {
     private val application = context.applicationContext
     private val icons = IconResolver(application)
@@ -426,7 +427,7 @@ internal class NotificationRenderer(
         requireFields(value, emptySet(), setOf("primary", "secondary"))
         val title = optionalText(value, "primary", 120) ?: defaultPrimary
         val secondary = optionalText(value, "secondary", 240) ?: defaultSecondary
-        if (!Build.MANUFACTURER.equals("samsung", ignoreCase = true)) return
+        if (!manufacturer.equals("samsung", ignoreCase = true)) return
         val extras = Bundle()
         SamsungNowBar.extras(sdk, title, secondary).forEach { (key, item) ->
             when {
