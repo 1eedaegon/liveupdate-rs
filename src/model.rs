@@ -185,14 +185,6 @@ pub enum ActivityState {
     Dismissed,
 }
 
-/// Native presentation backend used by an activity record.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum Backend {
-    /// Android notification and promoted ongoing presentation.
-    AndroidNotification,
-}
-
 /// Public receipt returned from start, update, end and list operations.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -207,8 +199,6 @@ pub struct ActivityRecord {
     pub template: Template,
     /// Latest accepted content.
     pub snapshot: Snapshot,
-    /// Android presentation backend.
-    pub backend: Backend,
     /// Last reconciled lifecycle state.
     pub state: ActivityState,
     /// Visibility cannot be proven from notification acceptance alone.
@@ -531,10 +521,6 @@ mod tests {
         assert_eq!(
             serde_json::to_value(Template::Timer).unwrap(),
             json!("timer")
-        );
-        assert_eq!(
-            serde_json::to_value(Backend::AndroidNotification).unwrap(),
-            json!("androidNotification")
         );
     }
 

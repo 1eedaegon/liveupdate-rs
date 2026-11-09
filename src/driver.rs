@@ -1,6 +1,6 @@
 use crate::{
     ActivityState, Capabilities, EventBatch, PromotionState, Result, Snapshot, StartRequest,
-    Visibility, model::Backend,
+    Visibility,
 };
 use serde::{Deserialize, Serialize};
 
@@ -43,7 +43,6 @@ impl DriverRecord {
             schema_version: self.origin.schema_version,
             template: self.origin.template,
             snapshot: self.snapshot.clone(),
-            backend: Backend::AndroidNotification,
             state: self.state,
             visibility: Visibility::Unknown,
             degraded_features: if degraded {
@@ -168,7 +167,12 @@ mod tests {
         assert_eq!(public.schema_version, 1);
         assert_eq!(public.template, Template::Progress);
         assert_eq!(public.snapshot.revision, 3);
-        assert_eq!(public.backend, Backend::AndroidNotification);
+        assert!(
+            serde_json::to_value(&public)
+                .unwrap()
+                .get("backend")
+                .is_none()
+        );
         assert_eq!(public.visibility, Visibility::Unknown);
     }
 

@@ -3,6 +3,13 @@
 //! Android framework integration is provided by a narrow managed adapter because
 //! notification framework types and components are Java/Kotlin APIs. The stable
 //! contract and lifecycle remain in Rust.
+//!
+//! Platform selection belongs to callers that combine this Android core with
+//! other backends, so the core does not expose a backend discriminator.
+//!
+//! ```compile_fail
+//! use liveupdate::Backend;
+//! ```
 
 mod bridge;
 mod client;
@@ -25,7 +32,7 @@ pub use driver::{Driver, DriverRecord, Observation};
 pub use error::{Error, ErrorCode, Result};
 pub use event::{ActivityEvent, EventBatch, EventKind, MAX_EVENTS};
 pub use model::{
-    ActivityRecord, ActivityState, Backend, EndPolicy, MAX_SAFE_INTEGER, MAX_TIMESTAMP, Snapshot,
+    ActivityRecord, ActivityState, EndPolicy, MAX_SAFE_INTEGER, MAX_TIMESTAMP, Snapshot,
     StartRequest, Template, Timer,
 };
 pub use presentation::{

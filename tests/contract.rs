@@ -1,8 +1,8 @@
 //! Compatibility tests for the serialized public contract.
 
 use liveupdate::{
-    ActivityState, Capabilities, DriverRecord, Fallback, Observation, PresentationCapabilities,
-    PromotionState, Snapshot, StartRequest, Template, Timer, Visibility,
+    ActivityRecord, ActivityState, Capabilities, DriverRecord, Fallback, Observation,
+    PresentationCapabilities, PromotionState, Snapshot, StartRequest, Template, Timer, Visibility,
 };
 use serde_json::json;
 
@@ -197,4 +197,50 @@ fn records_cross_the_bridge_with_the_names_the_adapter_reads() {
     .unwrap();
     assert_eq!(observation.snapshot, snapshot);
     assert_eq!(observation.state, ActivityState::Stale);
+}
+
+// LU-BRIDGE-1
+#[test]
+fn public_records_do_not_leak_cross_platform_backend_discriminators() {
+    let record = ActivityRecord {
+        id: "id".into(),
+        activity_key: "delivery:1".into(),
+        schema_version: 1,
+        template: Template::Progress,
+        snapshot: Snapshot {
+            revision: 2,
+            title: "Delivery".into(),
+            status: "Soon".into(),
+            progress: Some(0.5),
+            timer: None,
+            stale_at: None,
+            presentation: None,
+        },
+        state: ActivityState::Active,
+        visibility: Visibility::Unknown,
+        degraded_features: vec!["nativeLiveActivity".into()],
+        promotion_requested: true,
+        promotion_state: PromotionState::NotPromoted,
+    };
+
+    assert_eq!(
+        serde_json::to_value(record).unwrap(),
+        json!({
+            "id": "id",
+            "activityKey": "delivery:1",
+            "schemaVersion": 1,
+            "template": "progress",
+            "snapshot": {
+                "revision": 2,
+                "title": "Delivery",
+                "status": "Soon",
+                "progress": 0.5
+            },
+            "state": "active",
+            "visibility": "unknown",
+            "degradedFeatures": ["nativeLiveActivity"],
+            "promotionRequested": true,
+            "promotionState": "notPromoted"
+        })
+    );
 }

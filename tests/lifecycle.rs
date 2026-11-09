@@ -4,8 +4,8 @@ mod common;
 
 use common::{FakeDriver, assert_code, request, snapshot, timer_snapshot};
 use liveupdate::{
-    ActivityState, Backend, EndPolicy, ErrorCode, Fallback, LiveUpdate, MAX_TIMESTAMP,
-    PromotionState, Snapshot, Template, Timer, Visibility,
+    ActivityState, EndPolicy, ErrorCode, Fallback, LiveUpdate, MAX_TIMESTAMP, PromotionState,
+    Snapshot, Template, Timer, Visibility,
 };
 use std::{
     panic::{AssertUnwindSafe, catch_unwind},
@@ -26,7 +26,6 @@ fn a_start_writes_a_pending_receipt_before_it_posts() {
     assert_eq!(record.schema_version, 1);
     assert_eq!(record.template, Template::Progress);
     assert_eq!(record.snapshot, snapshot(0));
-    assert_eq!(record.backend, Backend::AndroidNotification);
     assert_eq!(record.state, ActivityState::Active);
     assert_eq!(record.visibility, Visibility::Unknown);
     assert_eq!(

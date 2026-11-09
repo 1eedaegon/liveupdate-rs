@@ -7,6 +7,10 @@ Android adapter owns only what the framework must load from DEX: notification co
 `PendingIntent`, permission and settings inspection, calls into `NotificationManager`, and the
 `SharedPreferences` file that holds the receipts.
 
+Because this crate is the Android core, its public records do not carry a backend discriminator.
+Framework plugins that combine Android with other platforms add that discriminator while converting
+the Android record into their own cross-platform contract.
+
 ```text
 application -> Rust lifecycle -> JSON over JNI -> Android AAR -> framework / system UI
                    ^                                   |
