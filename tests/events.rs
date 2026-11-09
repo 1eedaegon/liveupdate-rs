@@ -5,9 +5,18 @@ mod common;
 use common::FakeDriver;
 use liveupdate::{
     ActivityEvent, Capabilities, Driver, DriverRecord, EventBatch, EventKind, LiveUpdate,
-    Observation,
+    MAX_EVENTS, MAX_SAFE_INTEGER, MAX_TIMESTAMP, Observation,
 };
 use serde_json::json;
+
+fn event(sequence: u64, occurred_at: u64, activity_id: &str, kind: EventKind) -> ActivityEvent {
+    ActivityEvent {
+        sequence,
+        activity_id: activity_id.into(),
+        occurred_at,
+        kind,
+    }
+}
 
 // LU-V2-EVENT-1
 #[test]
@@ -56,6 +65,57 @@ fn event_wire_shapes_are_strict_stable_and_javascript_safe() {
     let mut unknown = serde_json::to_value(batch).unwrap();
     unknown["events"][0]["kind"]["payload"] = json!("secret");
     assert!(serde_json::from_value::<EventBatch>(unknown).is_err());
+}
+
+// LU-V2-EVENT-1
+#[test]
+fn event_validation_checks_exact_numeric_identifier_and_batch_boundaries() {
+    event(
+        MAX_SAFE_INTEGER,
+        MAX_TIMESTAMP,
+        "activity-id",
+        EventKind::Dismissed,
+    )
+    .validate()
+    .unwrap();
+
+    for invalid in [
+        event(MAX_SAFE_INTEGER + 1, 1, "activity-id", EventKind::Dismissed),
+        event(1, MAX_TIMESTAMP + 1, "activity-id", EventKind::Dismissed),
+        event(1, 1, "", EventKind::Dismissed),
+    ] {
+        assert!(invalid.validate().is_err());
+    }
+    for action_id in ["", "-cancel", "cancel now", &"x".repeat(65)] {
+        assert!(
+            event(
+                1,
+                1,
+                "activity-id",
+                EventKind::Action {
+                    action_id: action_id.into(),
+                },
+            )
+            .validate()
+            .is_err()
+        );
+    }
+
+    let full = EventBatch {
+        events: (1..=MAX_EVENTS)
+            .map(|sequence| event(sequence as u64, 1, "activity-id", EventKind::Dismissed))
+            .collect(),
+        dropped: MAX_SAFE_INTEGER,
+    };
+    full.validate().unwrap();
+    let mut too_many = full.clone();
+    too_many
+        .events
+        .push(event(129, 1, "activity-id", EventKind::Dismissed));
+    assert!(too_many.validate().is_err());
+    let mut too_many_dropped = full;
+    too_many_dropped.dropped = MAX_SAFE_INTEGER + 1;
+    assert!(too_many_dropped.validate().is_err());
 }
 
 // LU-V2-EVENT-2

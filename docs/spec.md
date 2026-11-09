@@ -332,20 +332,20 @@ Errors are `liveupdate::ErrorCode` values. Revisions and timestamps are integers
 | LU-V2-COMPAT-1 | `tests/presentation.rs::schema_one_keeps_its_exact_wire_shape` (integration)<br>`tests/presentation.rs::schema_versions_cannot_mix_legacy_and_rich_presentations` (integration) |
 | LU-V2-MODEL-1 | `tests/presentation.rs::schema_versions_cannot_mix_legacy_and_rich_presentations` (integration) |
 | LU-V2-MODEL-2 | `tests/presentation.rs::every_system_style_has_a_stable_tagged_shape_and_template` (integration) |
-| LU-V2-PROGRESS-1 | `tests/presentation.rs::rich_progress_accepts_the_complete_shape_and_rejects_each_structural_boundary` (integration) |
+| LU-V2-PROGRESS-1 | `tests/presentation.rs::rich_progress_accepts_the_complete_shape_and_rejects_each_structural_boundary` (integration)<br>`tests/presentation.rs::rich_progress_accepts_exact_limits_and_rejects_adjacent_values` (integration) |
 | LU-V2-PROGRESS-2 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/RichPresentationInstrumentationTest.kt::progressStyleCarriesSegmentsPointsIconsAndChipText` (device) |
-| LU-V2-METRIC-1 | `tests/presentation.rs::metrics_are_finite_labeled_and_have_a_valid_critical_index` (integration) |
+| LU-V2-METRIC-1 | `tests/presentation.rs::metrics_are_finite_labeled_and_have_a_valid_critical_index` (integration)<br>`tests/presentation.rs::timer_metric_and_vendor_values_enforce_exact_bounds` (integration) |
 | LU-V2-METRIC-2 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/RichPresentationInstrumentationTest.kt::metricStyleCarriesThreeTypedMetricsAndCriticalSelection` (device) |
-| LU-V2-ACTION-1 | `tests/presentation.rs::actions_and_icon_sources_are_closed_unique_and_bounded` (integration) |
+| LU-V2-ACTION-1 | `tests/presentation.rs::actions_and_icon_sources_are_closed_unique_and_bounded` (integration)<br>`tests/presentation.rs::action_icon_and_boolean_wire_boundaries_are_exact` (integration) |
 | LU-V2-ACTION-2 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/RichPresentationInstrumentationTest.kt::immutableUniqueActionsAndDismissalsDrainAsSequencedEvents` (device) |
-| LU-V2-ICON-1 | `tests/presentation.rs::actions_and_icon_sources_are_closed_unique_and_bounded` (integration) |
+| LU-V2-ICON-1 | `tests/presentation.rs::actions_and_icon_sources_are_closed_unique_and_bounded` (integration)<br>`tests/presentation.rs::action_icon_and_boolean_wire_boundaries_are_exact` (integration) |
 | LU-V2-ICON-2 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/RichPresentationInstrumentationTest.kt::appPrivateImagesWorkAndTraversalOrOversizedFilesFailClosed` (device) |
-| LU-V2-VALID-1 | `tests/presentation.rs::nested_models_reject_unknown_fields_and_enforce_text_limits` (integration) |
+| LU-V2-VALID-1 | `tests/presentation.rs::nested_models_reject_unknown_fields_and_enforce_text_limits` (integration)<br>`tests/presentation.rs::timer_metric_and_vendor_values_enforce_exact_bounds` (integration) |
 | LU-V2-VALID-2 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/RichPresentationInstrumentationTest.kt::malformedRichModelsAreRejectedBeforePosting` (device) |
 | LU-V2-ADAPTER-1 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/RichPresentationInstrumentationTest.kt::progressStyleCarriesSegmentsPointsIconsAndChipText` (device) |
 | LU-V2-ADAPTER-2 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/RichPresentationInstrumentationTest.kt::standardBigTextTimerAndLowerApiFallbackUseOnlySystemTemplates` (device) |
 | LU-V2-CAP-1 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/LiveUpdateBridgeInstrumentationTest.kt::capabilitiesReflectTheRunningDevice` (device) |
-| LU-V2-EVENT-1 | `tests/events.rs::event_wire_shapes_are_strict_stable_and_javascript_safe` (integration)<br>`android/src/androidTest/java/io/github/eedaegon/liveupdate/RichPresentationInstrumentationTest.kt::eventActivityIdentifierLimitsCountUnicodeCodePoints` (device) |
+| LU-V2-EVENT-1 | `tests/events.rs::event_wire_shapes_are_strict_stable_and_javascript_safe` (integration)<br>`tests/events.rs::event_validation_checks_exact_numeric_identifier_and_batch_boundaries` (integration)<br>`android/src/androidTest/java/io/github/eedaegon/liveupdate/RichPresentationInstrumentationTest.kt::eventActivityIdentifierLimitsCountUnicodeCodePoints` (device) |
 | LU-V2-EVENT-2 | `tests/events.rs::one_client_atomically_drains_events_and_the_next_drain_is_empty` (integration) |
 | LU-V2-EVENT-3 | `tests/events.rs::custom_drivers_keep_source_compatibility_with_an_empty_event_default` (integration) |
 | LU-V2-EVENT-4 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/RichPresentationInstrumentationTest.kt::immutableUniqueActionsAndDismissalsDrainAsSequencedEvents` (device)<br>`android/src/androidTest/java/io/github/eedaegon/liveupdate/NativeRustInstrumentationTest.kt::richPresentationAndActionEventsCrossRustJniUnchanged` (device) |

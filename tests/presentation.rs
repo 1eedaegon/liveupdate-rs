@@ -2,9 +2,9 @@
 
 use liveupdate::{
     AndroidPresentation, BigTextStyle, ErrorCode, Fallback, IconSource, MAX_ACTIONS, MAX_METRICS,
-    MAX_PROGRESS_ELEMENTS, Metric, MetricStyle, MetricValue, NotificationAction, PresentationStyle,
-    ProgressPoint, ProgressSegment, ProgressStyle, SamsungNowBar, SemanticStyle, Snapshot,
-    StartRequest, Template, Timer, TimerStyle, Visibility,
+    MAX_PROGRESS_ELEMENTS, MAX_TIMESTAMP, Metric, MetricStyle, MetricValue, NotificationAction,
+    PresentationStyle, ProgressPoint, ProgressSegment, ProgressStyle, SamsungNowBar, SemanticStyle,
+    Snapshot, StartRequest, Template, Timer, TimerStyle, Visibility,
 };
 use serde_json::{Value, json};
 
@@ -87,6 +87,86 @@ fn valid_progress() -> ProgressStyle {
         end_icon: Some(IconSource::Resource("home".into())),
         tracker_icon: Some(IconSource::AppFile("liveupdate/truck.png".into())),
     }
+}
+
+fn exact_numeric_progress() -> ProgressStyle {
+    let maximum = i32::MAX as u32;
+    ProgressStyle {
+        progress: maximum,
+        segments: vec![ProgressSegment {
+            length: maximum,
+            id: None,
+            color: None,
+            semantic_style: None,
+        }],
+        points: vec![ProgressPoint {
+            position: maximum,
+            id: None,
+            color: None,
+            semantic_style: None,
+        }],
+        indeterminate: false,
+        styled_by_progress: false,
+        start_icon: None,
+        end_icon: None,
+        tracker_icon: None,
+    }
+}
+
+fn progress_with_points(count: usize) -> ProgressStyle {
+    ProgressStyle {
+        progress: count as u32,
+        segments: vec![ProgressSegment {
+            length: count as u32,
+            id: None,
+            color: None,
+            semantic_style: None,
+        }],
+        points: (1..=count)
+            .map(|position| ProgressPoint {
+                position: position as u32,
+                id: None,
+                color: None,
+                semantic_style: None,
+            })
+            .collect(),
+        ..exact_numeric_progress()
+    }
+}
+
+fn progress_with_segments(count: usize) -> ProgressStyle {
+    ProgressStyle {
+        progress: count as u32,
+        segments: vec![
+            ProgressSegment {
+                length: 1,
+                id: None,
+                color: None,
+                semantic_style: None,
+            };
+            count
+        ],
+        points: Vec::new(),
+        ..exact_numeric_progress()
+    }
+}
+
+fn metric(value: MetricValue) -> Metric {
+    Metric {
+        label: "Metric".into(),
+        value,
+        semantic_style: None,
+    }
+}
+
+fn timer_presentation(started_at: u64, ends_at: u64) -> AndroidPresentation {
+    presentation(PresentationStyle::Timer(TimerStyle {
+        timer: Timer {
+            started_at,
+            ends_at,
+        },
+        counts_down: true,
+    }))
 }
 
 fn assert_invalid(result: liveupdate::Result<()>) {
@@ -272,6 +352,42 @@ fn rich_progress_accepts_the_complete_shape_and_rejects_each_structural_boundary
     indeterminate.validate().unwrap();
 }
 
+// LU-V2-PROGRESS-1
+#[test]
+fn rich_progress_accepts_exact_limits_and_rejects_adjacent_values() {
+    let exact_numeric_limit = exact_numeric_progress();
+    exact_numeric_limit.validate().unwrap();
+
+    let mut total_too_large = exact_numeric_limit.clone();
+    total_too_large.progress = 0;
+    total_too_large.points.clear();
+    total_too_large.segments.push(ProgressSegment {
+        length: 1,
+        id: None,
+        color: None,
+        semantic_style: None,
+    });
+    assert_invalid(total_too_large.validate());
+
+    progress_with_points(MAX_PROGRESS_ELEMENTS)
+        .validate()
+        .unwrap();
+    assert_invalid(progress_with_points(MAX_PROGRESS_ELEMENTS + 1).validate());
+    progress_with_segments(MAX_PROGRESS_ELEMENTS)
+        .validate()
+        .unwrap();
+    assert_invalid(progress_with_segments(MAX_PROGRESS_ELEMENTS + 1).validate());
+
+    let mut empty = exact_numeric_limit.clone();
+    empty.progress = 0;
+    empty.segments.clear();
+    empty.points.clear();
+    assert_invalid(empty.validate());
+    let mut invalid_icon = exact_numeric_limit;
+    invalid_icon.start_icon = Some(IconSource::AppFile(String::new()));
+    assert_invalid(invalid_icon.validate());
+}
+
 // LU-V2-ACTION-1, LU-V2-ICON-1
 #[test]
 fn actions_and_icon_sources_are_closed_unique_and_bounded() {
@@ -313,6 +429,46 @@ fn actions_and_icon_sources_are_closed_unique_and_bounded() {
     IconSource::AppFile("liveupdate/images/truck.png".into())
         .validate()
         .unwrap();
+}
+
+// LU-V2-ACTION-1, LU-V2-ICON-1
+#[test]
+fn action_icon_and_boolean_wire_boundaries_are_exact() {
+    let mut model = presentation(PresentationStyle::Standard);
+    let action = model.actions[0].clone();
+    model.actions = (0..MAX_ACTIONS)
+        .map(|index| NotificationAction {
+            id: format!("action{index}"),
+            ..action.clone()
+        })
+        .collect();
+    model.validate().unwrap();
+
+    IconSource::AppFile("a".repeat(240)).validate().unwrap();
+    for path in [
+        String::new(),
+        "a".repeat(241),
+        "/absolute.png".into(),
+        "a\\b".into(),
+    ] {
+        assert_invalid(IconSource::AppFile(path).validate());
+    }
+    model.large_icon = Some(IconSource::AppFile(String::new()));
+    assert_invalid(model.validate());
+
+    let mut action = NotificationAction {
+        id: "confirm".into(),
+        title: "Confirm".into(),
+        icon: None,
+        authentication_required: false,
+    };
+    let false_value = serde_json::to_value(&action).unwrap();
+    assert!(false_value.get("authenticationRequired").is_none());
+    action.authentication_required = true;
+    assert_eq!(
+        serde_json::to_value(action).unwrap()["authenticationRequired"],
+        true
+    );
 }
 
 // LU-V2-METRIC-1
@@ -375,6 +531,55 @@ fn metrics_are_finite_labeled_and_have_a_valid_critical_index() {
         }
         .validate(),
     );
+}
+
+// LU-V2-METRIC-1, LU-V2-VALID-1
+#[test]
+fn timer_metric_and_vendor_values_enforce_exact_bounds() {
+    timer_presentation(MAX_TIMESTAMP - 1, MAX_TIMESTAMP)
+        .validate()
+        .unwrap();
+    assert_invalid(timer_presentation(0, MAX_TIMESTAMP + 1).validate());
+    assert_invalid(timer_presentation(1_000, 1_000).validate());
+
+    for value in [
+        MetricValue::Text(String::new()),
+        MetricValue::Stopwatch {
+            started_at: MAX_TIMESTAMP + 1,
+        },
+        MetricValue::Countdown {
+            ends_at: MAX_TIMESTAMP + 1,
+        },
+        MetricValue::Decimal {
+            value: f64::from(f32::MAX) * 2.0,
+            unit: None,
+        },
+        MetricValue::Integer {
+            value: 1,
+            unit: Some(String::new()),
+        },
+    ] {
+        assert_invalid(metric(value).validate());
+    }
+    let valid_metric = metric(MetricValue::Text("x".repeat(64)));
+    MetricStyle {
+        metrics: vec![valid_metric; MAX_METRICS],
+        critical_metric: Some((MAX_METRICS - 1) as u8),
+    }
+    .validate()
+    .unwrap();
+
+    let mut vendor = presentation(PresentationStyle::Standard);
+    vendor.samsung_now_bar = Some(SamsungNowBar {
+        primary: Some(String::new()),
+        secondary: Some("Preparing".into()),
+    });
+    assert_invalid(vendor.validate());
+    vendor.samsung_now_bar = Some(SamsungNowBar {
+        primary: Some("Order".into()),
+        secondary: Some(String::new()),
+    });
+    assert_invalid(vendor.validate());
 }
 
 // LU-V2-VALID-1
