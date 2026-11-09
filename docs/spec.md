@@ -351,5 +351,5 @@ Errors are `liveupdate::ErrorCode` values. Revisions and timestamps are integers
 | LU-V2-EVENT-4 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/RichPresentationInstrumentationTest.kt::immutableUniqueActionsAndDismissalsDrainAsSequencedEvents` (device)<br>`android/src/androidTest/java/io/github/eedaegon/liveupdate/NativeRustInstrumentationTest.kt::richPresentationAndActionEventsCrossRustJniUnchanged` (device) |
 | LU-V2-EVENT-5 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/RichPresentationInstrumentationTest.kt::eventQueueIsDurableBoundedAndReportsDroppedEntries` (device) |
 | LU-V2-SAMSUNG-1 | `android/src/test/java/io/github/eedaegon/liveupdate/SamsungNowBarTest.kt::extrasAreClosedOptInAndApi37Only` (kotlin) |
-| LU-V2-SAMSUNG-2 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/RichPresentationInstrumentationTest.kt::samsungNowBarExtrasAreExplicitAndAbsentByDefault` (device) |
+| LU-V2-SAMSUNG-2 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/RichPresentationInstrumentationTest.kt::samsungNowBarCapabilityAndExtrasAreVendorGated` (device) |
 | LU-V2-JNI-1 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/NativeRustInstrumentationTest.kt::richPresentationAndActionEventsCrossRustJniUnchanged` (device) |
