@@ -18,6 +18,7 @@ class LiveUpdateActionReceiver : BroadcastReceiver() {
         val actionId = intent.getStringExtra(ACTION_ID_EXTRA) ?: return
         try {
             EventStore(context).appendAction(activityId, actionId)
+            LiveUpdateEvents.stored()
         } catch (_: Exception) {
             Log.e(LOG_TAG, "Could not persist a live update action.")
         }
@@ -31,6 +32,7 @@ class LiveUpdateDismissReceiver : BroadcastReceiver() {
         val activityId = intent.getStringExtra(ACTIVITY_ID_EXTRA) ?: return
         try {
             EventStore(context).appendDismissed(activityId)
+            LiveUpdateEvents.stored()
         } catch (_: Exception) {
             Log.e(LOG_TAG, "Could not persist a live update dismissal.")
         }
