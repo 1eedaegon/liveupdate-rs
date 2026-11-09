@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.1 - 2026-11-10
+
+- Breaking pre-1.0 cleanup: removed the redundant `Backend` enum and `ActivityRecord.backend` field.
+  This crate is an Android core; cross-platform adapters add their own backend discriminator at
+  their public boundary.
+
 ## 0.1.0 - 2026-11-09
 
 - Added schema v2 Android presentations for Standard, BigText, ProgressStyle, Timer and MetricStyle,
