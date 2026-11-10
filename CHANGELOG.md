@@ -4,9 +4,8 @@
 
 ## 0.1.3 - 2026-11-10
 
-- Replaced the primary Rust example with a schema-v2 rich progress presentation covering segments, points, semantic
-  styles, icons, an action and Samsung Now Bar content, and added a documentation regression test that keeps it on the
-  rich schema.
+- docs: use rich schema in the primary example (0.1.3)
+- ci: automate conventional non-major releases
 
 ## 0.1.2 - 2026-11-10
 

@@ -90,12 +90,32 @@ keys, and leaves a record of each full pass as an artifact (`tests/ci/cache.sh`)
 merges a pull request finds the pull request's pass for the same inputs and skips the suite. A run by
 hand can ignore every cache (`fresh`) or rerun the suite (`retest`).
 
-`.github/workflows/publish.yml` runs on `v*` tags: it requires a successful CI run on main for the tag's
-exact commit, attaches the AAR to the GitHub release, and publishes to crates.io only when run by hand
-with `publish` checked and the repository variable `CRATES_IO_PUBLISH` set to `true`, after the AAR is
-attached, from the `crates-io` environment. Two settings belong to the repository's owner: the
-`crates-io` environment should require a reviewer, and the crates.io Trusted Publisher should name this
-repository, `publish.yml` and that environment, so that no other job can mint a token.
+After a successful `CI` run at the current tip of `main`, `.github/workflows/auto-release.yml` reads the
+one-line conventional commit subjects since the latest stable tag. `feat` prepares the next minor;
+`fix`, `perf`, `refactor`, `docs`, and `revert` prepare the next patch; `test`, `ci`, `chore`, `build`,
+and `style` do not request a release by themselves. Unknown subjects fail the plan. A `!`,
+`BREAKING CHANGE:`, or `BREAKING-CHANGE:` never increments major automatically: run **Auto release**
+from the Actions page with `major` checked. That creates the major version commit, but the commit must
+still pass its own exact-SHA CI before it is tagged.
+
+The generated version commit updates both locks, the README and `CHANGELOG.md`, whose section is made
+from one bullet per non-merge commit subject. Because GitHub does not recursively start workflows for
+pushes made with `GITHUB_TOKEN`, the automation explicitly dispatches CI for the version commit, then
+explicitly dispatches `publish.yml` after tagging it. The repository's Actions setting must allow
+read/write workflow permissions, and a protected `main` must allow this workflow to push its generated
+version commit. `bash tests/release/run.sh` tests the policy against isolated temporary Git repositories;
+`sh tests/ci/run.sh` checks its triggers, permissions, main-tip guard and dispatch chain.
+
+If the generated version commit was pushed but dispatching CI failed, run `CI` once by hand on `main`;
+the successful run resumes at tagging. If a tag exists at `main`'s tip but its GitHub release is missing,
+rerun **Auto release** without `major`; its no-change recovery path dispatches `publish.yml` again.
+
+`.github/workflows/publish.yml` requires a successful CI run on main for the tag's exact commit, records
+the matching changelog section as the GitHub release notes, and attaches the AAR. Publishing to crates.io
+still happens only when `publish` is checked by hand and the repository variable
+`CRATES_IO_PUBLISH` is `true`, after the AAR is attached, from the `crates-io` environment. That
+environment should require a reviewer, and the crates.io Trusted Publisher should name this repository,
+`publish.yml` and that environment, so no other job can mint a token.
 
 ## Devices
 

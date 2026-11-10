@@ -9,8 +9,10 @@
 #   - each job's own `if:`, and that no suite's failure is swallowed (`|| true`, `continue-on-error`);
 #   - publish.yml publishes to crates.io only by hand, with `publish` and CRATES_IO_PUBLISH, after the guard
 #     and the AAR, from the `crates-io` environment;
-#   - no workflow runs on pull_request_target, only publish.yml's AAR job may write contents, and every
-#     action is pinned to a commit SHA.
+#   - no workflow runs on pull_request_target, only the release workflows may write contents, and every
+#     action is pinned to a commit SHA;
+#   - auto-release.yml runs only after trusted main CI or by hand, keeps major manual, verifies the main
+#     tip, and explicitly dispatches CI and publish after GITHUB_TOKEN writes.
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 workflow=${1:-$root/.github/workflows/ci.yml}
@@ -67,7 +69,7 @@ starts("rust", *sources, "tests/lifecycle.rs", "tests/common/mod.rs", "tests/doc
 starts("android", "examples/delivery.rs")
 starts("spec", "examples/delivery.rs")
 starts("spec", "src/client.rs", "docs/spec.md", "docs/testing.md", "tools/spec-coverage.sh", "README.md",
-       "CHANGELOG.md", "tests/ci/run.sh", "tests/lifecycle.rs",
+       "CHANGELOG.md", "tests/ci/run.sh", "tests/release/run.sh", "tools/release.sh", "tests/lifecycle.rs",
        "android/src/androidTest/java/io/github/eedaegon/liveupdate/NativeRustInstrumentationTest.kt")
 for area in ("rust", "android"):
     skips(area, "README.md", "CHANGELOG.md", "docs/spec.md", "docs/design/architecture.md", "tools/spec-coverage.sh",
@@ -178,6 +180,36 @@ if "rust-lang/crates-io-auth-action@" not in publish or "cargo publish --locked"
     fail("publish.yml does not publish through Trusted Publishing")
 if "no successful CI run on main for" not in release or "git merge-base --is-ancestor" not in release:
     fail("publish.yml does not require main's CI for the tag's commit")
+if 'tools/release.sh notes "$VERSION" > "$RUNNER_TEMP/release-notes.md"' not in release:
+    fail("publish.yml does not build release notes from the recorded commit subjects")
+if '--notes-file "$RUNNER_TEMP/release-notes.md"' not in release:
+    fail("publish.yml does not give the generated notes to the GitHub release")
+
+# Automatic non-major releases: the write token is reachable only from main's completed CI or a manual
+# major dispatch; GITHUB_TOKEN writes explicitly dispatch the next workflow because they do not recurse.
+automatic = (root / ".github/workflows/auto-release.yml").read_text()
+for required in (
+    "workflow_run:", "workflows: [CI]", "types: [completed]", "branches: [main]",
+    "workflow_dispatch:", "major:", "contents: write", "actions: write",
+    "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'",
+    "github.event.workflow_run.conclusion == 'success'", "github.event.workflow_run.event == 'push'",
+    "github.event.workflow_run.event == 'workflow_dispatch'", "git rev-parse origin/main",
+    "tools/release.sh plan", "tools/release.sh prepare", "git push origin HEAD:main",
+    "gh workflow run ci.yml --ref main", "git tag -a", "git push origin \"$TAG\"",
+    'gh workflow run publish.yml --ref main -f tag="$TAG" -f publish=false',
+    'gh release view "$TAG" --repo "$GITHUB_REPOSITORY"',
+    "cancel-in-progress: false",
+):
+    if required not in automatic:
+        fail(f"auto-release.yml lacks {required!r}")
+if "pull_request" in automatic:
+    fail("auto-release.yml is reachable from a pull request")
+if "publish=true" in automatic:
+    fail("auto-release.yml may publish to crates.io")
+if automatic.count("contents: write") != 1 or automatic.count("actions: write") != 1:
+    fail("auto-release.yml's write permissions are not singular and explicit")
+if "bash tests/release/run.sh" not in text:
+    fail("ci.yml does not run the isolated release automation tests")
 
 # Triggers, permissions and pinned actions.
 if "contents: write" in text:

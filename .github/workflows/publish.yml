@@ -84,6 +84,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.validate.outputs.sha }}
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.2.0
         with:
@@ -108,10 +109,11 @@ jobs:
           aar="liveupdate-android-$VERSION.aar"
           cp android/build/outputs/aar/android-release.aar "$aar"
           sha256sum "$aar" > "$aar.sha256"
+          tools/release.sh notes "$VERSION" > "$RUNNER_TEMP/release-notes.md"
           if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             case $VERSION in *-*) prerelease=--prerelease ;; *) prerelease= ;; esac
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" $prerelease \
-              --notes "The crate is \`liveupdate = \"$VERSION\"\` on crates.io; the AAR is attached. See CHANGELOG.md."
+              --notes-file "$RUNNER_TEMP/release-notes.md"
           fi
           assets=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
           has_aar=false
