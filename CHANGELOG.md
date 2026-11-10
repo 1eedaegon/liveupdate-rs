@@ -6,6 +6,7 @@
 
 - docs: use rich schema in the primary example (0.1.3)
 - ci: automate conventional non-major releases
+- fix: configure automatic tag identity
 
 ## 0.1.2 - 2026-11-10
 

@@ -49,6 +49,10 @@ jobs:
             echo "$head passed CI, but main has advanced to $main; the newer run owns release planning"
             exit 1
           }
+      - name: Configure the release actor
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
       - name: Plan the release
         id: plan
         env:
@@ -76,8 +80,6 @@ jobs:
           git diff --check
           bash tests/release/run.sh
           sh tests/ci/run.sh
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           if [ "$MANUAL_MAJOR" = true ]; then
             git commit -am "chore: release v$VERSION" -m 'Release-Mode: manual-major'
           else

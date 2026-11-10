@@ -191,6 +191,7 @@ automatic = (root / ".github/workflows/auto-release.yml").read_text()
 for required in (
     "workflow_run:", "workflows: [CI]", "types: [completed]", "branches: [main]",
     "workflow_dispatch:", "major:", "contents: write", "actions: write",
+    "name: Configure the release actor",
     "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'",
     "github.event.workflow_run.conclusion == 'success'", "github.event.workflow_run.event == 'push'",
     "github.event.workflow_run.event == 'workflow_dispatch'", "git rev-parse origin/main",
