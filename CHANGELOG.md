@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.3 - 2026-11-10
+
+- Replaced the primary Rust example with a schema-v2 rich progress presentation covering segments, points, semantic
+  styles, icons, an action and Samsung Now Bar content, and added a documentation regression test that keeps it on the
+  rich schema.
+
 ## 0.1.2 - 2026-11-10
 
 - Added `LiveUpdateEvents.setListener` to the AAR: the action and dismiss receivers call the app's one listener once

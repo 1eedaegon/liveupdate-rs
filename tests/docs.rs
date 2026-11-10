@@ -53,6 +53,28 @@ fn the_readme_shows_the_compiled_example_whole() {
     );
 }
 
+// LU-DOCS-1
+#[test]
+fn the_primary_example_uses_the_rich_schema() {
+    let example = read("examples/delivery.rs");
+    for required in [
+        "schema_version: 2",
+        "AndroidPresentation",
+        "PresentationStyle::Progress",
+        "ProgressSegment",
+        "NotificationAction",
+    ] {
+        assert!(
+            example.contains(required),
+            "the primary example does not demonstrate {required}"
+        );
+    }
+    assert!(
+        !example.contains("schema_version: 1"),
+        "the primary example still uses the legacy schema"
+    );
+}
+
 // LU-DOCS-2
 #[test]
 fn the_readme_installs_this_version_and_its_aar() {

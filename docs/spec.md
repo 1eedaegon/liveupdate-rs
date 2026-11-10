@@ -216,7 +216,7 @@ Errors are `liveupdate::ErrorCode` values. Revisions and timestamps are integers
 
 | ID | Behavior | Input → expected result | Errors | Platform |
 | --- | --- | --- | --- | --- |
-| LU-DOCS-1 | The README's Rust code is `examples/delivery.rs`, verbatim: CI compiles it for Android (`cargo ndk check --all-targets --features android`) and for the host, and it compiles as a doctest. | A typo in `LiveUpdate::android()` → the Android check fails. | — | all |
+| LU-DOCS-1 | The README's Rust code is the schema-v2 rich progress example in `examples/delivery.rs`, verbatim: it demonstrates a typed `AndroidPresentation`, progress segments and an action; CI compiles it for Android (`cargo ndk check --all-targets --features android`) and for the host, and it compiles as a doctest. | A typo in `LiveUpdate::android()`, or replacing the example with schema v1 → the documentation checks fail. | — | all |
 | LU-DOCS-2 | The README installs this version of the crate, the AAR of its release and the Kotlin standard library the AAR was compiled against, and says what an app must know: runtime permission, `ndk-context`, one client, unsupported delayed end, unknown observed visibility, v2/event scope and the tested S23 firmware. | — | — | all |
 
 ## Not proven by a test
@@ -328,7 +328,7 @@ Errors are `liveupdate::ErrorCode` values. Revisions and timestamps are integers
 | LU-API-1 | `tests/reconcile.rs::without_promotion_the_fallback_posts_a_regular_notification` (integration)<br>`android/src/androidTest/java/io/github/eedaegon/liveupdate/AndroidAdapterInstrumentationTest.kt::belowApi36NothingIsPromoted` (device) |
 | LU-API-2 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/AndroidAdapterInstrumentationTest.kt::promotionIsRequestedOnlyWhenTheRecordAsksForItOnApi36AndLater` (device)<br>`android/src/androidTest/java/io/github/eedaegon/liveupdate/LiveUpdateBridgeInstrumentationTest.kt::capabilitiesReflectTheRunningDevice` (device)<br>`android/src/androidTest/java/io/github/eedaegon/liveupdate/NativeRustInstrumentationTest.kt::promotionIsRequestedWhereverAndroidAllowsIt` (device) |
 | LU-API-3 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/LiveUpdateBridgeInstrumentationTest.kt::capabilitiesReflectTheRunningDevice` (device)<br>`android/src/androidTest/java/io/github/eedaegon/liveupdate/NativeRustInstrumentationTest.kt::promotionIsRequestedWhereverAndroidAllowsIt` (device) |
-| LU-DOCS-1 | `tests/docs.rs::the_readme_shows_the_compiled_example_whole` (integration)<br>`src/lib.rs::ReadmeDoctests` (doc) |
+| LU-DOCS-1 | `tests/docs.rs::the_readme_shows_the_compiled_example_whole` (integration)<br>`tests/docs.rs::the_primary_example_uses_the_rich_schema` (integration)<br>`src/lib.rs::ReadmeDoctests` (doc) |
 | LU-DOCS-2 | `tests/docs.rs::no_doc_says_what_is_no_longer_true` (integration)<br>`tests/docs.rs::the_docs_state_what_an_app_must_know` (integration)<br>`tests/docs.rs::the_readme_installs_this_version_and_its_aar` (integration) |
 | LU-V2-COMPAT-1 | `tests/presentation.rs::schema_one_keeps_its_exact_wire_shape` (integration)<br>`tests/presentation.rs::schema_versions_cannot_mix_legacy_and_rich_presentations` (integration) |
 | LU-V2-MODEL-1 | `tests/presentation.rs::schema_versions_cannot_mix_legacy_and_rich_presentations` (integration) |

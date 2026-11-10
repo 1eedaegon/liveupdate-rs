@@ -11,16 +11,16 @@ public API in Rust, while a small Android AAR only talks to `NotificationManager
 
 ```toml
 [dependencies]
-liveupdate = { version = "0.1.2", features = ["android"] }
+liveupdate = { version = "0.1.3", features = ["android"] }
 ```
 
-Put `liveupdate-android-0.1.2.aar` from the [GitHub release](https://github.com/1eedaegon/liveupdate-rs/releases)
+Put `liveupdate-android-0.1.3.aar` from the [GitHub release](https://github.com/1eedaegon/liveupdate-rs/releases)
 into `app/libs/`. The AAR is written in Kotlin and a file dependency brings no dependencies of its own, so
 add the Kotlin standard library too:
 
 ```kotlin
 dependencies {
-    implementation(files("libs/liveupdate-android-0.1.2.aar"))
+    implementation(files("libs/liveupdate-android-0.1.3.aar"))
     implementation("org.jetbrains.kotlin:kotlin-stdlib:2.2.10") // or newer
 }
 ```
@@ -47,8 +47,69 @@ Android:
 //! one; on Android, `on_android` hands it the client of the companion AAR.
 
 use liveupdate::{
-    Driver, EndPolicy, Fallback, LiveUpdate, Result, Snapshot, StartRequest, Template, Visibility,
+    AndroidPresentation, Driver, EndPolicy, Fallback, IconSource, LiveUpdate, NotificationAction,
+    PresentationStyle, ProgressPoint, ProgressSegment, ProgressStyle, Result, SamsungNowBar,
+    SemanticStyle, Snapshot, StartRequest, Template, Visibility,
 };
+
+fn delivery_progress(progress: u32, icon: &IconSource) -> ProgressStyle {
+    ProgressStyle {
+        progress,
+        indeterminate: false,
+        styled_by_progress: true,
+        segments: vec![
+            ProgressSegment {
+                length: 25,
+                id: Some(1),
+                color: Some(0xff21_96f3),
+                semantic_style: Some(SemanticStyle::Info),
+            },
+            ProgressSegment {
+                length: 75,
+                id: Some(2),
+                color: Some(0xff4c_af50),
+                semantic_style: Some(SemanticStyle::Safe),
+            },
+        ],
+        points: vec![ProgressPoint {
+            position: 25,
+            id: Some(10),
+            color: Some(0xffff_a000),
+            semantic_style: Some(SemanticStyle::Caution),
+        }],
+        start_icon: Some(icon.clone()),
+        end_icon: Some(icon.clone()),
+        tracker_icon: Some(icon.clone()),
+    }
+}
+
+/// Schema-v2 content for Android's rich progress presentation.
+fn delivery_snapshot(revision: u64, progress: u32, status: &str) -> Snapshot {
+    let icon = IconSource::Resource("liveupdate_status".into());
+    Snapshot {
+        revision,
+        title: "Mochi's snack delivery".into(),
+        status: status.into(),
+        progress: None,
+        timer: None,
+        stale_at: None,
+        presentation: Some(AndroidPresentation {
+            style: PresentationStyle::Progress(delivery_progress(progress, &icon)),
+            short_critical_text: Some(format!("{progress}%")),
+            large_icon: Some(icon.clone()),
+            actions: vec![NotificationAction {
+                id: "track".into(),
+                title: "Track".into(),
+                icon: Some(icon),
+                authentication_required: false,
+            }],
+            samsung_now_bar: Some(SamsungNowBar {
+                primary: Some("Mochi delivery".into()),
+                secondary: Some(status.into()),
+            }),
+        }),
+    }
+}
 
 /// Starts, updates and ends one delivery.
 pub fn run_delivery<D: Driver>(updates: &LiveUpdate<D>) -> Result<()> {
@@ -57,33 +118,14 @@ pub fn run_delivery<D: Driver>(updates: &LiveUpdate<D>) -> Result<()> {
     }
     let activity = updates.start(StartRequest {
         activity_key: "delivery:order-123".into(),
-        schema_version: 1,
+        schema_version: 2,
         template: Template::Progress,
         fallback: Fallback::Notification,
         visibility: Visibility::Private,
-        snapshot: Snapshot {
-            revision: 0,
-            title: "Mochi's snack delivery".into(),
-            status: "Preparing".into(),
-            progress: Some(0.1),
-            timer: None,
-            stale_at: None,
-            presentation: None,
-        },
+        snapshot: delivery_snapshot(0, 10, "Preparing"),
     })?;
 
-    updates.update(
-        &activity.id,
-        Snapshot {
-            revision: 1,
-            title: "Mochi's snack delivery".into(),
-            status: "On the way".into(),
-            progress: Some(0.65),
-            timer: None,
-            stale_at: None,
-            presentation: None,
-        },
-    )?;
+    updates.update(&activity.id, delivery_snapshot(1, 65, "On the way"))?;
 
     updates.end(&activity.id, EndPolicy::Immediate)?;
     Ok(())
@@ -102,9 +144,12 @@ handle; incompatible content returns `CONFLICT`. Updates must keep the original 
 monotonically increasing `revision`. The returned record tells you whether Android observed the
 notification and whether promoted presentation actually happened.
 
-Use `Template::Timer` with a `Timer { started_at, ends_at }` instead of `progress` for countdowns.
-`Fallback::Notification` keeps a regular ongoing notification when promotion is unavailable;
-`Fallback::None` returns `UNSUPPORTED_FEATURE` instead.
+Schema v2 keeps `Snapshot::progress` and `Snapshot::timer` empty and puts typed Android UI under
+`presentation`. The example becomes a system `ProgressStyle` on API 36 and newer and a classic
+progress notification on older versions. Change both `template` and `presentation.style` together
+for Standard, BigText, Timer or Metric. `Fallback::Notification` keeps a regular ongoing
+notification when promotion is unavailable; `Fallback::None` returns `UNSUPPORTED_FEATURE`
+instead. Action taps and dismissals are drained through `LiveUpdate::events()`.
 
 ## How it works
 
