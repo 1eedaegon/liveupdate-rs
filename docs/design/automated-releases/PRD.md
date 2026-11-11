@@ -16,10 +16,10 @@ breaking release must always be started manually.
 - Unknown non-merge commit subjects fail validation instead of being silently omitted.
 - Release notes contain one bullet for each non-merge, non-generated commit subject.
 - A tag is created only for a commit whose exact SHA has passed the `CI` workflow on `main`.
-- Publishing to crates.io remains a separate, manually approved operation.
+- A validated tag automatically publishes its matching crate through crates.io Trusted Publishing.
+- Recovery of missing GitHub release assets never republishes an immutable crate version.
 
 ## Non-goals
 
-- Automatically publishing to crates.io.
 - Supporting prerelease identifiers.
 - Inferring breaking changes from source code.

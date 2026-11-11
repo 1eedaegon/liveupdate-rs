@@ -7,8 +7,8 @@
 #   - the `if:` of the steps that look for, run, record and upload the emulator suite's pass, so a skipped
 #     or failed suite never leaves a record;
 #   - each job's own `if:`, and that no suite's failure is swallowed (`|| true`, `continue-on-error`);
-#   - publish.yml publishes to crates.io only by hand, with `publish` and CRATES_IO_PUBLISH, after the guard
-#     and the AAR, from the `crates-io` environment;
+#   - publish.yml publishes to crates.io only with `publish` and CRATES_IO_PUBLISH, after the guard and
+#     the AAR, from the `crates-io` environment;
 #   - no workflow runs on pull_request_target, only the release workflows may write contents, and every
 #     action is pinned to a commit SHA;
 #   - auto-release.yml runs only after trusted main CI or by hand, keeps major manual, verifies the main
@@ -197,7 +197,7 @@ for required in (
     "github.event.workflow_run.event == 'workflow_dispatch'", "git rev-parse origin/main",
     "tools/release.sh plan", "tools/release.sh prepare", "git push origin HEAD:main",
     "gh workflow run ci.yml --ref main", "git tag -a", "git push origin \"$TAG\"",
-    'gh workflow run publish.yml --ref main -f tag="$TAG" -f publish=false',
+    'gh workflow run publish.yml --ref main -f tag="$TAG" -f publish=true',
     'gh release view "$TAG" --repo "$GITHUB_REPOSITORY"',
     "cancel-in-progress: false",
 ):
@@ -205,8 +205,12 @@ for required in (
         fail(f"auto-release.yml lacks {required!r}")
 if "pull_request" in automatic:
     fail("auto-release.yml is reachable from a pull request")
-if "publish=true" in automatic:
-    fail("auto-release.yml may publish to crates.io")
+automatic_publish = 'gh workflow run publish.yml --ref main -f tag="$TAG" -f publish=true'
+recovery_without_publish = 'gh workflow run publish.yml --ref main -f tag="$TAG" -f publish=false'
+if automatic.count(automatic_publish) != 1:
+    fail("auto-release.yml must publish exactly once after creating a validated tag")
+if automatic.count(recovery_without_publish) != 1:
+    fail("auto-release.yml recovery must recreate release assets without republishing the crate")
 if automatic.count("contents: write") != 1 or automatic.count("actions: write") != 1:
     fail("auto-release.yml's write permissions are not singular and explicit")
 if "bash tests/release/run.sh" not in text:
