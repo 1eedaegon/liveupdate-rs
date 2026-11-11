@@ -6,8 +6,9 @@
 - `tests/release/run.sh`: isolated Git-fixture coverage of classification, version transitions,
   changelog generation, and file transforms.
 - `.github/workflows/auto-release.yml`: trusted post-CI coordinator with serialized writes.
-- `.github/workflows/publish.yml`: validates the tag and creates the GitHub release from changelog
-  notes; crates.io publishing stays manual.
+- `.github/workflows/publish.yml`: validates the tag, creates the GitHub release from changelog notes,
+  attaches the AAR, and publishes through crates.io Trusted Publishing when requested by the trusted
+  coordinator or a manual recovery run.
 - `tests/ci/run.sh`: structural security and recursion checks for both workflows.
 
 ## States

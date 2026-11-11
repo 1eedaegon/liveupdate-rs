@@ -111,11 +111,13 @@ the successful run resumes at tagging. If a tag exists at `main`'s tip but its G
 rerun **Auto release** without `major`; its no-change recovery path dispatches `publish.yml` again.
 
 `.github/workflows/publish.yml` requires a successful CI run on main for the tag's exact commit, records
-the matching changelog section as the GitHub release notes, and attaches the AAR. Publishing to crates.io
-still happens only when `publish` is checked by hand and the repository variable
-`CRATES_IO_PUBLISH` is `true`, after the AAR is attached, from the `crates-io` environment. That
-environment should require a reviewer, and the crates.io Trusted Publisher should name this repository,
-`publish.yml` and that environment, so no other job can mint a token.
+the matching changelog section as the GitHub release notes, and attaches the AAR. After a validated tag
+is created, the coordinator dispatches that workflow with `publish=true`; a manual dispatch remains
+available for recovery. Publishing still requires the repository variable `CRATES_IO_PUBLISH` to be
+`true`, runs only after the AAR is attached, and uses the `crates-io` environment. The crates.io Trusted
+Publisher names this repository, `publish.yml`, and that environment, so no other job can mint a token.
+The missing-release recovery path uses `publish=false`, which can reconstruct GitHub assets without
+attempting to republish an immutable crate version.
 
 ## Devices
 

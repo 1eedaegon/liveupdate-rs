@@ -109,7 +109,7 @@ jobs:
             git tag -a "$TAG" -m "$TAG"
             git push origin "$TAG"
           fi
-          gh workflow run publish.yml --ref main -f tag="$TAG" -f publish=false
+          gh workflow run publish.yml --ref main -f tag="$TAG" -f publish=true
       - name: No release or recover a missing GitHub release
         if: steps.plan.outputs.action == 'none'
         env:

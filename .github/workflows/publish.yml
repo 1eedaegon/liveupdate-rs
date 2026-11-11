@@ -1,11 +1,11 @@
 name: Release
 
 # A `v*` tag validates the release and attaches the AAR to its GitHub release: the tag matches the crate's
-# version, main's CI passed for the tag's exact commit, the tests pass and the crate packages. Publishing
-# to crates.io needs a run by hand with `publish` checked, the repository variable CRATES_IO_PUBLISH set to
-# `true`, the AAR attached, and an approval of the `crates-io` environment. Trusted Publishing on
-# crates.io should name this repository, publish.yml and that environment, and the environment should
-# require a reviewer (docs/testing.md). Until then it publishes nothing to crates.io.
+# version, main's CI passed for the tag's exact commit, the tests pass and the crate packages. The
+# post-CI coordinator dispatches this workflow with `publish` checked after creating a validated tag.
+# A manual run can use the same input for recovery. Publishing also requires the repository variable
+# CRATES_IO_PUBLISH to be `true`, the AAR to be attached, and the `crates-io` environment. Trusted
+# Publishing on crates.io must name this repository, publish.yml and that environment (docs/testing.md).
 
 on:
   push:
