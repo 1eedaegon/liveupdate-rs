@@ -9,6 +9,10 @@
   coverage.
 - Rich presentation, action/event, fallback and Rust/JNI tests on a Galaxy S23 running Android 17 /
   One UI 9.
+- The extensions of [android-core-extensions](android-core-extensions/PRD.md): links and `opened`
+  events, a chronometer beside any style, style changes across updates, a delayed end, the foreground
+  placement with `LiveUpdateForeground`, an alerting revision, a public version and branding, each
+  behind a capability, with instrumentation tests on the API 37 emulator.
 
 ## Not done
 
@@ -16,3 +20,7 @@
 - Instrumentation for process recreation.
 - A check on an Android release below 36 (the adapter's API 35 behavior is tested on API 37).
 - A native Rust Android sample, and moving `tauri-plugin-live-activity` onto this crate.
+- `CallStyle`, more than one foreground-placed activity, and the follow-ups of
+  [android-core-extensions](android-core-extensions/tech_doc.md) in `liveactivity-rs` and the Tauri
+  plugin, which name this AAR's classes by its new package.
+- The extensions on the Galaxy S23.

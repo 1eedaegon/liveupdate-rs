@@ -20,6 +20,17 @@ const MAX_METRIC_TEXT: usize = 64;
 const MAX_CHIP_TEXT: usize = 7;
 const MAX_SAMSUNG_PRIMARY: usize = 120;
 const MAX_SAMSUNG_SECONDARY: usize = 240;
+const MAX_URL: usize = 2_048;
+const MAX_SUB_TEXT: usize = 64;
+/// Schemes a link may not have: none of them names a screen of the application.
+const REFUSED_SCHEMES: [&str; 6] = [
+    "intent",
+    "content",
+    "file",
+    "javascript",
+    "data",
+    "android-app",
+];
 
 /// Android semantic color intent used by API 37 system styles.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,12 +88,28 @@ pub struct NotificationAction {
     /// Whether Android should authenticate before sending the action.
     #[serde(default, skip_serializing_if = "is_false")]
     pub authentication_required: bool,
+    /// URL the action opens in the application, instead of queuing an event.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub open_url: Option<String>,
 }
 
 impl NotificationAction {
+    /// An action that queues an event, without an icon and without authentication.
+    #[must_use]
+    pub fn new(id: impl Into<String>, title: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            title: title.into(),
+            icon: None,
+            authentication_required: false,
+            open_url: None,
+        }
+    }
+
     fn validate(&self) -> Result<()> {
         if !valid_identifier(&self.id, MAX_ACTION_ID)
             || !crate::model::valid_text(&self.title, MAX_ACTION_TITLE)
+            || !valid_optional_url(self.open_url.as_deref())
         {
             return Err(Error::invalid());
         }
@@ -424,6 +451,27 @@ impl SamsungNowBar {
     }
 }
 
+/// What a secure lock screen shows instead of a private activity's content.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PublicVersion {
+    /// Title, limited to 120 Unicode scalar values.
+    pub title: String,
+    /// Status, limited to 240 Unicode scalar values.
+    pub status: String,
+}
+
+impl PublicVersion {
+    fn validate(&self) -> Result<()> {
+        if !crate::model::valid_text(&self.title, 120)
+            || !crate::model::valid_text(&self.status, 240)
+        {
+            return Err(Error::invalid());
+        }
+        Ok(())
+    }
+}
+
 /// Resolved Android presentation attached to a schema-v2 snapshot.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -442,12 +490,55 @@ pub struct AndroidPresentation {
     /// Optional closed Samsung Now Bar mapping.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub samsung_now_bar: Option<SamsungNowBar>,
+    /// Optional clock in the notification's header, beside any style but
+    /// [`PresentationStyle::Timer`], which is that clock alone.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chronometer: Option<TimerStyle>,
+    /// URL the content tap opens in the application; the launch activity when absent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub open_url: Option<String>,
+    /// Whether this revision may alert again; every other one updates silently.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub alert: bool,
+    /// What a secure lock screen shows of a private activity.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub public_version: Option<PublicVersion>,
+    /// Small icon, a resource of the application; the AAR's own icon when absent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub small_icon: Option<IconSource>,
+    /// Optional ARGB accent color of the icon and the header.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accent_color: Option<u32>,
+    /// Optional third text of the header.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sub_text: Option<String>,
 }
 
 impl AndroidPresentation {
+    /// A presentation of `style` with none of the optional members, to build on:
+    /// `AndroidPresentation { large_icon: Some(icon), ..AndroidPresentation::new(style) }`.
+    #[must_use]
+    pub fn new(style: PresentationStyle) -> Self {
+        Self {
+            style,
+            short_critical_text: None,
+            large_icon: None,
+            actions: Vec::new(),
+            samsung_now_bar: None,
+            chronometer: None,
+            open_url: None,
+            alert: false,
+            public_version: None,
+            small_icon: None,
+            accent_color: None,
+            sub_text: None,
+        }
+    }
+
     /// Validates the complete resolved Android presentation.
     pub fn validate(&self) -> Result<()> {
         self.style.validate()?;
+        self.validate_chronometer()?;
         self.validate_actions()?;
         if !valid_optional_text(self.short_critical_text.as_deref(), MAX_CHIP_TEXT) {
             return Err(Error::invalid());
@@ -456,7 +547,31 @@ impl AndroidPresentation {
         if let Some(samsung) = &self.samsung_now_bar {
             samsung.validate()?;
         }
-        Ok(())
+        self.validate_extensions()
+    }
+
+    fn validate_extensions(&self) -> Result<()> {
+        if !valid_optional_url(self.open_url.as_deref())
+            || !valid_optional_text(self.sub_text.as_deref(), MAX_SUB_TEXT)
+            // A small icon is drawn from a resource: Android tints its shape.
+            || matches!(self.small_icon, Some(IconSource::AppFile(_)))
+        {
+            return Err(Error::invalid());
+        }
+        validate_optional_icon(self.small_icon.as_ref())?;
+        self.public_version
+            .as_ref()
+            .map_or(Ok(()), PublicVersion::validate)
+    }
+
+    fn validate_chronometer(&self) -> Result<()> {
+        let Some(chronometer) = &self.chronometer else {
+            return Ok(());
+        };
+        if matches!(self.style, PresentationStyle::Timer(_)) {
+            return Err(Error::invalid());
+        }
+        chronometer.validate()
     }
 
     fn validate_actions(&self) -> Result<()> {
@@ -492,6 +607,31 @@ fn validate_unit(unit: Option<&str>) -> Result<()> {
 
 fn valid_optional_text(value: Option<&str>, maximum: usize) -> bool {
     value.is_none_or(|text| crate::model::valid_text(text, maximum))
+}
+
+fn valid_optional_url(value: Option<&str>) -> bool {
+    value.is_none_or(valid_url)
+}
+
+/// An absolute URL of printable ASCII with a lowercase scheme that is not refused.
+fn valid_url(value: &str) -> bool {
+    let Some((scheme, rest)) = value.split_once(':') else {
+        return false;
+    };
+    let mut characters = scheme.chars();
+    let lowercase_scheme = characters
+        .next()
+        .is_some_and(|first| first.is_ascii_lowercase())
+        && characters.all(|character| {
+            character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || matches!(character, '+' | '.' | '-')
+        });
+    lowercase_scheme
+        && !rest.is_empty()
+        && value.len() <= MAX_URL
+        && value.bytes().all(|byte| (0x21..=0x7e).contains(&byte))
+        && !REFUSED_SCHEMES.contains(&scheme)
 }
 
 fn valid_identifier(value: &str, maximum: usize) -> bool {

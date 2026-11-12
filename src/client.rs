@@ -1,6 +1,6 @@
 use crate::{
     ActivityRecord, ActivityState, Capabilities, Driver, DriverRecord, EndPolicy, Error, ErrorCode,
-    EventBatch, Fallback, Observation, PromotionState, Result, Snapshot, StartRequest,
+    EventBatch, Fallback, Observation, Placement, PromotionState, Result, Snapshot, StartRequest,
     model::valid_id,
 };
 use std::{
@@ -46,7 +46,9 @@ impl<D: Driver> LiveUpdate<D> {
         self.serialized(|driver| update(driver, id, snapshot))
     }
 
-    /// Ends an activity and removes its Android notification.
+    /// Ends an activity. Its notification is removed at once, or with `EndPolicy::After` keeps the
+    /// last content, no longer ongoing, until that time. Ending it again without a time removes
+    /// that last content early.
     pub fn end(&self, id: &str, policy: EndPolicy) -> Result<ActivityRecord> {
         self.serialized(|driver| end(driver, id, policy))
     }
@@ -109,6 +111,7 @@ fn start(driver: &impl Driver, request: StartRequest) -> Result<ActivityRecord> 
             "Live Update promotion is unavailable and fallback was not allowed.",
         ));
     }
+    ensure_placement(request.placement, capabilities, &records)?;
     if records.iter().filter(|record| !record.terminal()).count() >= ACTIVE_LIMIT {
         return Err(failure(
             ErrorCode::SystemLimit,
@@ -128,6 +131,7 @@ fn start(driver: &impl Driver, request: StartRequest) -> Result<ActivityRecord> 
         },
         awaiting_observation: true,
         post_failed: false,
+        dismiss_at: None,
     };
     let next = records.iter().cloned().chain([record.clone()]).collect();
     deliver(driver, record, next)
@@ -168,24 +172,56 @@ fn end(driver: &impl Driver, id: &str, policy: EndPolicy) -> Result<ActivityReco
     policy.validate()?;
     let records = reconcile(driver)?;
     let previous = find_record(&records, id)?;
-    if matches!(policy, EndPolicy::After { .. }) {
+    let dismiss_at = match policy {
+        EndPolicy::After { at } => Some(at),
+        EndPolicy::Immediate | EndPolicy::Default => None,
+    };
+    if previous.state == ActivityState::Ended {
+        return remove_last_content(driver, &records, previous, dismiss_at);
+    }
+    if dismiss_at.is_some() && !driver.capabilities()?.presentation.delayed_end {
         return Err(failure(
             ErrorCode::UnsupportedFeature,
-            "Android does not support delayed activity dismissal.",
+            "Delayed activity dismissal is unavailable.",
         ));
     }
-    if previous.state == ActivityState::Ended {
-        return Ok(previous.public());
-    }
+    // A notification the user removed is not posted again.
+    let dismiss_at = dismiss_at.filter(|_| previous.state != ActivityState::Dismissed);
     let ended = DriverRecord {
         state: ActivityState::Ended,
         awaiting_observation: false,
         post_failed: false,
+        dismiss_at,
         ..previous
     };
     save(driver, &retire(&records, &ended))?;
-    driver.cancel(id)?;
+    if dismiss_at.is_some() {
+        // The adapter posts the last content in its final form, which it no longer observes.
+        driver.post(&ended)?;
+    } else {
+        driver.cancel(id)?;
+    }
     Ok(ended.public())
+}
+
+/// The end of an ended activity. It changes nothing, except that an end without a time removes the
+/// last content that a delayed end left on screen.
+fn remove_last_content(
+    driver: &impl Driver,
+    records: &[DriverRecord],
+    ended: DriverRecord,
+    dismiss_at: Option<u64>,
+) -> Result<ActivityRecord> {
+    if ended.dismiss_at.is_none() || dismiss_at.is_some() {
+        return Ok(ended.public());
+    }
+    let removed = DriverRecord {
+        dismiss_at: None,
+        ..ended
+    };
+    save(driver, &replace(records, &removed))?;
+    driver.cancel(&removed.id)?;
+    Ok(removed.public())
 }
 
 fn reconcile(driver: &impl Driver) -> Result<Vec<DriverRecord>> {
@@ -264,7 +300,7 @@ fn validate_observation(previous: &DriverRecord, native: &Observation) -> Result
     };
     let promotion_matches =
         native.promotion_requested == previous.promotion_requested && state_matches_request;
-    if !promotion_matches || native.snapshot.template()? != previous.origin.template {
+    if !promotion_matches || !kept(&previous.origin, &native.snapshot) {
         return Err(Error::native());
     }
     Ok(())
@@ -309,7 +345,7 @@ fn checked_records(records: Vec<DriverRecord>) -> Result<Vec<DriverRecord>> {
             || !ids.insert(record.id.as_str())
             || record.origin.validate().is_err()
             || record.snapshot.validate().is_err()
-            || record.snapshot.template().ok() != Some(record.origin.template)
+            || !kept(&record.origin, &record.snapshot)
         {
             return Err(Error::native());
         }
@@ -339,8 +375,31 @@ fn checked_observations(observations: Vec<Observation>) -> Result<BTreeMap<Strin
     Ok(checked)
 }
 
+/// Whether a stored or observed `snapshot` can be of the activity that `origin` started: schema
+/// version 1 keeps its template, schema version 2 has any. This is all an earlier release checked,
+/// so a receipt it wrote for an update that mixed the generations, and whose post the adapter then
+/// refused, is still read; the next update that fits replaces it.
+fn kept(origin: &StartRequest, snapshot: &Snapshot) -> bool {
+    match snapshot.template() {
+        Ok(template) => origin.schema_version != 1 || template == origin.template,
+        Err(_) => false,
+    }
+}
+
+/// Whether a new `snapshot` can be content of the activity that `origin` started. Schema version 1
+/// keeps its template; schema version 2 keeps its generation and may change its system style. A
+/// public version needs the private activity.
+fn fits(origin: &StartRequest, snapshot: &Snapshot) -> bool {
+    let shape = if origin.schema_version == 1 {
+        snapshot.presentation.is_none() && snapshot.template().ok() == Some(origin.template)
+    } else {
+        snapshot.presentation.is_some()
+    };
+    shape && snapshot.public_version_fits(origin.visibility)
+}
+
 fn replaces(previous: &DriverRecord, snapshot: &Snapshot) -> Result<bool> {
-    if snapshot.template()? != previous.origin.template {
+    if !fits(&previous.origin, snapshot) {
         return Err(Error::invalid());
     }
     if snapshot.revision < previous.snapshot.revision {
@@ -405,6 +464,33 @@ fn find_record(records: &[DriverRecord], id: &str) -> Result<DriverRecord> {
         .find(|record| record.id == id)
         .cloned()
         .ok_or_else(not_found)
+}
+
+/// A foreground placement needs an adapter that knows it, and is the only live one.
+fn ensure_placement(
+    placement: Placement,
+    capabilities: Capabilities,
+    records: &[DriverRecord],
+) -> Result<()> {
+    if placement != Placement::Foreground {
+        return Ok(());
+    }
+    if !capabilities.presentation.foreground_placement {
+        return Err(failure(
+            ErrorCode::UnsupportedFeature,
+            "Foreground placement is unavailable.",
+        ));
+    }
+    let taken = records
+        .iter()
+        .any(|record| !record.terminal() && record.origin.placement == Placement::Foreground);
+    if taken {
+        return Err(failure(
+            ErrorCode::SystemLimit,
+            "Another activity has the foreground placement.",
+        ));
+    }
+    Ok(())
 }
 
 fn ensure_permission(capabilities: Capabilities) -> Result<()> {

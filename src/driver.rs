@@ -27,6 +27,9 @@ pub struct DriverRecord {
     pub awaiting_observation: bool,
     /// Whether the latest post may need an idempotent retry.
     pub post_failed: bool,
+    /// Until when the last content of an ended activity stays, in milliseconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dismiss_at: Option<u64>,
 }
 
 impl DriverRecord {
@@ -41,7 +44,8 @@ impl DriverRecord {
             id: self.id.clone(),
             activity_key: self.origin.activity_key.clone(),
             schema_version: self.origin.schema_version,
-            template: self.origin.template,
+            // A checked record's snapshot has a template; schema version 1 keeps the origin's.
+            template: self.snapshot.template().unwrap_or(self.origin.template),
             snapshot: self.snapshot.clone(),
             state: self.state,
             visibility: Visibility::Unknown,
@@ -113,8 +117,10 @@ mod tests {
             presentation: None,
         };
         DriverRecord {
+            dismiss_at: None,
             id: "id".into(),
             origin: StartRequest {
+                placement: crate::Placement::Tagged,
                 activity_key: "delivery:1".into(),
                 schema_version: 1,
                 template: Template::Progress,

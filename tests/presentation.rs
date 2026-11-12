@@ -22,10 +22,10 @@ fn legacy_snapshot() -> Snapshot {
 
 fn presentation(style: PresentationStyle) -> AndroidPresentation {
     AndroidPresentation {
-        style,
         short_critical_text: Some("25%".into()),
         large_icon: Some(IconSource::Resource("delivery_large".into())),
         actions: vec![NotificationAction {
+            open_url: None,
             id: "cancel".into(),
             title: "Cancel".into(),
             icon: Some(IconSource::Resource("cancel_action".into())),
@@ -35,6 +35,7 @@ fn presentation(style: PresentationStyle) -> AndroidPresentation {
             primary: Some("Order".into()),
             secondary: Some("Preparing".into()),
         }),
+        ..AndroidPresentation::new(style)
     }
 }
 
@@ -49,6 +50,7 @@ fn v2_snapshot(style: PresentationStyle) -> Snapshot {
 
 fn v2_start(template: Template, style: PresentationStyle) -> StartRequest {
     StartRequest {
+        placement: liveupdate::Placement::Tagged,
         activity_key: "delivery:42".into(),
         schema_version: 2,
         template,
@@ -169,6 +171,16 @@ fn timer_presentation(started_at: u64, ends_at: u64) -> AndroidPresentation {
     }))
 }
 
+fn chronometer(started_at: u64, ends_at: u64, counts_down: bool) -> TimerStyle {
+    TimerStyle {
+        timer: Timer {
+            started_at,
+            ends_at,
+        },
+        counts_down,
+    }
+}
+
 fn assert_invalid(result: liveupdate::Result<()>) {
     assert_eq!(result.unwrap_err().code, ErrorCode::InvalidInput);
 }
@@ -198,6 +210,7 @@ fn schema_one_keeps_its_exact_wire_shape() {
 #[test]
 fn schema_versions_cannot_mix_legacy_and_rich_presentations() {
     let legacy = StartRequest {
+        placement: liveupdate::Placement::Tagged,
         activity_key: "delivery:42".into(),
         schema_version: 1,
         template: Template::Progress,
@@ -457,6 +470,7 @@ fn action_icon_and_boolean_wire_boundaries_are_exact() {
     assert_invalid(model.validate());
 
     let mut action = NotificationAction {
+        open_url: None,
         id: "confirm".into(),
         title: "Confirm".into(),
         icon: None,
@@ -626,4 +640,82 @@ fn nested_models_reject_unknown_fields_and_enforce_text_limits() {
         serde_json::to_value(v2_start(Template::Standard, PresentationStyle::Standard)).unwrap();
     value["snapshot"]["presentation"]["extra"] = Value::Bool(true);
     assert!(serde_json::from_value::<StartRequest>(value).is_err());
+}
+
+// LU-V2-COMPAT-2
+#[test]
+fn a_presentation_without_the_optional_members_keeps_its_wire_shape() {
+    let bare = AndroidPresentation::new(PresentationStyle::Standard);
+    bare.validate().unwrap();
+    assert_eq!(
+        serde_json::to_value(&bare).unwrap(),
+        json!({ "style": { "kind": "standard" } })
+    );
+    assert_eq!(
+        serde_json::from_value::<AndroidPresentation>(json!({ "style": { "kind": "standard" } }))
+            .unwrap(),
+        bare
+    );
+}
+
+// LU-V2-CHRONO-1
+#[test]
+fn a_chronometer_runs_beside_every_style_but_the_timer() {
+    for style in [
+        PresentationStyle::Standard,
+        PresentationStyle::BigText(BigTextStyle {
+            text: "A longer explanation".into(),
+            summary: None,
+        }),
+        PresentationStyle::Progress(valid_progress()),
+        PresentationStyle::Metric(MetricStyle {
+            metrics: vec![metric(MetricValue::Text("42".into()))],
+            critical_metric: None,
+        }),
+    ] {
+        let template = v2_start(Template::Standard, style.clone())
+            .snapshot
+            .template()
+            .unwrap();
+        let mut request = v2_start(template, style);
+        request.snapshot.presentation.as_mut().unwrap().chronometer =
+            Some(chronometer(1_000, 2_000, true));
+        request.validate().unwrap();
+        // The clock does not make the activity a timer.
+        assert_eq!(request.snapshot.template().unwrap(), template);
+    }
+
+    let mut beside_the_timer = timer_presentation(1_000, 2_000);
+    beside_the_timer.chronometer = Some(chronometer(1_000, 2_000, true));
+    assert_invalid(beside_the_timer.validate());
+}
+
+// LU-V2-CHRONO-1
+#[test]
+fn a_chronometer_has_the_timers_bounds_and_wire_shape() {
+    let mut counting_up = presentation(PresentationStyle::Standard);
+    counting_up.chronometer = Some(chronometer(MAX_TIMESTAMP - 1, MAX_TIMESTAMP, false));
+    counting_up.validate().unwrap();
+    let wire = serde_json::to_value(&counting_up).unwrap();
+    assert_eq!(
+        wire["chronometer"],
+        json!({
+            "timer": { "startedAt": MAX_TIMESTAMP - 1, "endsAt": MAX_TIMESTAMP },
+            "countsDown": false
+        })
+    );
+    assert_eq!(
+        serde_json::from_value::<AndroidPresentation>(wire.clone()).unwrap(),
+        counting_up
+    );
+
+    for (started_at, ends_at) in [(0, MAX_TIMESTAMP + 1), (1_000, 1_000), (2_000, 1_000)] {
+        let mut invalid = presentation(PresentationStyle::Standard);
+        invalid.chronometer = Some(chronometer(started_at, ends_at, true));
+        assert_invalid(invalid.validate());
+    }
+
+    let mut unknown_member = wire;
+    unknown_member["chronometer"]["paused"] = Value::Bool(true);
+    assert!(serde_json::from_value::<AndroidPresentation>(unknown_member).is_err());
 }

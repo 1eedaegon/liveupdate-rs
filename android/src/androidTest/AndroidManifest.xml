@@ -1,13 +1,45 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- For the probe services below: the AAR declares no service and no foreground permission. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
     <application>
         <!-- Gives the test package a launch activity, which a notification's content intent opens. -->
         <activity
-            android:name="io.github.eedaegon.liveupdate.LaunchActivity"
+            android:name="io.github.gon.liveupdate.LaunchActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- A screen of the application, which a link opens. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="liveupdate-test" />
+            </intent-filter>
         </activity>
+
+        <!-- A host's foreground service, which holds a notification the adapter built. -->
+        <service
+            android:name="io.github.gon.liveupdate.ForegroundProbeService"
+            android:exported="false"
+            android:foregroundServiceType="shortService" />
+
+        <!-- The same in a process of its own, which a test kills. -->
+        <service
+            android:name="io.github.gon.liveupdate.RemoteForegroundProbeService"
+            android:exported="false"
+            android:foregroundServiceType="shortService"
+            android:process=":probe" />
+
+        <!-- Hears each post and removal of the test package's notifications, once a test allows it. -->
+        <service
+            android:name="io.github.gon.liveupdate.NotificationProbe"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

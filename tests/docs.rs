@@ -115,7 +115,7 @@ fn the_docs_state_what_an_app_must_know() {
     for phrase in [
         "request the runtime notification permission on Android 13",
         "one retained client per process",
-        "`EndPolicy::After` returns `UNSUPPORTED_FEATURE`",
+        "`EndPolicy::After` keeps the last content until its time",
         "Visibility is reported as `Unknown`",
         "A Galaxy S23 (`SM-S911N`) on Android 17 / One UI 9 has passed",
         "`LiveUpdate::events()`",
@@ -123,6 +123,35 @@ fn the_docs_state_what_an_app_must_know() {
         "docs/spec.md",
     ] {
         assert!(readme.contains(phrase), "README.md does not say {phrase:?}");
+    }
+    // Each feature, with the name a caller writes.
+    for feature in [
+        "`PresentationStyle::Standard`",
+        "`PresentationStyle::BigText(",
+        "`PresentationStyle::Progress(",
+        "`PresentationStyle::Timer(",
+        "`PresentationStyle::Metric(",
+        "`short_critical_text:",
+        "`large_icon:",
+        "`NotificationAction::new(",
+        "`open_url:",
+        "`chronometer:",
+        "`alert: true`",
+        "`public_version:",
+        "`small_icon:",
+        "`accent_color:",
+        "`sub_text:",
+        "`samsung_now_bar:",
+        "`placement: Placement::Foreground`",
+        "`end(id, EndPolicy::After { at })`",
+        "LiveUpdateEvents.opened(this, intent)",
+        "LiveUpdateForeground.attach(this, ",
+        "`AndroidPresentation::new(style)`",
+    ] {
+        assert!(
+            readme.contains(feature),
+            "README.md does not show {feature:?}"
+        );
     }
     let testing = prose("docs/testing.md");
     for phrase in ["tests/android/run.sh", "EXPECTED_SDK", "spec-coverage.sh"] {

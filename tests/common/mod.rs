@@ -1,7 +1,8 @@
 //! A deterministic in-memory Android driver shared by the lifecycle tests.
 //!
 //! It behaves like the AAR's adapter: `post` makes a notification observable, `cancel` removes it,
-//! and storage keeps exactly what `write` received. Switches simulate what Android does on a real
+//! and storage keeps exactly what `write` received. The post of an ended record is its final form,
+//! which the adapter shows but no longer observes. Switches simulate what Android does on a real
 //! device: a post that is not yet visible, a cancel that is still listed for a few reads, failures
 //! and a panicking implementation.
 #![allow(dead_code)]
@@ -24,6 +25,8 @@ pub struct FakeState {
     pub capabilities: Capabilities,
     pub records: Vec<DriverRecord>,
     pub observed: BTreeMap<String, Observation>,
+    /// The ended records posted in their final form, by id.
+    pub finals: BTreeMap<String, DriverRecord>,
     /// Every driver call in order, by method name.
     pub calls: Vec<&'static str>,
     pub posts: usize,
@@ -58,6 +61,7 @@ impl Default for FakeDriver {
                 },
                 records: Vec::new(),
                 observed: BTreeMap::new(),
+                finals: BTreeMap::new(),
                 calls: Vec::new(),
                 posts: 0,
                 cancels: 0,
@@ -132,6 +136,11 @@ impl Driver for FakeDriver {
         state.posts += 1;
         if std::mem::take(&mut state.fail_next_post) {
             return Err(Error::new(ErrorCode::NativeError, "Posting failed."));
+        }
+        if record.state == ActivityState::Ended {
+            state.observed.remove(&record.id);
+            state.finals.insert(record.id.clone(), record.clone());
+            return Ok(());
         }
         if !state.delay_observation {
             let promotion_state = if record.promotion_requested {
@@ -227,6 +236,7 @@ pub fn timer_snapshot(revision: u64) -> Snapshot {
 
 pub fn request(key: &str) -> StartRequest {
     StartRequest {
+        placement: liveupdate::Placement::Tagged,
         activity_key: key.into(),
         schema_version: 1,
         template: Template::Progress,

@@ -56,11 +56,11 @@ def skips(area, *paths):
 
 sources = ["src/android.rs", "src/client.rs", "src/client/tests.rs", "src/bridge.rs", "src/lib.rs",
            "Cargo.toml", "Cargo.lock", "rust-toolchain.toml"]
-starts("android", *sources, "android/src/main/java/io/github/eedaegon/liveupdate/AndroidAdapter.kt",
+starts("android", *sources, "android/src/main/java/io/github/gon/liveupdate/AndroidAdapter.kt",
        "android/src/main/AndroidManifest.xml", "android/consumer-rules.pro", "android/build.gradle.kts",
        "android/native-test/src/lib.rs", "android/native-test/Cargo.lock",
-       "android/src/androidTest/java/io/github/eedaegon/liveupdate/Device.kt",
-       "android/src/test/java/io/github/eedaegon/liveupdate/LiveUpdateProtocolTest.kt",
+       "android/src/androidTest/java/io/github/gon/liveupdate/Device.kt",
+       "android/src/test/java/io/github/gon/liveupdate/LiveUpdateProtocolTest.kt",
        "build.gradle.kts", "settings.gradle.kts", "gradle.properties", "tests/android/run.sh",
        "tests/android/avd.sh", "tests/android/aar.sh", "tests/ci/cache.sh", ".github/workflows/ci.yml")
 starts("rust", *sources, "tests/lifecycle.rs", "tests/common/mod.rs", "tests/docs.rs", "tests/android_env.sh",
@@ -70,7 +70,7 @@ starts("android", "examples/delivery.rs")
 starts("spec", "examples/delivery.rs")
 starts("spec", "src/client.rs", "docs/spec.md", "docs/testing.md", "tools/spec-coverage.sh", "README.md",
        "CHANGELOG.md", "tests/ci/run.sh", "tests/release/run.sh", "tools/release.sh", "tests/lifecycle.rs",
-       "android/src/androidTest/java/io/github/eedaegon/liveupdate/NativeRustInstrumentationTest.kt")
+       "android/src/androidTest/java/io/github/gon/liveupdate/NativeRustInstrumentationTest.kt")
 for area in ("rust", "android"):
     skips(area, "README.md", "CHANGELOG.md", "docs/spec.md", "docs/design/architecture.md", "tools/spec-coverage.sh",
           "LICENSE-MIT", ".github/FUNDING.yml")
@@ -82,7 +82,7 @@ hashed = set((work / "files").read_text().split())
 for path in ["src/android.rs", "src/client.rs", "Cargo.lock", "rust-toolchain.toml", "build.gradle.kts",
              "android/build.gradle.kts", "android/src/main/AndroidManifest.xml",
              "android/native-test/src/lib.rs", "android/native-test/Cargo.lock",
-             "android/src/androidTest/java/io/github/eedaegon/liveupdate/NativeRustInstrumentationTest.kt",
+             "android/src/androidTest/java/io/github/gon/liveupdate/NativeRustInstrumentationTest.kt",
              "tests/android/run.sh", "tests/android/avd.sh"]:
     if path not in hashed:
         fail(f"the emulator record does not hash {path}")
