@@ -32,6 +32,13 @@ internal class EventStore(context: Context) {
         append(activityId, JSONObject().put("kind", "dismissed"))
     }
 
+    fun appendOpened(activityId: String, actionId: String?) {
+        if (!validId(activityId) || (actionId != null && !validActionId(actionId))) invalid()
+        val kind = JSONObject().put("kind", "opened")
+        if (actionId != null) kind.put("actionId", actionId)
+        append(activityId, kind)
+    }
+
     fun size(): Int = synchronized(EVENT_LOCK) { readEvents().length() }
 
     fun drain(): JSONObject = synchronized(EVENT_LOCK) {
@@ -98,6 +105,12 @@ internal class EventStore(context: Context) {
             "action" -> {
                 if (kind.keys().asSequence().toSet() != setOf("kind", "actionId")) nativeFailure()
                 if (!validActionId(kind.opt("actionId") as? String ?: nativeFailure())) nativeFailure()
+            }
+            "opened" -> {
+                if (kind.keys().asSequence().any { it != "kind" && it != "actionId" }) nativeFailure()
+                if (kind.has("actionId") && !validActionId(kind.opt("actionId") as? String ?: nativeFailure())) {
+                    nativeFailure()
+                }
             }
             else -> nativeFailure()
         }

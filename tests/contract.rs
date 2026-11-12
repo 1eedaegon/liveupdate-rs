@@ -31,7 +31,15 @@ fn capabilities_use_the_stable_camel_case_contract() {
                 "actions": false,
                 "images": false,
                 "events": false,
-                "samsungNowBar": false
+                "samsungNowBar": false,
+                "chronometer": false,
+                "links": false,
+                "styleChange": false,
+                "delayedEnd": false,
+                "foregroundPlacement": false,
+                "alert": false,
+                "publicVersion": false,
+                "branding": false
             }
         })
     );
@@ -44,6 +52,59 @@ fn capabilities_use_the_stable_camel_case_contract() {
         .unwrap(),
         capabilities
     );
+}
+
+// LU-V2-CAP-2
+#[test]
+fn an_extension_a_reply_does_not_name_is_not_available() {
+    let reply = json!({
+        "supported": true,
+        "notificationsEnabled": true,
+        "promotionEnabled": true,
+        "presentation": { "standard": true, "progressStyle": true }
+    });
+    let capabilities: Capabilities = serde_json::from_value(reply).unwrap();
+    assert!(capabilities.presentation.standard);
+    assert!(capabilities.presentation.progress_style);
+    assert!(!capabilities.presentation.metric_style);
+    let extensions = |capabilities: &Capabilities| {
+        let presentation = capabilities.presentation;
+        [
+            presentation.chronometer,
+            presentation.links,
+            presentation.style_change,
+            presentation.delayed_end,
+            presentation.foreground_placement,
+            presentation.alert,
+            presentation.public_version,
+            presentation.branding,
+        ]
+    };
+    assert_eq!(extensions(&capabilities), [false; 8]);
+
+    let names = [
+        "chronometer",
+        "links",
+        "styleChange",
+        "delayedEnd",
+        "foregroundPlacement",
+        "alert",
+        "publicVersion",
+        "branding",
+    ];
+    for (index, name) in names.into_iter().enumerate() {
+        let with: Capabilities = serde_json::from_value(json!({
+            "supported": true,
+            "notificationsEnabled": true,
+            "promotionEnabled": true,
+            "presentation": { name: true }
+        }))
+        .unwrap();
+        let mut expected = [false; 8];
+        expected[index] = true;
+        assert_eq!(extensions(&with), expected, "{name}");
+        assert!(!with.presentation.standard);
+    }
 }
 
 // LU-CAP-1, LU-FALLBACK-1
@@ -144,8 +205,10 @@ fn records_cross_the_bridge_with_the_names_the_adapter_reads() {
         presentation: None,
     };
     let record = DriverRecord {
+        dismiss_at: None,
         id: "id".into(),
         origin: StartRequest {
+            placement: liveupdate::Placement::Tagged,
             activity_key: "delivery:1".into(),
             schema_version: 1,
             template: Template::Timer,

@@ -3,8 +3,8 @@
 
 use liveupdate::{
     AndroidPresentation, Driver, EndPolicy, Fallback, IconSource, LiveUpdate, NotificationAction,
-    PresentationStyle, ProgressPoint, ProgressSegment, ProgressStyle, Result, SamsungNowBar,
-    SemanticStyle, Snapshot, StartRequest, Template, Visibility,
+    Placement, PresentationStyle, ProgressPoint, ProgressSegment, ProgressStyle, Result,
+    SamsungNowBar, SemanticStyle, Snapshot, StartRequest, Template, Visibility,
 };
 
 fn delivery_progress(progress: u32, icon: &IconSource) -> ProgressStyle {
@@ -41,6 +41,7 @@ fn delivery_progress(progress: u32, icon: &IconSource) -> ProgressStyle {
 /// Schema-v2 content for Android's rich progress presentation.
 fn delivery_snapshot(revision: u64, progress: u32, status: &str) -> Snapshot {
     let icon = IconSource::Resource("liveupdate_status".into());
+    let style = PresentationStyle::Progress(delivery_progress(progress, &icon));
     Snapshot {
         revision,
         title: "Mochi's snack delivery".into(),
@@ -49,19 +50,17 @@ fn delivery_snapshot(revision: u64, progress: u32, status: &str) -> Snapshot {
         timer: None,
         stale_at: None,
         presentation: Some(AndroidPresentation {
-            style: PresentationStyle::Progress(delivery_progress(progress, &icon)),
             short_critical_text: Some(format!("{progress}%")),
             large_icon: Some(icon.clone()),
             actions: vec![NotificationAction {
-                id: "track".into(),
-                title: "Track".into(),
                 icon: Some(icon),
-                authentication_required: false,
+                ..NotificationAction::new("track", "Track")
             }],
             samsung_now_bar: Some(SamsungNowBar {
                 primary: Some("Mochi delivery".into()),
                 secondary: Some(status.into()),
             }),
+            ..AndroidPresentation::new(style)
         }),
     }
 }
@@ -72,6 +71,7 @@ pub fn run_delivery<D: Driver>(updates: &LiveUpdate<D>) -> Result<()> {
         return Ok(()); // Ask for the notification permission first.
     }
     let activity = updates.start(StartRequest {
+        placement: Placement::Tagged,
         activity_key: "delivery:order-123".into(),
         schema_version: 2,
         template: Template::Progress,

@@ -260,6 +260,7 @@ mod scenarios {
 
     fn request(key: &str, revision: u64, progress: f64) -> StartRequest {
         StartRequest {
+            placement: liveupdate::Placement::Tagged,
             activity_key: key.into(),
             schema_version: 1,
             template: Template::Progress,

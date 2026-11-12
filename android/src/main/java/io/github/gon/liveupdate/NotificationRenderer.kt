@@ -21,10 +21,13 @@ private const val MAX_TIMESTAMP = 8_640_000_000_000_000L
 private const val MAX_PROGRESS_ELEMENTS = 32
 private const val MAX_ACTIONS = 3
 private const val MAX_METRICS = 3
+private const val MAX_SUB_TEXT = 64
 private const val INVALID_MESSAGE = "Invalid live update request."
 private val ACTION_ID = Regex("[A-Za-z0-9][A-Za-z0-9._:-]{0,63}")
 private val VALID_STATES = setOf("unknown", "active", "stale", "ended", "dismissed")
 private val VALID_PROMOTION_STATES = setOf("promoted", "notPromoted", "notApplicable", "unknown")
+private val VALID_STYLES = setOf("standard", "bigText", "progress", "timer", "metric")
+private val VALID_PLACEMENTS = setOf("tagged", "foreground")
 
 /** Strict schema-v1/v2 parser and Android system-template renderer. */
 internal class NotificationRenderer(
@@ -35,8 +38,13 @@ internal class NotificationRenderer(
 ) {
     private val application = context.applicationContext
     private val icons = IconResolver(application)
+    private val links = LinkResolver(application)
 
-    fun build(record: JSONObject): Notification {
+    /**
+     * The notification of [record]. A revision that alerts is built for [alertChannelId] when the adapter gives
+     * one, and may then alert again.
+     */
+    fun build(record: JSONObject, alertChannelId: String? = null): Notification {
         validateRecordShape(record)
         val id = requiredText(record, "id", 256)
         val origin = requiredObject(record, "origin")
@@ -44,12 +52,14 @@ internal class NotificationRenderer(
         val schema = requiredInt(origin, "schemaVersion", 1, 2)
         val title = requiredText(snapshot, "title", 120)
         val status = requiredText(snapshot, "status", 240)
-        val requested = requiredBoolean(record, "promotionRequested")
-        val builder = baseBuilder(record, title, status, requested, origin)
+        val builder = baseBuilder(record, id, title, status, alertChannelId ?: channelId)
+        if (alertChannelId != null) builder.setOnlyAlertOnce(false)
         when (schema) {
             1 -> applyLegacy(builder, snapshot, requiredText(origin, "template", 16))
-            2 -> applyRich(builder, id, snapshot, requiredText(origin, "template", 16))
+            2 -> applyRich(builder, id, snapshot, origin)
         }
+        // The last content of an ended activity reports nothing when it goes.
+        if (!record.isMissingOrNull("dismissAt")) builder.setDeleteIntent(null)
         return builder.build()
     }
 
@@ -60,41 +70,65 @@ internal class NotificationRenderer(
                 "id", "origin", "snapshot", "state", "promotionRequested", "promotionState",
                 "awaitingObservation", "postFailed",
             ),
+            setOf("dismissAt"),
         )
-        if (requiredText(record, "state", 16) !in VALID_STATES) invalid()
+        val state = requiredText(record, "state", 16)
+        if (state !in VALID_STATES) invalid()
         if (requiredText(record, "promotionState", 24) !in VALID_PROMOTION_STATES) invalid()
         requiredBoolean(record, "awaitingObservation")
         requiredBoolean(record, "postFailed")
+        if (!record.isMissingOrNull("dismissAt")) {
+            // Only an ended activity has a time at which its last content goes.
+            requiredLong(record, "dismissAt", 0, MAX_TIMESTAMP)
+            if (state != "ended") invalid()
+        }
         val origin = requiredObject(record, "origin")
         requireFields(
             origin,
             setOf("activityKey", "schemaVersion", "template", "fallback", "visibility", "snapshot"),
+            setOf("placement"),
         )
         requiredText(origin, "activityKey", 128)
         if (requiredText(origin, "fallback", 16) !in setOf("none", "notification")) invalid()
         requiredObject(origin, "snapshot")
+        val placement = optionalText(origin, "placement", 16)
+        if (placement != null && placement !in VALID_PLACEMENTS) invalid()
+        if (placement == "foreground" && requiredInt(origin, "schemaVersion", 1, 2) == 1) invalid()
     }
 
     @SuppressLint("InlinedApi")
     private fun baseBuilder(
         record: JSONObject,
+        id: String,
         title: String,
         status: String,
-        requested: Boolean,
-        origin: JSONObject,
+        channel: String,
     ): Notification.Builder {
+        val origin = requiredObject(record, "origin")
+        // The last content of an ended activity: no longer ongoing, not promoted, and gone at its time.
+        val final = !record.isMissingOrNull("dismissAt")
         val extras = Bundle().apply { putString(RECORD_EXTRA, record.toString()) }
-        if (sdk >= 36 && requested) extras.putBoolean(Notification.EXTRA_REQUEST_PROMOTED_ONGOING, true)
-        return Notification.Builder(application, channelId)
+        if (sdk >= 36 && !final && requiredBoolean(record, "promotionRequested")) {
+            extras.putBoolean(Notification.EXTRA_REQUEST_PROMOTED_ONGOING, true)
+        }
+        val builder = Notification.Builder(application, channel)
             .setSmallIcon(R.drawable.liveupdate_status)
             .setContentTitle(title)
             .setContentText(status)
-            .setOngoing(true)
+            .setOngoing(!final)
             .setOnlyAlertOnce(true)
             .setVisibility(visibility(requiredText(origin, "visibility", 16)))
             .setShowWhen(false)
             .setExtras(extras)
-            .also { builder -> contentIntent()?.let(builder::setContentIntent) }
+        links.open(id, null, null)?.let(builder::setContentIntent)
+        if (final) {
+            builder.setTimeoutAfter((record.getLong("dismissAt") - System.currentTimeMillis()).coerceAtLeast(1))
+        }
+        // Android otherwise holds a service's notification back for ten seconds.
+        if (optionalText(origin, "placement", 16) == "foreground" && Build.VERSION.SDK_INT >= 31) {
+            builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
+        }
+        return builder
     }
 
     private fun applyLegacy(builder: Notification.Builder, snapshot: JSONObject, template: String) {
@@ -125,7 +159,7 @@ internal class NotificationRenderer(
         builder: Notification.Builder,
         activityId: String,
         snapshot: JSONObject,
-        template: String,
+        origin: JSONObject,
     ) {
         requireFields(snapshot, setOf("revision", "title", "status", "presentation"), setOf("staleAt"))
         validateCommonSnapshot(snapshot)
@@ -133,12 +167,21 @@ internal class NotificationRenderer(
         requireFields(
             presentation,
             setOf("style"),
-            setOf("shortCriticalText", "largeIcon", "actions", "samsungNowBar"),
+            setOf(
+                "shortCriticalText", "largeIcon", "actions", "samsungNowBar", "chronometer", "openUrl", "alert",
+                "publicVersion", "smallIcon", "accentColor", "subText",
+            ),
         )
         val style = requiredObject(presentation, "style")
         val kind = requiredText(style, "kind", 16)
-        if (kind != template) invalid()
+        // The start named a system style; an update may carry another one.
+        if (requiredText(origin, "template", 16) !in VALID_STYLES) invalid()
         applyStyle(builder, style, kind)
+        optionalObject(presentation, "chronometer")?.let { chronometer ->
+            // The timer style is that clock alone.
+            if (kind == "timer") invalid()
+            applyClock(builder, chronometer)
+        }
         applyPresentationOptions(
             builder,
             activityId,
@@ -146,6 +189,45 @@ internal class NotificationRenderer(
             requiredText(snapshot, "title", 120),
             requiredText(snapshot, "status", 240),
         )
+        applyExtensions(builder, activityId, presentation, origin)
+    }
+
+    private fun applyExtensions(
+        builder: Notification.Builder,
+        activityId: String,
+        presentation: JSONObject,
+        origin: JSONObject,
+    ) {
+        optionalBoolean(presentation, "alert")
+        optionalText(presentation, "openUrl", MAX_URL)?.let { url ->
+            builder.setContentIntent(link(activityId, null, url))
+        }
+        val smallIcon = optionalObject(presentation, "smallIcon")?.let { source ->
+            // Android tints a small icon's shape, which a resource has.
+            if (source.optionalString("kind") != "resource") invalid()
+            icons.resolve(source)
+        }
+        smallIcon?.let(builder::setSmallIcon)
+        if (!presentation.isMissingOrNull("accentColor")) {
+            builder.setColor(requiredLong(presentation, "accentColor", 0, 0xffff_ffffL).toInt())
+        }
+        optionalText(presentation, "subText", MAX_SUB_TEXT)?.let(builder::setSubText)
+        optionalObject(presentation, "publicVersion")?.let { public ->
+            requireFields(public, setOf("title", "status"))
+            // Only a private activity has content that a lock screen hides.
+            if (requiredText(origin, "visibility", 16) != "private") invalid()
+            val shown = Notification.Builder(application, channelId)
+                .setContentTitle(requiredText(public, "title", 120))
+                .setContentText(requiredText(public, "status", 240))
+            if (smallIcon != null) shown.setSmallIcon(smallIcon) else shown.setSmallIcon(R.drawable.liveupdate_status)
+            builder.setPublicVersion(shown.build())
+        }
+    }
+
+    /** The intent that opens [url] in the application; a URL the contract refuses or nothing opens is invalid. */
+    private fun link(activityId: String, actionId: String?, url: String): PendingIntent {
+        if (!isValidLink(url)) invalid()
+        return links.open(activityId, actionId, url) ?: invalid()
     }
 
     private fun applyStyle(builder: Notification.Builder, style: JSONObject, kind: String) {
@@ -264,12 +346,16 @@ internal class NotificationRenderer(
 
     private fun applyTimer(builder: Notification.Builder, style: JSONObject) {
         requireFields(style, setOf("kind", "value"))
-        val value = requiredObject(style, "value")
+        builder.setCategory(Notification.CATEGORY_STATUS)
+        applyClock(builder, requiredObject(style, "value"))
+    }
+
+    /** The header clock of a timer style or of a chronometer: down to its end, or up from its start. */
+    private fun applyClock(builder: Notification.Builder, value: JSONObject) {
         requireFields(value, setOf("timer", "countsDown"))
         val (startedAt, endsAt) = timer(requiredObject(value, "timer"))
         val countsDown = requiredBoolean(value, "countsDown")
-        builder.setCategory(Notification.CATEGORY_STATUS)
-            .setWhen(if (countsDown) endsAt else startedAt)
+        builder.setWhen(if (countsDown) endsAt else startedAt)
             .setShowWhen(true)
             .setUsesChronometer(true)
             .setChronometerCountDown(countsDown)
@@ -372,37 +458,35 @@ internal class NotificationRenderer(
         val ids = mutableSetOf<String>()
         for (index in 0 until actions.length()) {
             val value = actions.getJSONObject(index)
-            requireFields(value, setOf("id", "title"), setOf("icon", "authenticationRequired"))
+            requireFields(value, setOf("id", "title"), setOf("icon", "authenticationRequired", "openUrl"))
             val id = requiredText(value, "id", 64)
             if (!ACTION_ID.matches(id) || !ids.add(id)) invalid()
             val title = requiredText(value, "title", 64)
             val icon = optionalIcon(value, "icon")
             val authentication = optionalBoolean(value, "authenticationRequired") ?: false
-            builder.addAction(action(activityId, id, title, icon, authentication))
+            // An action with a URL opens it; Android lets no receiver of a notification start an activity.
+            val pending = optionalText(value, "openUrl", MAX_URL)?.let { url -> link(activityId, id, url) }
+                ?: actionBroadcast(activityId, id)
+            builder.addAction(
+                Notification.Action.Builder(icon, title, pending).apply {
+                    if (Build.VERSION.SDK_INT >= 31) setAuthenticationRequired(authentication)
+                }.build(),
+            )
         }
     }
 
-    private fun action(
-        activityId: String,
-        actionId: String,
-        title: String,
-        icon: Icon?,
-        authentication: Boolean,
-    ): Notification.Action {
+    private fun actionBroadcast(activityId: String, actionId: String): PendingIntent {
         val data = Uri.Builder().scheme("liveupdate").authority("action")
             .appendPath(activityId).appendPath(actionId).build()
         val intent = Intent(application, LiveUpdateActionReceiver::class.java)
             .setAction(LIVE_UPDATE_ACTION).setData(data)
             .putExtra(ACTIVITY_ID_EXTRA, activityId).putExtra(ACTION_ID_EXTRA, actionId)
-        val pending = PendingIntent.getBroadcast(
+        return PendingIntent.getBroadcast(
             application,
             0,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        return Notification.Action.Builder(icon, title, pending).apply {
-            if (Build.VERSION.SDK_INT >= 31) setAuthenticationRequired(authentication)
-        }.build()
     }
 
     private fun deleteIntent(activityId: String): PendingIntent {
@@ -459,16 +543,6 @@ internal class NotificationRenderer(
         "private" -> Notification.VISIBILITY_PRIVATE
         "secret" -> Notification.VISIBILITY_SECRET
         else -> invalid()
-    }
-
-    private fun contentIntent(): PendingIntent? {
-        val launch = application.packageManager.getLaunchIntentForPackage(application.packageName) ?: return null
-        return PendingIntent.getActivity(
-            application,
-            0,
-            launch,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
     }
 
     private fun optionalIcon(value: JSONObject, field: String): Icon? =

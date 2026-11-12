@@ -32,13 +32,13 @@ pub use driver::{Driver, DriverRecord, Observation};
 pub use error::{Error, ErrorCode, Result};
 pub use event::{ActivityEvent, EventBatch, EventKind, MAX_EVENTS};
 pub use model::{
-    ActivityRecord, ActivityState, EndPolicy, MAX_SAFE_INTEGER, MAX_TIMESTAMP, Snapshot,
+    ActivityRecord, ActivityState, EndPolicy, MAX_SAFE_INTEGER, MAX_TIMESTAMP, Placement, Snapshot,
     StartRequest, Template, Timer,
 };
 pub use presentation::{
     AndroidPresentation, BigTextStyle, IconSource, MAX_ACTIONS, MAX_METRICS, MAX_PROGRESS_ELEMENTS,
     Metric, MetricStyle, MetricValue, NotificationAction, PresentationStyle, ProgressPoint,
-    ProgressSegment, ProgressStyle, SamsungNowBar, SemanticStyle, TimerStyle,
+    ProgressSegment, ProgressStyle, PublicVersion, SamsungNowBar, SemanticStyle, TimerStyle,
 };
 
 // LU-DOCS-1

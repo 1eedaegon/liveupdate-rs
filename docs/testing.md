@@ -79,6 +79,15 @@ The instrumentation tests:
   actions, bounded durable events, Samsung extras, strict malformed-input rejection and Unicode
   scalar boundaries shared with Rust.
 - `PermissionInstrumentationTest`: posts without the notification permission.
+- `ExtensionsInstrumentationTest`: the optional parts of schema version 2 as the adapter builds and keys
+  them: links whose intents are sent and received by an activity of the test package, `opened` events,
+  a style that changes, the last content of a delayed end, the foreground placement with a service that
+  attaches, the alerting channel, the public version and branding.
+- `ForegroundServiceInstrumentationTest`: what Android does with a notification that a foreground service
+  holds, which the foreground placement of `docs/design/android-core-extensions` rests on. A service and
+  a notification listener of the test package show that a posted notification becomes the service's
+  without being removed, that a post keeps it and a cancel does nothing, how leaving the foreground
+  removes or keeps it, and that a killed process takes it along.
 
 ## CI
 

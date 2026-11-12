@@ -141,6 +141,60 @@ class RichPresentationInstrumentationTest {
         assertFalse(Notification.Builder.recoverBuilder(context, Device.waitForShown("old-metric")).style is Notification.MetricStyle)
     }
 
+    // LU-V2-CHRONO-2
+    @Test
+    fun aChronometerCountsInTheHeaderBesideAStyle() {
+        assertTrue(Build.VERSION.SDK_INT >= 37)
+        val now = System.currentTimeMillis()
+        val standard = JSONObject().put("kind", "standard")
+
+        val down = chronometer(now - 60_000, now + 600_000, countsDown = true)
+        adapter.post(v2Record("clock-progress", "progress", v2Snapshot(progressStyle(40), chronometer = down)))
+        val progress = Device.waitForShown("clock-progress")
+        assertEquals(now + 600_000, progress.`when`)
+        assertTrue(progress.extras.getBoolean(Notification.EXTRA_SHOW_WHEN))
+        assertTrue(progress.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER))
+        assertTrue(progress.extras.getBoolean(Notification.EXTRA_CHRONOMETER_COUNT_DOWN))
+        val restored = Notification.Builder.recoverBuilder(context, progress).style as Notification.ProgressStyle
+        assertEquals(40, restored.progress)
+        assertTrue(progress.hasPromotableCharacteristics())
+
+        val up = chronometer(now - 60_000, now + 600_000, countsDown = false)
+        adapter.post(v2Record("clock-standard", "standard", v2Snapshot(standard, chronometer = up)))
+        val counting = Device.waitForShown("clock-standard")
+        assertEquals(now - 60_000, counting.`when`)
+        assertTrue(counting.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER))
+        assertFalse(counting.extras.getBoolean(Notification.EXTRA_CHRONOMETER_COUNT_DOWN))
+
+        adapter.post(v2Record("no-clock", "standard", v2Snapshot(standard)))
+        val without = Device.waitForShown("no-clock")
+        assertFalse(without.extras.getBoolean(Notification.EXTRA_SHOW_WHEN))
+        assertFalse(without.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER))
+    }
+
+    // LU-V2-CHRONO-2
+    @Test
+    fun aChronometerTheContractRefusesPostsNothing() {
+        val now = System.currentTimeMillis()
+        val standard = JSONObject().put("kind", "standard")
+        val clock = chronometer(now, now + 60_000, countsDown = true)
+        val timer = JSONObject().put("kind", "timer").put("value", JSONObject(clock.toString()))
+        val invalid = listOf(
+            "timer" to v2Snapshot(timer, chronometer = clock),
+            "standard" to v2Snapshot(standard, chronometer = chronometer(now, now, countsDown = true)),
+            "standard" to v2Snapshot(standard, chronometer = JSONObject(clock.toString()).put("paused", true)),
+            "standard" to v2Snapshot(standard, chronometer = JSONObject().put("timer", clock.getJSONObject("timer"))),
+        )
+        invalid.forEachIndexed { index, (template, snapshot) ->
+            assertEquals(
+                "clock-$index",
+                "INVALID_INPUT",
+                failureCode { adapter.post(v2Record("clock-$index", template, snapshot)) },
+            )
+        }
+        assertTrue(Device.manager.activeNotifications.isEmpty())
+    }
+
     // LU-V2-ACTION-2, LU-V2-EVENT-4
     @Test
     fun immutableUniqueActionsAndDismissalsDrainAsSequencedEvents() {
@@ -358,6 +412,10 @@ class RichPresentationInstrumentationTest {
         .put("id", id)
         .put("title", title)
         .put("authenticationRequired", authentication)
+
+    private fun chronometer(startedAt: Long, endsAt: Long, countsDown: Boolean) = JSONObject()
+        .put("timer", JSONObject().put("startedAt", startedAt).put("endsAt", endsAt))
+        .put("countsDown", countsDown)
 
     private fun samePendingIntent(first: PendingIntent, second: PendingIntent): Boolean = first == second
 

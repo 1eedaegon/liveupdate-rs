@@ -55,6 +55,16 @@ impl Snapshot {
         }
     }
 
+    /// Whether a public version, if the snapshot has one, is of a private activity: only that one
+    /// has content a lock screen hides.
+    pub(crate) fn public_version_fits(&self, visibility: Visibility) -> bool {
+        visibility == Visibility::Private
+            || self
+                .presentation
+                .as_ref()
+                .is_none_or(|presentation| presentation.public_version.is_none())
+    }
+
     /// Validates all snapshot limits and template-specific values.
     pub fn validate(&self) -> Result<()> {
         if self.revision > MAX_SAFE_INTEGER
@@ -106,6 +116,23 @@ pub enum Template {
     Metric,
 }
 
+/// How Android keys an activity's notification.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Placement {
+    /// Under a tag of its own, beside the application's other notifications.
+    #[default]
+    Tagged,
+    /// Without a tag, under the one id that a foreground service of the host can hold.
+    Foreground,
+}
+
+impl Placement {
+    fn is_tagged(&self) -> bool {
+        *self == Self::Tagged
+    }
+}
+
 /// Input for starting one logical live update.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -122,6 +149,9 @@ pub struct StartRequest {
     pub visibility: Visibility,
     /// Initial content at its first revision.
     pub snapshot: Snapshot,
+    /// How Android keys the notification; schema version 2 only.
+    #[serde(default, skip_serializing_if = "Placement::is_tagged")]
+    pub placement: Placement,
 }
 
 impl StartRequest {
@@ -133,7 +163,10 @@ impl StartRequest {
         {
             return Err(Error::invalid());
         }
-        if (self.schema_version == 1) != self.snapshot.presentation.is_none() {
+        if (self.schema_version == 1) != self.snapshot.presentation.is_none()
+            || (self.schema_version == 1 && self.placement != Placement::Tagged)
+            || !self.snapshot.public_version_fits(self.visibility)
+        {
             return Err(Error::invalid());
         }
         self.snapshot.validate()?;
@@ -152,7 +185,7 @@ pub enum EndPolicy {
     Immediate,
     /// Use the platform default, which is immediate on Android.
     Default,
-    /// Request delayed dismissal at a timestamp; unsupported on Android.
+    /// Keep the last content, no longer ongoing, until a timestamp, where the adapter offers it.
     After {
         /// Requested dismissal timestamp in milliseconds.
         at: u64,
@@ -195,7 +228,7 @@ pub struct ActivityRecord {
     pub activity_key: String,
     /// Contract version used by this activity.
     pub schema_version: u8,
-    /// System template fixed at start.
+    /// System template of the latest content; schema version 1 fixes it at start.
     pub template: Template,
     /// Latest accepted content.
     pub snapshot: Snapshot,
@@ -281,6 +314,7 @@ mod tests {
 
     fn start(snapshot: Snapshot) -> StartRequest {
         StartRequest {
+            placement: Placement::Tagged,
             activity_key: "delivery:1".into(),
             schema_version: 1,
             template: snapshot.template().unwrap_or(Template::Progress),
@@ -320,6 +354,7 @@ mod tests {
         assert!(start(progress(0.5)).validate().is_ok());
         for schema_version in [0, 2, u8::MAX] {
             let request = StartRequest {
+                placement: Placement::Tagged,
                 schema_version,
                 ..start(progress(0.5))
             };
@@ -331,6 +366,7 @@ mod tests {
         for visibility in [Visibility::Public, Visibility::Private, Visibility::Secret] {
             assert!(
                 StartRequest {
+                    placement: Placement::Tagged,
                     visibility,
                     ..start(progress(0.5))
                 }
@@ -339,6 +375,7 @@ mod tests {
             );
         }
         let unknown = StartRequest {
+            placement: Placement::Tagged,
             visibility: Visibility::Unknown,
             ..start(progress(0.5))
         };
@@ -396,6 +433,7 @@ mod tests {
             assert!(!valid(&snapshot));
         }
         let mismatched = StartRequest {
+            placement: Placement::Tagged,
             template: Template::Timer,
             ..start(progress(0.5))
         };

@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 /// Maximum number of Android events kept between drains.
 pub const MAX_EVENTS: usize = 128;
 
-/// What happened on an Android Live Activity notification.
+/// What happened on an Android Live Activity notification. More kinds may come: match with a `_` arm.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 pub enum EventKind {
@@ -16,6 +17,12 @@ pub enum EventKind {
     },
     /// The user or system dismissed the notification.
     Dismissed,
+    /// The user opened the application from the notification, as the opened activity reported.
+    Opened {
+        /// The opening action, when the user tapped one instead of the content.
+        #[serde(rename = "actionId", default, skip_serializing_if = "Option::is_none")]
+        action_id: Option<String>,
+    },
 }
 
 /// One sequenced event produced by Android.
@@ -41,9 +48,12 @@ impl ActivityEvent {
         {
             return Err(Error::invalid());
         }
-        if let EventKind::Action { action_id } = &self.kind
-            && !valid_action_id(action_id)
-        {
+        let action_id = match &self.kind {
+            EventKind::Action { action_id } => Some(action_id),
+            EventKind::Opened { action_id } => action_id.as_ref(),
+            EventKind::Dismissed => None,
+        };
+        if action_id.is_some_and(|id| !valid_action_id(id)) {
             return Err(Error::invalid());
         }
         Ok(())

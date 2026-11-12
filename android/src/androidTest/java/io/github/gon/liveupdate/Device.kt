@@ -32,9 +32,17 @@ internal object Device {
     }
 
     fun clear() {
-        manager.cancelAll()
         context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit().clear().commit()
-        waitUntil("no notification is shown") { manager.activeNotifications.isEmpty() }
+        try {
+            // Android posts asynchronously: what was still on its way at the first cancel is cancelled by a later one.
+            waitUntil("no notification is shown") {
+                manager.cancelAll()
+                manager.activeNotifications.isEmpty()
+            }
+        } catch (error: AssertionError) {
+            val left = manager.activeNotifications.joinToString { "${it.key} flags ${it.notification.flags}" }
+            throw AssertionError("${error.message}: $left", error)
+        }
     }
 
     fun shell(command: String) {
@@ -71,6 +79,12 @@ internal object Device {
     fun waitForGone(id: String) = waitUntil("$id is gone") { shown(id) == null }
 
     fun observed(): JSONArray = dispatch("observe").getJSONArray("data")
+
+    /**
+     * Waits before the update of a notification: Android drops the updates of a package that posts more than
+     * five notifications a second, by an average that a burst before this one has pulled down.
+     */
+    fun paceUpdate() = Thread.sleep(700)
 
     /** Polls for up to 30 seconds: the framework posts and cancels asynchronously. */
     fun waitUntil(what: String, condition: () -> Boolean) {
@@ -120,6 +134,7 @@ internal object Device {
         shortCriticalText: String? = null,
         largeIcon: JSONObject? = null,
         samsungNowBar: JSONObject? = null,
+        chronometer: JSONObject? = null,
     ): JSONObject = JSONObject()
         .put("revision", revision)
         .put("title", "Mochi's snack delivery")
@@ -131,6 +146,7 @@ internal object Device {
                 if (shortCriticalText != null) put("shortCriticalText", shortCriticalText)
                 if (largeIcon != null) put("largeIcon", largeIcon)
                 if (samsungNowBar != null) put("samsungNowBar", samsungNowBar)
+                if (chronometer != null) put("chronometer", chronometer)
             })
 
     fun v2Record(

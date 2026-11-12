@@ -355,7 +355,7 @@ fn an_ended_record_no_longer_awaits_a_post() {
 
 // LU-END-3
 #[test]
-fn delayed_dismissal_is_unsupported_on_android() {
+fn a_delayed_end_needs_an_adapter_that_offers_it() {
     let driver = FakeDriver::default();
     let client = LiveUpdate::new(driver.clone());
     assert_code(

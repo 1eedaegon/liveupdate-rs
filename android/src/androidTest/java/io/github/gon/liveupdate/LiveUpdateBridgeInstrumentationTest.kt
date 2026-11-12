@@ -30,7 +30,7 @@ class LiveUpdateBridgeInstrumentationTest {
     @After
     fun clear() = Device.clear()
 
-    // LU-CAP-2, LU-API-2, LU-API-3, LU-V2-CAP-1
+    // LU-CAP-2, LU-API-2, LU-API-3, LU-V2-CAP-1, LU-V2-CAP-2
     @Test
     fun capabilitiesReflectTheRunningDevice() {
         val expected = InstrumentationRegistry.getArguments().getString("expectedSdk")
@@ -54,6 +54,12 @@ class LiveUpdateBridgeInstrumentationTest {
             Build.VERSION.SDK_INT >= 37 && Build.MANUFACTURER.equals("samsung", ignoreCase = true),
             presentation.getBoolean("samsungNowBar"),
         )
+        for (extension in listOf(
+            "chronometer", "links", "styleChange", "delayedEnd", "foregroundPlacement", "alert", "publicVersion",
+            "branding",
+        )) {
+            assertTrue(extension, presentation.getBoolean(extension))
+        }
     }
 
     // LU-ADAPTER-1, LU-ADAPTER-6, LU-ADAPTER-8, LU-ADAPTER-9

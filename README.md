@@ -49,8 +49,8 @@ Android:
 
 use liveupdate::{
     AndroidPresentation, Driver, EndPolicy, Fallback, IconSource, LiveUpdate, NotificationAction,
-    PresentationStyle, ProgressPoint, ProgressSegment, ProgressStyle, Result, SamsungNowBar,
-    SemanticStyle, Snapshot, StartRequest, Template, Visibility,
+    Placement, PresentationStyle, ProgressPoint, ProgressSegment, ProgressStyle, Result,
+    SamsungNowBar, SemanticStyle, Snapshot, StartRequest, Template, Visibility,
 };
 
 fn delivery_progress(progress: u32, icon: &IconSource) -> ProgressStyle {
@@ -87,6 +87,7 @@ fn delivery_progress(progress: u32, icon: &IconSource) -> ProgressStyle {
 /// Schema-v2 content for Android's rich progress presentation.
 fn delivery_snapshot(revision: u64, progress: u32, status: &str) -> Snapshot {
     let icon = IconSource::Resource("liveupdate_status".into());
+    let style = PresentationStyle::Progress(delivery_progress(progress, &icon));
     Snapshot {
         revision,
         title: "Mochi's snack delivery".into(),
@@ -95,19 +96,17 @@ fn delivery_snapshot(revision: u64, progress: u32, status: &str) -> Snapshot {
         timer: None,
         stale_at: None,
         presentation: Some(AndroidPresentation {
-            style: PresentationStyle::Progress(delivery_progress(progress, &icon)),
             short_critical_text: Some(format!("{progress}%")),
             large_icon: Some(icon.clone()),
             actions: vec![NotificationAction {
-                id: "track".into(),
-                title: "Track".into(),
                 icon: Some(icon),
-                authentication_required: false,
+                ..NotificationAction::new("track", "Track")
             }],
             samsung_now_bar: Some(SamsungNowBar {
                 primary: Some("Mochi delivery".into()),
                 secondary: Some(status.into()),
             }),
+            ..AndroidPresentation::new(style)
         }),
     }
 }
@@ -118,6 +117,7 @@ pub fn run_delivery<D: Driver>(updates: &LiveUpdate<D>) -> Result<()> {
         return Ok(()); // Ask for the notification permission first.
     }
     let activity = updates.start(StartRequest {
+        placement: Placement::Tagged,
         activity_key: "delivery:order-123".into(),
         schema_version: 2,
         template: Template::Progress,
@@ -141,16 +141,126 @@ pub fn on_android() -> Result<()> {
 ```
 
 `activity_key` makes `start` idempotent. A repeated start with the same request returns the same
-handle; incompatible content returns `CONFLICT`. Updates must keep the original template and use a
-monotonically increasing `revision`. The returned record tells you whether Android observed the
-notification and whether promoted presentation actually happened.
+handle; incompatible content returns `CONFLICT`. Updates use a monotonically increasing `revision`.
+The returned record tells you whether Android observed the notification and whether promoted
+presentation actually happened.
 
 Schema v2 keeps `Snapshot::progress` and `Snapshot::timer` empty and puts typed Android UI under
 `presentation`. The example becomes a system `ProgressStyle` on API 36 and newer and a classic
-progress notification on older versions. Change both `template` and `presentation.style` together
-for Standard, BigText, Timer or Metric. `Fallback::Notification` keeps a regular ongoing
-notification when promotion is unavailable; `Fallback::None` returns `UNSUPPORTED_FEATURE`
-instead. Action taps and dismissals are drained through `LiveUpdate::events()`.
+progress notification on older versions. A start names the `template` of its `presentation.style`.
+`Fallback::Notification` keeps a regular ongoing notification when promotion is unavailable;
+`Fallback::None` returns `UNSUPPORTED_FEATURE` instead.
+
+## Features
+
+Every optional part is a member that is left out when unset. `AndroidPresentation::new(style)` and
+`NotificationAction::new(id, title)` set none of them, so a caller names only what it uses:
+`AndroidPresentation { open_url: Some(url), ..AndroidPresentation::new(style) }`.
+`capabilities()?.presentation` says which of them the device and the AAR offer.
+
+### Styles
+
+| Style | `presentation.style` | Android shows |
+| --- | --- | --- |
+| Standard | `PresentationStyle::Standard` | The title and the status |
+| Long text | `PresentationStyle::BigText(BigTextStyle { text, summary })` | Up to 4,000 characters when expanded |
+| Progress | `PresentationStyle::Progress(ProgressStyle { progress, segments, points, .. })` | `ProgressStyle` with colored segments, points and start, end and tracker icons from API 36; a plain bar below |
+| Timer | `PresentationStyle::Timer(TimerStyle { timer, counts_down })` | A clock in the header, down to the end or up from the start |
+| Metrics | `PresentationStyle::Metric(MetricStyle { metrics, critical_metric })` | One to three typed values (number, text, stopwatch, countdown) from API 37; the title and the status below |
+
+An update may carry another style than the start's (`Progress` while under way, `BigText` once
+delivered); the record's `template` follows the latest snapshot. Schema v1 keeps its template.
+
+### Options of a presentation
+
+| Feature | Member of `AndroidPresentation` | Notes |
+| --- | --- | --- |
+| Status-chip text | `short_critical_text: Some("60%".into())` | At most 7 characters; shown on a promoted notification |
+| Large icon | `large_icon: Some(IconSource::Resource("ic_order".into()))` | Or `IconSource::AppFile("icons/order.png".into())` under the app's files: at most 1 MiB and 1,024 pixels a side |
+| Button that reports a tap | `actions: vec![NotificationAction::new("cancel", "Cancel")]` | Up to three; an `Action` event |
+| Button that opens a screen | `NotificationAction { open_url: Some("myapp://orders/42/map".into()), ..NotificationAction::new("track", "Track") }` | No event; see [Links](#links) |
+| Tap that opens a screen | `open_url: Some("myapp://orders/42".into())` | The launch activity without it |
+| Clock beside a style | `chronometer: Some(TimerStyle { timer, counts_down: true })` | With any style but `Timer`: a progress bar and a countdown |
+| Revision that alerts | `alert: true` | Posted on a second, high-importance channel; the next revision without it is quiet again |
+| Lock-screen text | `public_version: Some(PublicVersion { title, status })` | What a secure lock screen shows instead; `Visibility::Private` only |
+| Small icon | `small_icon: Some(IconSource::Resource("ic_brand".into()))` | A resource; the AAR's own icon without it |
+| Accent color | `accent_color: Some(0xff21_96f3)` | ARGB |
+| Header text | `sub_text: Some("Mochi Express".into())` | At most 64 characters |
+| Samsung Now Bar | `samsung_now_bar: Some(SamsungNowBar { primary, secondary })` | One UI on API 37 and newer |
+
+### The request and the lifecycle
+
+| Feature | Use | Notes |
+| --- | --- | --- |
+| Idempotent start | `StartRequest::activity_key` | The same request answers the running activity; another one is a `CONFLICT` |
+| Without promotion | `fallback: Fallback::Notification` or `Fallback::None` | A regular ongoing notification, or `UNSUPPORTED_FEATURE` |
+| Lock screen | `visibility: Visibility::Public`, `Private` or `Secret` | `Private` hides the content on a secure lock screen unless it has a `public_version` |
+| Foreground service | `placement: Placement::Foreground` | A service of the app holds the notification; see [Foreground service](#foreground-service) |
+| Stale content | `Snapshot::stale_at` | The record reads `Stale` from that time |
+| End at once | `end(id, EndPolicy::Immediate)` | The notification is removed |
+| Keep the last content | `end(id, EndPolicy::After { at })` | It stays, no longer ongoing, until `at`; update first to change it, end again with `Immediate` to remove it early |
+| What the person did | `LiveUpdate::events()` | `Action`, `Dismissed` and `Opened` events, drained once |
+| What happened to it | `list()` and every returned record | `state`, `promotion_state`, `degraded_features` |
+
+### Links
+
+A link is an absolute URL of printable ASCII with a lowercase scheme, at most 2,048 characters. It is
+opened with `ACTION_VIEW` inside your own package only, so one of your activities, exported or not,
+must have an intent filter for it; a URL nothing opens fails the post. `intent:`, `content:`, `file:`, `javascript:`,
+`data:` and `android-app:` are refused.
+
+The opening intent carries the extras `io.github.gon.liveupdate.activityId` and, for a button,
+`io.github.gon.liveupdate.actionId`. Hand the intent back to get an `Opened` event:
+
+```kotlin
+override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+    if (savedInstanceState == null) LiveUpdateEvents.opened(this, intent)
+}
+
+override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    LiveUpdateEvents.opened(this, intent)
+}
+```
+
+`opened` counts an intent once, only for an activity this library stored, and writes a small
+preferences file on the calling thread.
+
+### Foreground service
+
+Android shows one notification for a foreground service. Start the activity with
+`Placement::Foreground` and let your service hold its notification instead of posting a second one.
+The service, its type and its permission are yours; the AAR declares none. One live activity has the
+placement at a time.
+
+```xml
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+<service android:name=".RideService" android:exported="false" android:foregroundServiceType="location" />
+```
+
+```kotlin
+class RideService : Service() {
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // After `start` returned for the activity: its notification becomes this service's.
+        if (!LiveUpdateForeground.attach(this, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)) stopSelf()
+        return START_STICKY
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+}
+
+// Once, for example in Application.onCreate: `end` takes the service out of the foreground.
+LiveUpdateForeground.setListener { stopService(Intent(this, RideService::class.java)) }
+```
+
+Start the activity first and the service second: a service that Android started in the foreground
+must show a notification within seconds, and `attach` answers false without a live activity. `update`
+keeps the notification the service's, `end` releases it, and `LiveUpdateForeground.detach(service)`,
+which a service calls before it stops for another reason, leaves it as an ordinary notification. Do
+not end the activity in the same instant as a detach: Android may post the notification once more. A process that Android killed loses the notification; a
+restarted service that calls `attach` before the first lifecycle call shows the activity again.
 
 ## How it works
 
@@ -195,8 +305,11 @@ closed as `NATIVE_ERROR`.
   app-private icons, up to three immutable actions, and durable action/dismissal events through
   `LiveUpdate::events()`. `LiveUpdateEvents.setListener` in the AAR tells the app as soon as an event is stored,
   so it can drain without polling. It deliberately does not accept arbitrary `RemoteViews`, intents, paths or
-  OEM extras.
-- Android removes notifications immediately. `EndPolicy::After` returns `UNSUPPORTED_FEATURE`.
+  OEM extras: a link is a URL that the app's own package opens.
+- An end removes the notification at once. `EndPolicy::After` keeps the last content until its time,
+  as an ordinary notification that the person can remove; it is no longer promoted.
+- An update needs the app's process: Android has no push that updates a notification. In the
+  background, use a foreground service or a data message that wakes the app.
 - Visibility is reported as `Unknown`: requesting private notification content does not prove what
   an OEM system UI actually revealed.
 - Use one retained client per process so operations share the same serialization boundary. Every

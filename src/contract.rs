@@ -29,9 +29,9 @@ impl Capabilities {
     }
 }
 
-/// Fine-grained Android system-presentation support.
+/// Fine-grained Android system-presentation support. A member that a reply leaves out is false.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct PresentationCapabilities {
     /// Standard notification style.
     pub standard: bool,
@@ -51,6 +51,22 @@ pub struct PresentationCapabilities {
     pub events: bool,
     /// Samsung API 37+ Now Bar extras.
     pub samsung_now_bar: bool,
+    /// A header clock beside a style.
+    pub chronometer: bool,
+    /// URLs that the content tap and an action open in the application, and `opened` events.
+    pub links: bool,
+    /// Another system style in an update of a schema-version-2 activity.
+    pub style_change: bool,
+    /// `EndPolicy::After`: the last content stays until its time.
+    pub delayed_end: bool,
+    /// `Placement::Foreground`: a notification a foreground service of the host can hold.
+    pub foreground_placement: bool,
+    /// A revision that alerts again.
+    pub alert: bool,
+    /// A public version for the secure lock screen.
+    pub public_version: bool,
+    /// A small icon, an accent color and a sub text.
+    pub branding: bool,
 }
 
 /// What to do when the system cannot promote an ongoing notification.

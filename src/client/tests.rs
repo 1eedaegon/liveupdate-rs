@@ -60,8 +60,10 @@ fn snapshot(revision: u64) -> Snapshot {
 
 fn record(id: &str, state: ActivityState) -> DriverRecord {
     DriverRecord {
+        dismiss_at: None,
         id: id.into(),
         origin: StartRequest {
+            placement: crate::Placement::Tagged,
             activity_key: format!("key:{id}"),
             schema_version: 1,
             template: Template::Progress,

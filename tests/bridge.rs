@@ -47,8 +47,10 @@ fn success(data: Value) -> Value {
 
 fn record() -> DriverRecord {
     DriverRecord {
+        dismiss_at: None,
         id: "activity-id".into(),
         origin: StartRequest {
+            placement: liveupdate::Placement::Tagged,
             activity_key: "delivery:1".into(),
             schema_version: 1,
             template: Template::Progress,
