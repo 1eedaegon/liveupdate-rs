@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.2.0 - 2026-11-12
+
+- ci: publish validated tags to crates.io (`b1b504a`)
+- refactor: name the Android namespace io.github.gon.liveupdate (`d94caf3`)
+- feat: links, a delayed end, a foreground placement and more for schema 2 (`2d9b636`)
+
 ## 0.1.3 - 2026-11-10
 
 - docs: use rich schema in the primary example (0.1.3)
