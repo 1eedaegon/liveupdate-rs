@@ -9,7 +9,7 @@ plugins {
 }
 
 android {
-    namespace = "io.github.eedaegon.liveupdate"
+    namespace = "io.github.gon.liveupdate"
     compileSdk = 37
 
     defaultConfig {

@@ -1,15 +1,15 @@
-package io.github.eedaegon.liveupdate
+package io.github.gon.liveupdate
 
 import android.app.Notification
 import android.app.PendingIntent
 import android.graphics.Bitmap
 import android.os.Build
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import io.github.eedaegon.liveupdate.Device.appFileIcon
-import io.github.eedaegon.liveupdate.Device.context
-import io.github.eedaegon.liveupdate.Device.resourceIcon
-import io.github.eedaegon.liveupdate.Device.v2Record
-import io.github.eedaegon.liveupdate.Device.v2Snapshot
+import io.github.gon.liveupdate.Device.appFileIcon
+import io.github.gon.liveupdate.Device.context
+import io.github.gon.liveupdate.Device.resourceIcon
+import io.github.gon.liveupdate.Device.v2Record
+import io.github.gon.liveupdate.Device.v2Snapshot
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After

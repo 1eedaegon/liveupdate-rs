@@ -8,7 +8,7 @@ use std::{
     sync::{Mutex, PoisonError},
 };
 
-const BRIDGE_CLASS: &str = "io.github.eedaegon.liveupdate.LiveUpdateBridge";
+const BRIDGE_CLASS: &str = "io.github.gon.liveupdate.LiveUpdateBridge";
 static CONTEXT_INITIALIZATION: Mutex<()> = Mutex::new(());
 
 /// JNI transport supplied by the companion `liveupdate-android` AAR.

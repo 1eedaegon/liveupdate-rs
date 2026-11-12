@@ -33,8 +33,9 @@ runtimes already do this before application code runs. Before that, `LiveUpdate:
 `NATIVE_ERROR`, as long as the build unwinds on panic (Rust's default): with `panic = "abort"`, the
 process aborts.
 
-The Android namespace is `io.github.eedaegon.liveupdate` because Android package segments cannot
-start with a digit. The repository, Cargo author and project owner remain `1eedaegon`.
+The Android namespace is `io.github.gon.liveupdate`: an Android package segment cannot start with
+a digit, so it cannot be the owner's name. The repository, Cargo author and project owner remain
+`1eedaegon`.
 
 ## Use
 

@@ -1,4 +1,4 @@
-package io.github.eedaegon.liveupdate
+package io.github.gon.liveupdate
 
 /** Matches Rust's Unicode-scalar text bound and its closed whitespace definition. */
 internal fun isValidContractText(value: String, maximum: Int): Boolean {

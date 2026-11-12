@@ -1,4 +1,4 @@
-package io.github.eedaegon.liveupdate
+package io.github.gon.liveupdate
 
 import android.app.Notification
 import android.app.NotificationManager
@@ -9,11 +9,11 @@ import android.os.Bundle
 import android.os.Process
 import android.service.notification.StatusBarNotification
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import io.github.eedaegon.liveupdate.Device.context
-import io.github.eedaegon.liveupdate.Device.manager
-import io.github.eedaegon.liveupdate.Device.record
-import io.github.eedaegon.liveupdate.Device.snapshot
-import io.github.eedaegon.liveupdate.Device.timer
+import io.github.gon.liveupdate.Device.context
+import io.github.gon.liveupdate.Device.manager
+import io.github.gon.liveupdate.Device.record
+import io.github.gon.liveupdate.Device.snapshot
+import io.github.gon.liveupdate.Device.timer
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
@@ -75,7 +75,7 @@ class AndroidAdapterInstrumentationTest {
         val intent = notification.contentIntent!!
         assertTrue(intent.isImmutable)
         assertEquals(context.packageName, intent.creatorPackage)
-        val stored = JSONObject(extras.getString("io.github.1eedaegon.liveupdate.record")!!)
+        val stored = JSONObject(extras.getString("io.github.gon.liveupdate.record")!!)
         assertEquals("progress", stored.getString("id"))
     }
 
@@ -113,7 +113,7 @@ class AndroidAdapterInstrumentationTest {
     fun anAppWithoutALaunchActivityGetsNoContentIntent() {
         val withoutLauncher = object : ContextWrapper(context) {
             override fun getApplicationContext(): Context = this
-            override fun getPackageName(): String = "io.github.eedaegon.liveupdate.absent"
+            override fun getPackageName(): String = "io.github.gon.liveupdate.absent"
         }
         AndroidAdapter(withoutLauncher).post(record("plain"))
 
@@ -287,7 +287,7 @@ class AndroidAdapterInstrumentationTest {
             .setSmallIcon(R.drawable.liveupdate_status)
             .setContentTitle("Foreign")
         if (extra != null) {
-            builder.setExtras(Bundle().apply { putString("io.github.1eedaegon.liveupdate.record", extra) })
+            builder.setExtras(Bundle().apply { putString("io.github.gon.liveupdate.record", extra) })
         }
         manager.notify(tag, id, builder.build())
     }
@@ -297,7 +297,7 @@ class AndroidAdapterInstrumentationTest {
             .setSmallIcon(R.drawable.liveupdate_status)
             .setContentTitle("Entry")
         if (record != null) {
-            builder.setExtras(Bundle().apply { putString("io.github.1eedaegon.liveupdate.record", record.toString()) })
+            builder.setExtras(Bundle().apply { putString("io.github.gon.liveupdate.record", record.toString()) })
         }
         // The public constructor; Android builds these entries itself.
         @Suppress("DEPRECATION")

@@ -1,4 +1,4 @@
-package io.github.eedaegon.liveupdate
+package io.github.gon.liveupdate
 
 import android.annotation.SuppressLint
 import android.app.Notification
@@ -14,7 +14,7 @@ import org.json.JSONObject
 import java.time.Instant
 import kotlin.math.roundToInt
 
-internal const val RECORD_EXTRA = "io.github.1eedaegon.liveupdate.record"
+internal const val RECORD_EXTRA = "io.github.gon.liveupdate.record"
 
 private const val MAX_SAFE_INTEGER = 9_007_199_254_740_991L
 private const val MAX_TIMESTAMP = 8_640_000_000_000_000L

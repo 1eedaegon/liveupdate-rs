@@ -1,4 +1,4 @@
-package io.github.eedaegon.liveupdate
+package io.github.gon.liveupdate
 
 /** Closed, opt-in mapping of One UI 9 Now Bar extras. */
 internal object SamsungNowBar {

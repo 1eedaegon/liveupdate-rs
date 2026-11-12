@@ -1,4 +1,4 @@
-package io.github.eedaegon.liveupdate
+package io.github.gon.liveupdate
 
 import android.Manifest
 import android.app.Notification
@@ -16,7 +16,7 @@ internal object Device {
     const val TAG_PREFIX = "liveupdate-rs:"
     const val NOTIFICATION_ID = 1
     const val CHANNEL_ID = "liveupdate-rs.v1"
-    const val PREFERENCES = "io.github.1eedaegon.liveupdate"
+    const val PREFERENCES = "io.github.gon.liveupdate"
 
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context: Context = instrumentation.targetContext
@@ -169,6 +169,6 @@ internal object Device {
     }
 
     private fun revisionOf(notification: Notification): Long =
-        JSONObject(notification.extras.getString("io.github.1eedaegon.liveupdate.record")!!)
+        JSONObject(notification.extras.getString("io.github.gon.liveupdate.record")!!)
             .getJSONObject("snapshot").getLong("revision")
 }

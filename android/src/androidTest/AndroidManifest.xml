@@ -2,7 +2,7 @@
     <application>
         <!-- Gives the test package a launch activity, which a notification's content intent opens. -->
         <activity
-            android:name="io.github.eedaegon.liveupdate.LaunchActivity"
+            android:name="io.github.gon.liveupdate.LaunchActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

@@ -1,4 +1,4 @@
-package io.github.eedaegon.liveupdate
+package io.github.gon.liveupdate
 
 import org.junit.After
 import org.junit.Assert.assertEquals

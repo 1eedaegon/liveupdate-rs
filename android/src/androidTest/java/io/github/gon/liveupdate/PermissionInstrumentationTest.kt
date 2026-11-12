@@ -1,10 +1,10 @@
-package io.github.eedaegon.liveupdate
+package io.github.gon.liveupdate
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import io.github.eedaegon.liveupdate.Device.context
-import io.github.eedaegon.liveupdate.Device.manager
-import io.github.eedaegon.liveupdate.Device.record
+import io.github.gon.liveupdate.Device.context
+import io.github.gon.liveupdate.Device.manager
+import io.github.gon.liveupdate.Device.record
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

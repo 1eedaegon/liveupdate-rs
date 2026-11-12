@@ -1,12 +1,12 @@
-package io.github.eedaegon.liveupdate
+package io.github.gon.liveupdate
 
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
 
-internal const val LIVE_UPDATE_ACTION = "io.github.eedaegon.liveupdate.ACTION"
-internal const val LIVE_UPDATE_DISMISSED = "io.github.eedaegon.liveupdate.DISMISSED"
+internal const val LIVE_UPDATE_ACTION = "io.github.gon.liveupdate.ACTION"
+internal const val LIVE_UPDATE_DISMISSED = "io.github.gon.liveupdate.DISMISSED"
 internal const val ACTIVITY_ID_EXTRA = "activityId"
 internal const val ACTION_ID_EXTRA = "actionId"
 

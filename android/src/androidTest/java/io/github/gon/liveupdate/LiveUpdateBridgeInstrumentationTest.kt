@@ -1,4 +1,4 @@
-package io.github.eedaegon.liveupdate
+package io.github.gon.liveupdate
 
 import android.Manifest
 import android.content.Context
@@ -8,10 +8,10 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import io.github.eedaegon.liveupdate.Device.context
-import io.github.eedaegon.liveupdate.Device.dispatch
-import io.github.eedaegon.liveupdate.Device.failure
-import io.github.eedaegon.liveupdate.Device.record
+import io.github.gon.liveupdate.Device.context
+import io.github.gon.liveupdate.Device.dispatch
+import io.github.gon.liveupdate.Device.failure
+import io.github.gon.liveupdate.Device.record
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After

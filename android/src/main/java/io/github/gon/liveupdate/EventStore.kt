@@ -1,10 +1,10 @@
-package io.github.eedaegon.liveupdate
+package io.github.gon.liveupdate
 
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 
-private const val PREFERENCES_NAME = "io.github.1eedaegon.liveupdate"
+private const val PREFERENCES_NAME = "io.github.gon.liveupdate"
 private const val EVENTS_KEY = "events.v2"
 private const val EVENT_SEQUENCE_KEY = "eventSequence.v2"
 private const val EVENT_DROPPED_KEY = "eventDropped.v2"

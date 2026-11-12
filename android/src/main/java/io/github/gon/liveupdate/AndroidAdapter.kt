@@ -1,4 +1,4 @@
-package io.github.eedaegon.liveupdate
+package io.github.gon.liveupdate
 
 import android.annotation.SuppressLint
 import android.app.Notification
@@ -12,7 +12,7 @@ import org.json.JSONObject
 
 private const val CHANNEL_ID = "liveupdate-rs.v1"
 private const val CHANNEL_NAME = "Live updates"
-private const val PREFERENCES = "io.github.1eedaegon.liveupdate"
+private const val PREFERENCES = "io.github.gon.liveupdate"
 private const val RECORDS_KEY = "records"
 private const val TAG_PREFIX = "liveupdate-rs:"
 private const val NOTIFICATION_ID = 1
