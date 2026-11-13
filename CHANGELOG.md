@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.3.0 - 2026-11-13
+
+- feat: each state of an activity answered once, and when to ask again (`43ffa2f`)
+- refactor: take back the Android namespace io.github.eedaegon.liveupdate (`34d9d9a`)
+- test: the excluded mutant of the default event drain is on its new line (`be250b0`)
+
 ## 0.2.1 - 2026-11-13
 
 - ci: the release run waits for its version commit's CI and tags it (`091f3cc`)
