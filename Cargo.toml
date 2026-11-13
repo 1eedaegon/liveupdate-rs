@@ -1,6 +1,6 @@
 [package]
 name = "liveupdate"
-version = "0.2.0"
+version = "0.2.1"
 description = "Android Live Updates from Rust"
 authors = ["1eedaegon"]
 edition = "2024"

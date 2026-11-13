@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.2.1 - 2026-11-13
+
+- ci: the release run waits for its version commit's CI and tags it (`091f3cc`)
+- fix: a post the adapter refuses as invalid leaves no receipt (`14a7713`)
+
 ## 0.2.0 - 2026-11-12
 
 - ci: publish validated tags to crates.io (`b1b504a`)
