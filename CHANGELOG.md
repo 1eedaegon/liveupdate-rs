@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.3.1 - 2026-11-13
+
+- fix: a stopwatch or countdown metric is written in the names the adapter reads (`7632cb4`)
+
 ## 0.3.0 - 2026-11-13
 
 - feat: each state of an activity answered once, and when to ask again (`43ffa2f`)
