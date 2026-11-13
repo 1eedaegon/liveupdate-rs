@@ -7,6 +7,6 @@ exclude_globs = ["src/android.rs"]
 # already returns the proposed empty batch, and either vendor-path character is independently
 # rejected again by the segment validator below the fast-path check.
 exclude_re = [
-  'src/driver\.rs:100:9: replace Driver::drain_events -> Result<EventBatch> with Ok\(Default::default\(\)\)',
+  'src/driver\.rs:105:9: replace Driver::drain_events -> Result<EventBatch> with Ok\(Default::default\(\)\)',
   'src/presentation\.rs:665:9: replace \|\| with && in valid_app_file',
 ]
