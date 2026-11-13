@@ -12,7 +12,7 @@
 #   - no workflow runs on pull_request_target, only the release workflows may write contents, and every
 #     action is pinned to a commit SHA;
 #   - auto-release.yml runs only after trusted main CI or by hand, keeps major manual, verifies the main
-#     tip, and explicitly dispatches CI and publish after GITHUB_TOKEN writes.
+#     tip, and after GITHUB_TOKEN writes dispatches CI, waits for that run, tags and dispatches publish.
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 workflow=${1:-$root/.github/workflows/ci.yml}
@@ -186,7 +186,8 @@ if '--notes-file "$RUNNER_TEMP/release-notes.md"' not in release:
     fail("publish.yml does not give the generated notes to the GitHub release")
 
 # Automatic non-major releases: the write token is reachable only from main's completed CI or a manual
-# major dispatch; GITHUB_TOKEN writes explicitly dispatch the next workflow because they do not recurse.
+# dispatch. GITHUB_TOKEN writes do not recurse, and the CI run it dispatches does not bring the workflow
+# back either: the run that prepares a version commit waits for that CI run and tags in the same run.
 automatic = (root / ".github/workflows/auto-release.yml").read_text()
 for required in (
     "workflow_run:", "workflows: [CI]", "types: [completed]", "branches: [main]",
@@ -197,6 +198,9 @@ for required in (
     "github.event.workflow_run.event == 'workflow_dispatch'", "git rev-parse origin/main",
     "tools/release.sh plan", "tools/release.sh prepare", "git push origin HEAD:main",
     "gh workflow run ci.yml --ref main", "git tag -a", "git push origin \"$TAG\"",
+    "id: prepare", "head_sha=$release_sha&event=workflow_dispatch",
+    'gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status',
+    "if: steps.plan.outputs.action == 'tag' || steps.prepare.outcome == 'success'",
     'gh workflow run publish.yml --ref main -f tag="$TAG" -f publish=true',
     'gh release view "$TAG" --repo "$GITHUB_REPOSITORY"',
     "cancel-in-progress: false",
@@ -209,6 +213,8 @@ automatic_publish = 'gh workflow run publish.yml --ref main -f tag="$TAG" -f pub
 recovery_without_publish = 'gh workflow run publish.yml --ref main -f tag="$TAG" -f publish=false'
 if automatic.count(automatic_publish) != 1:
     fail("auto-release.yml must publish exactly once after creating a validated tag")
+if automatic.index('gh run watch "$run_id"') > automatic.index("git tag -a"):
+    fail("auto-release.yml must wait for the version commit's CI before it tags")
 if automatic.count(recovery_without_publish) != 1:
     fail("auto-release.yml recovery must recreate release assets without republishing the crate")
 if automatic.count("contents: write") != 1 or automatic.count("actions: write") != 1:

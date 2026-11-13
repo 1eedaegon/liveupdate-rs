@@ -108,15 +108,17 @@ from the Actions page with `major` checked. That creates the major version commi
 still pass its own exact-SHA CI before it is tagged.
 
 The generated version commit updates both locks, the README and `CHANGELOG.md`, whose section is made
-from one bullet per non-merge commit subject. Because GitHub does not recursively start workflows for
-pushes made with `GITHUB_TOKEN`, the automation explicitly dispatches CI for the version commit, then
-explicitly dispatches `publish.yml` after tagging it. The repository's Actions setting must allow
+from one bullet per non-merge commit subject. GitHub does not recursively start workflows for pushes made
+with `GITHUB_TOKEN`, and a CI run that the workflow dispatches does not start the workflow again either. So
+the run that pushed the version commit dispatches its CI, waits for that run, tags the commit and
+dispatches `publish.yml`. The repository's Actions setting must allow
 read/write workflow permissions, and a protected `main` must allow this workflow to push its generated
 version commit. `bash tests/release/run.sh` tests the policy against isolated temporary Git repositories;
 `sh tests/ci/run.sh` checks its triggers, permissions, main-tip guard and dispatch chain.
 
-If the generated version commit was pushed but dispatching CI failed, run `CI` once by hand on `main`;
-the successful run resumes at tagging. If a tag exists at `main`'s tip but its GitHub release is missing,
+If the generated version commit was pushed but the run stopped before tagging it, run **Auto release** by
+hand without `major`: it tags the untagged version commit, and `publish.yml` still requires that commit's
+successful CI. Run `CI` once by hand on `main` first if that run is missing. If a tag exists at `main`'s tip but its GitHub release is missing,
 rerun **Auto release** without `major`; its no-change recovery path dispatches `publish.yml` again.
 
 `.github/workflows/publish.yml` requires a successful CI run on main for the tag's exact commit, records
