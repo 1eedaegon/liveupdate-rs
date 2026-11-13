@@ -137,6 +137,23 @@ and the Google APIs image. It records `ro.build.version.sdk`, `ro.product.model`
 `ro.build.fingerprint` in `device.txt`. API levels below 36 are checked by running the adapter at API 35
 on that device; no emulator below API 36 is part of the suite.
 
+API 36 (Android 16) is checked the same way, by running the adapter as API 36 on that device
+(LU-V2-PROGRESS-2). That shows what the adapter chooses for API 36, not what API 36 has: a method that only
+API 37 has exists on the device either way. Lint does not show it either: with this Android Gradle plugin
+its `NewApi` check does not know the members of API 37, and an unguarded call to one passed `lintDebug`.
+A call above a device's API level is therefore found only by running on that level. On 2026-11-13 the
+instrumentation tests were run by hand on an API 36 emulator (Google APIs image, x86_64):
+
+- The progress test of LU-V2-PROGRESS-2 failed there with `NoSuchMethodError` for `setSemanticStyle`
+  before the adapter left that call to API 37, and passed after.
+- 55 of 65 tests passed. Of the other ten, eight need API 37: six assert it, one uses a class of it, and
+  one expects the Samsung capability that the adapter reports from API 37. One asserts
+  `hasPromotableCharacteristics()`, which that image answers with false for every notification, a plain
+  ongoing one with a title included. One foreground-service probe failed in the full run and passed three
+  times on its own.
+- No member newer than API 36 is referenced by the release classes outside the metric style, which runs
+  on API 37 only (`javap` over the AAR against the platform's `api-versions.xml`).
+
 The connected Galaxy S23 (`SM-S911N`) on Android 17 / One UI 9 is also tested explicitly by serial.
 It has passed the rich ProgressStyle and MetricStyle reconstruction, Samsung Now Bar extras,
 immutable actions, durable action/dismissal events, private images, v1 regressions and Rust/JNI

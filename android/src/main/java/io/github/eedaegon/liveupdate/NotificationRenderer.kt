@@ -320,6 +320,8 @@ internal class NotificationRenderer(
 
     @SuppressLint("NewApi")
     private fun applySystemProgress(builder: Notification.Builder, parsed: ParsedProgress) {
+        // The semantic style of a segment and of a point is a method of API 37, which API 36 lacks.
+        val semantics = sdk >= 37 && Build.VERSION.SDK_INT >= 37
         val systemStyle = Notification.ProgressStyle()
             .setProgress(parsed.progress)
             .setProgressIndeterminate(parsed.indeterminate)
@@ -328,14 +330,14 @@ internal class NotificationRenderer(
                 Notification.ProgressStyle.Segment(segment.length).apply {
                     segment.id?.let(::setId)
                     segment.color?.let(::setColor)
-                    setSemanticStyle(segment.semantic)
+                    if (semantics) setSemanticStyle(segment.semantic)
                 }
             })
             .setProgressPoints(parsed.points.map { point ->
                 Notification.ProgressStyle.Point(point.position).apply {
                     point.id?.let(::setId)
                     point.color?.let(::setColor)
-                    setSemanticStyle(point.semantic)
+                    if (semantics) setSemanticStyle(point.semantic)
                 }
             })
         parsed.startIcon?.let(systemStyle::setProgressStartIcon)

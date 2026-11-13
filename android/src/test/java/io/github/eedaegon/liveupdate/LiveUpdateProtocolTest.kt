@@ -132,6 +132,24 @@ class LiveUpdateProtocolTest {
 
     // LU-ERR-3
     @Test
+    fun aPlatformMethodTheDeviceLacksIsANativeError() {
+        val adapter = object : FakeAdapter() {
+            override fun post(record: JSONObject) {
+                throw NoSuchMethodError("No virtual method setSemanticStyle(I)")
+            }
+        }
+
+        val error = assertError("NATIVE_ERROR", LiveUpdateProtocol.dispatch(
+            adapter,
+            "post",
+            "{\"record\":{\"id\":\"one\"}}",
+        ))
+
+        assertEquals(NATIVE_MESSAGE, error.getString("message"))
+    }
+
+    // LU-ERR-3
+    @Test
     fun preservesStableAdapterErrors() {
         val adapter = object : FakeAdapter() {
             override fun post(record: JSONObject) {
