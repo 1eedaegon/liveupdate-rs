@@ -1,7 +1,7 @@
 use crate::{
     ActivityRecord, ActivityState, Capabilities, Driver, DriverRecord, EndPolicy, Error, ErrorCode,
-    EventBatch, Fallback, Observation, Placement, PromotionState, Result, Snapshot, StartRequest,
-    model::valid_id,
+    EventBatch, Fallback, NextCheck, Observation, Placement, PromotionState, Result, Snapshot,
+    StartRequest, model::valid_id,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -63,6 +63,20 @@ impl<D: Driver> LiveUpdate<D> {
         })
     }
 
+    /// Reconciles, and answers the activities whose state is another than the one this method last
+    /// answered for them, each once: `active`, `stale`, `ended` or `dismissed`, in the order of
+    /// [`list`](Self::list). `unknown` is never answered. What was answered is stored with the
+    /// receipts, so a new client continues.
+    pub fn state_changes(&self) -> Result<Vec<ActivityRecord>> {
+        self.serialized(|driver| state_changes(driver))
+    }
+
+    /// Reads the receipts and answers when [`state_changes`](Self::state_changes) can next have
+    /// something that no operation of the caller brings.
+    pub fn next_check(&self) -> Result<NextCheck> {
+        self.serialized(|driver| next_check(driver))
+    }
+
     /// Atomically drains Android notification action and dismissal events.
     pub fn events(&self) -> Result<EventBatch> {
         self.serialized(|driver| {
@@ -119,6 +133,8 @@ fn start(driver: &impl Driver, request: StartRequest) -> Result<ActivityRecord> 
         ));
     }
     let record = DriverRecord {
+        // No state of a new activity has been answered yet.
+        reported_state: Some(ActivityState::Unknown),
         id: Uuid::new_v4().to_string(),
         snapshot: request.snapshot.clone(),
         origin: request,
@@ -197,7 +213,7 @@ fn end(driver: &impl Driver, id: &str, policy: EndPolicy) -> Result<ActivityReco
     save(driver, &retire(&records, &ended))?;
     if dismiss_at.is_some() {
         // The adapter posts the last content in its final form, which it no longer observes.
-        driver.post(&ended)?;
+        driver.post(&posted(&ended))?;
     } else {
         driver.cancel(id)?;
     }
@@ -222,6 +238,72 @@ fn remove_last_content(
     save(driver, &replace(records, &removed))?;
     driver.cancel(&removed.id)?;
     Ok(removed.public())
+}
+
+/// A receipt as the adapter is given it to post: without the state last answered, which only the
+/// lifecycle keeps. The adapter's record check and the record inside the notification stay as they
+/// were.
+fn posted(record: &DriverRecord) -> DriverRecord {
+    DriverRecord {
+        reported_state: None,
+        ..record.clone()
+    }
+}
+
+fn state_changes(driver: &impl Driver) -> Result<Vec<ActivityRecord>> {
+    let records = reconcile(driver)?;
+    let answered: Vec<DriverRecord> = records.iter().map(answer).collect();
+    let changes = records
+        .iter()
+        .zip(&answered)
+        .filter(|(before, _)| due(before))
+        .map(|(_, after)| after.public())
+        .collect();
+    // A store that fails answers nothing: the same states are due at the next call.
+    if answered != records {
+        save(driver, &answered)?;
+    }
+    Ok(changes)
+}
+
+/// Whether `record` has a state that was not answered yet. `unknown` is never answered, and a
+/// receipt of an earlier version, which has no state last answered, adopts the one it has.
+fn due(record: &DriverRecord) -> bool {
+    record.state != ActivityState::Unknown
+        && record
+            .reported_state
+            .is_some_and(|reported| reported != record.state)
+}
+
+/// `record` once its state has been answered. `unknown` is never taken as answered, so a post that
+/// Android has not listed yet neither reports nor hides a state.
+fn answer(record: &DriverRecord) -> DriverRecord {
+    let reported = match record.reported_state {
+        Some(reported) if record.state == ActivityState::Unknown => reported,
+        Some(_) | None => record.state,
+    };
+    DriverRecord {
+        reported_state: Some(reported),
+        ..record.clone()
+    }
+}
+
+fn next_check(driver: &impl Driver) -> Result<NextCheck> {
+    let records = checked_records(driver.read()?)?;
+    if records.iter().any(due) {
+        return Ok(NextCheck::Now);
+    }
+    let live = || records.iter().filter(|record| !record.terminal());
+    // A post that failed needs its operation again, not time.
+    if live().any(|record| record.awaiting_observation && !record.post_failed) {
+        return Ok(NextCheck::Soon);
+    }
+    // Only an activity that is active has a stale time ahead: Android reports it as stale then.
+    Ok(live()
+        .filter(|record| record.state == ActivityState::Active)
+        .filter_map(|record| record.snapshot.stale_at)
+        .min()
+        .map_or(NextCheck::Never, NextCheck::At))
 }
 
 fn reconcile(driver: &impl Driver) -> Result<Vec<DriverRecord>> {
@@ -357,7 +439,7 @@ fn deliver(
     };
     let pending_records = replace(records, &pending);
     save(driver, &pending_records)?;
-    if let Err(failure) = driver.post(&pending) {
+    if let Err(failure) = driver.post(&posted(&pending)) {
         if failure.code == ErrorCode::InvalidInput {
             save(driver, before)?;
         }

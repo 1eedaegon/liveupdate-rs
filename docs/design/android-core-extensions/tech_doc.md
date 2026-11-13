@@ -87,4 +87,5 @@ is a member and a builder call, and two of them wait for a device proof.
   through; `android.foreground`, `openUrl`, a lingering end; fold accessibility labels into texts.
 - The Tauri plugin: declare the service and its type, call `LiveUpdateForeground` from it, hand opening
   intents to `LiveUpdateEvents.opened`.
-- Both name this AAR's classes by package: the package is now `io.github.gon.liveupdate`.
+- Both name this AAR's classes by package: `io.github.eedaegon.liveupdate`, as in 0.1. Only 0.2.0 and
+  0.2.1 had `io.github.gon.liveupdate`.

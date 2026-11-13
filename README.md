@@ -33,9 +33,12 @@ runtimes already do this before application code runs. Before that, `LiveUpdate:
 `NATIVE_ERROR`, as long as the build unwinds on panic (Rust's default): with `panic = "abort"`, the
 process aborts.
 
-The Android namespace is `io.github.gon.liveupdate`: an Android package segment cannot start with
-a digit, so it cannot be the owner's name. The repository, Cargo author and project owner remain
-`1eedaegon`.
+The Android namespace is `io.github.eedaegon.liveupdate`: an Android package segment cannot start with
+a digit, so the owner's name (github.com/1eedaegon) loses its first character there, and in the JNI
+names made from it. Names that are plain strings keep it whole, under
+`io.github.1eedaegon.liveupdate`: the preferences file, the notification's record key, and the actions
+and extras of the library's intents. Versions 0.2.0 and 0.2.1 named all of them
+`io.github.gon.liveupdate`.
 
 ## Use
 
@@ -201,6 +204,28 @@ delivered); the record's `template` follows the latest snapshot. Schema v1 keeps
 | Keep the last content | `end(id, EndPolicy::After { at })` | It stays, no longer ongoing, until `at`; update first to change it, end again with `Immediate` to remove it early |
 | What the person did | `LiveUpdate::events()` | `Action`, `Dismissed` and `Opened` events, drained once |
 | What happened to it | `list()` and every returned record | `state`, `promotion_state`, `degraded_features` |
+| Each new state, once | `state_changes()` | `active`, `stale`, `ended` and `dismissed`; see [State changes](#state-changes) |
+
+### State changes
+
+Android tells nobody when a notification's stale time passes, and the crate has no timer.
+`state_changes()` reconciles and answers the activities whose state is another than the one it last
+answered for them, each once: `active` once Android lists the activity, `stale` once its `stale_at`
+has passed, `active` again after an update, `ended`, `dismissed`. What it answered is stored with the
+receipts, so the answers continue after a restart, and `unknown` is never one of them.
+
+`next_check()` reads the receipts and says when to call it again:
+
+| `next_check()` | Meaning | What a host does |
+| --- | --- | --- |
+| `NextCheck::Now` | A state is known and was not answered yet | Ask now |
+| `NextCheck::Soon` | A post is not listed by Android yet | Ask in about half a second, then a little later each time, and give up after a few |
+| `NextCheck::At(time)` | The earliest stale time ahead, in Unix milliseconds | Set a timer; a time that has passed means now |
+| `NextCheck::Never` | Nothing is due | Wait for an operation, an event or the app's return to the foreground |
+
+A host asks after its own `start` and `update`, at the time `next_check()` named, and when the app
+returns to the foreground. A frozen process runs no timer: what it missed is answered at the next
+call.
 
 ### Links
 
@@ -209,8 +234,8 @@ opened with `ACTION_VIEW` inside your own package only, so one of your activitie
 must have an intent filter for it; a URL nothing opens fails the post. `intent:`, `content:`, `file:`, `javascript:`,
 `data:` and `android-app:` are refused.
 
-The opening intent carries the extras `io.github.gon.liveupdate.activityId` and, for a button,
-`io.github.gon.liveupdate.actionId`. Hand the intent back to get an `Opened` event:
+The opening intent carries the extras `io.github.1eedaegon.liveupdate.activityId` and, for a button,
+`io.github.1eedaegon.liveupdate.actionId`. Hand the intent back to get an `Opened` event:
 
 ```kotlin
 override fun onCreate(savedInstanceState: Bundle?) {

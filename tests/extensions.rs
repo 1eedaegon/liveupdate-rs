@@ -584,8 +584,12 @@ fn a_delayed_end_posts_the_last_content_in_its_final_form() {
         serde_json::to_value(&stored[0]).unwrap()["dismissAt"],
         json!(5_000)
     );
+    // What is posted is the stored receipt, without the state last answered that only the
+    // lifecycle keeps.
     let posted = driver.edit(|state| state.finals[&started.id].clone());
-    assert_eq!(posted, stored[0]);
+    let mut receipt = stored[0].clone();
+    receipt.reported_state = None;
+    assert_eq!(posted, receipt);
     assert_eq!(driver.counts(), (2, 0));
 
     // The final form is not observed, so nothing cancels it, and a second delayed end does nothing,

@@ -6,7 +6,9 @@
   design and technical design.
 - [x] Prove on a device what the foreground placement rests on
   (`ForegroundServiceInstrumentationTest`).
-- [x] Rename the Android namespace and every identifier under it to `io.github.gon.liveupdate`.
+- [x] Rename the Android namespace and every identifier under it to `io.github.gon.liveupdate` (0.2.0
+  and 0.2.1). Taken back in 0.3.0: `io.github.eedaegon.liveupdate` for Java names, as in 0.1, and
+  `io.github.1eedaegon.liveupdate` for plain strings.
 
 ## Links (P0)
 

@@ -14,6 +14,9 @@
   placement with `LiveUpdateForeground`, an alerting revision, a public version and branding, each
   behind a capability, with instrumentation tests on the API 37 emulator.
 
+- `state_changes()` and `next_check()` ([state-changes](state-changes/PRD.md)): each state of an
+  activity answered once, and when to ask again, without a timer in the crate.
+
 ## Not done
 
 - Tauri-side TSX/React projection and JavaScript event routing over the new core event drain.

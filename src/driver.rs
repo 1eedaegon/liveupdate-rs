@@ -30,6 +30,10 @@ pub struct DriverRecord {
     /// Until when the last content of an ended activity stays, in milliseconds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dismiss_at: Option<u64>,
+    /// The state that `state_changes` last answered for the activity: `unknown` when it answered
+    /// none yet, absent in a receipt of an earlier version. It is stored and never posted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reported_state: Option<ActivityState>,
 }
 
 impl DriverRecord {
@@ -87,7 +91,8 @@ pub trait Driver: Send + Sync {
     fn read(&self) -> Result<Vec<DriverRecord>>;
     /// Atomically replaces durable Rust lifecycle receipts.
     fn write(&self, records: &[DriverRecord]) -> Result<()>;
-    /// Reports currently active notifications owned by this driver.
+    /// Reports currently active notifications owned by this driver. One whose stale time has
+    /// passed is reported as stale: the lifecycle has no clock of its own.
     fn observe(&self) -> Result<Vec<Observation>>;
     /// Posts or replaces the notification represented by a receipt.
     fn post(&self, record: &DriverRecord) -> Result<()>;
@@ -117,6 +122,7 @@ mod tests {
             presentation: None,
         };
         DriverRecord {
+            reported_state: None,
             dismiss_at: None,
             id: "id".into(),
             origin: StartRequest {

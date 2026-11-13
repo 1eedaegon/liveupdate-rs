@@ -27,7 +27,7 @@ use std::{
 static CONTEXT: Mutex<Option<Global<JObject<'static>>>> = Mutex::new(None);
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_io_github_gon_liveupdate_NativeRust_initialize<'caller>(
+pub extern "system" fn Java_io_github_eedaegon_liveupdate_NativeRust_initialize<'caller>(
     mut unowned_env: EnvUnowned<'caller>,
     _this: JObject<'caller>,
     context: JObject<'caller>,
@@ -38,7 +38,7 @@ pub extern "system" fn Java_io_github_gon_liveupdate_NativeRust_initialize<'call
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_io_github_gon_liveupdate_NativeRust_release<'caller>(
+pub extern "system" fn Java_io_github_eedaegon_liveupdate_NativeRust_release<'caller>(
     _unowned_env: EnvUnowned<'caller>,
     _this: JObject<'caller>,
 ) {
@@ -46,7 +46,7 @@ pub extern "system" fn Java_io_github_gon_liveupdate_NativeRust_release<'caller>
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_io_github_gon_liveupdate_NativeRust_run<'caller>(
+pub extern "system" fn Java_io_github_eedaegon_liveupdate_NativeRust_run<'caller>(
     mut unowned_env: EnvUnowned<'caller>,
     _this: JObject<'caller>,
     scenario: JString<'caller>,
@@ -71,7 +71,7 @@ pub extern "system" fn Java_io_github_gon_liveupdate_NativeRust_run<'caller>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_io_github_gon_liveupdate_NativeRust_writeCoverage<'caller>(
+pub extern "system" fn Java_io_github_eedaegon_liveupdate_NativeRust_writeCoverage<'caller>(
     mut unowned_env: EnvUnowned<'caller>,
     _this: JObject<'caller>,
     path: JString<'caller>,

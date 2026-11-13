@@ -60,6 +60,7 @@ fn snapshot(revision: u64) -> Snapshot {
 
 fn record(id: &str, state: ActivityState) -> DriverRecord {
     DriverRecord {
+        reported_state: None,
         dismiss_at: None,
         id: id.into(),
         origin: StartRequest {

@@ -205,6 +205,7 @@ fn records_cross_the_bridge_with_the_names_the_adapter_reads() {
         presentation: None,
     };
     let record = DriverRecord {
+        reported_state: None,
         dismiss_at: None,
         id: "id".into(),
         origin: StartRequest {

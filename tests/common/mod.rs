@@ -27,6 +27,8 @@ pub struct FakeState {
     pub observed: BTreeMap<String, Observation>,
     /// The ended records posted in their final form, by id.
     pub finals: BTreeMap<String, DriverRecord>,
+    /// Every record the driver was given to post, oldest first, also those it then refused.
+    pub posted: Vec<DriverRecord>,
     /// Every driver call in order, by method name.
     pub calls: Vec<&'static str>,
     pub posts: usize,
@@ -67,6 +69,7 @@ impl Default for FakeDriver {
                 records: Vec::new(),
                 observed: BTreeMap::new(),
                 finals: BTreeMap::new(),
+                posted: Vec::new(),
                 calls: Vec::new(),
                 posts: 0,
                 cancels: 0,
@@ -149,6 +152,7 @@ impl Driver for FakeDriver {
         let mut state = self.state.lock().unwrap();
         state.calls.push("post");
         state.posts += 1;
+        state.posted.push(record.clone());
         if std::mem::take(&mut state.fail_next_post) {
             return Err(Error::new(ErrorCode::NativeError, "Posting failed."));
         }

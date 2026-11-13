@@ -146,6 +146,9 @@ fn the_docs_state_what_an_app_must_know() {
         "`end(id, EndPolicy::After { at })`",
         "LiveUpdateEvents.opened(this, intent)",
         "LiveUpdateForeground.attach(this, ",
+        "`state_changes()`",
+        "`next_check()`",
+        "`NextCheck::Soon`",
         "`AndroidPresentation::new(style)`",
     ] {
         assert!(

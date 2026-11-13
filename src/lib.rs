@@ -32,8 +32,8 @@ pub use driver::{Driver, DriverRecord, Observation};
 pub use error::{Error, ErrorCode, Result};
 pub use event::{ActivityEvent, EventBatch, EventKind, MAX_EVENTS};
 pub use model::{
-    ActivityRecord, ActivityState, EndPolicy, MAX_SAFE_INTEGER, MAX_TIMESTAMP, Placement, Snapshot,
-    StartRequest, Template, Timer,
+    ActivityRecord, ActivityState, EndPolicy, MAX_SAFE_INTEGER, MAX_TIMESTAMP, NextCheck,
+    Placement, Snapshot, StartRequest, Template, Timer,
 };
 pub use presentation::{
     AndroidPresentation, BigTextStyle, IconSource, MAX_ACTIONS, MAX_METRICS, MAX_PROGRESS_ELEMENTS,
