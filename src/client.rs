@@ -99,7 +99,7 @@ fn start(driver: &impl Driver, request: StartRequest) -> Result<ActivityRecord> 
             ));
         }
         return if existing.post_failed {
-            deliver(driver, existing.clone(), records)
+            retry(driver, existing.clone(), &records)
         } else {
             Ok(existing.public())
         };
@@ -133,8 +133,8 @@ fn start(driver: &impl Driver, request: StartRequest) -> Result<ActivityRecord> 
         post_failed: false,
         dismiss_at: None,
     };
-    let next = records.iter().cloned().chain([record.clone()]).collect();
-    deliver(driver, record, next)
+    let next: Vec<_> = records.iter().cloned().chain([record.clone()]).collect();
+    deliver(driver, record, &next, &records)
 }
 
 fn update(driver: &impl Driver, id: &str, snapshot: Snapshot) -> Result<ActivityRecord> {
@@ -149,7 +149,7 @@ fn update(driver: &impl Driver, id: &str, snapshot: Snapshot) -> Result<Activity
     }
     if !replaces(&previous, &snapshot)? {
         return if previous.post_failed {
-            deliver(driver, previous, records)
+            retry(driver, previous, &records)
         } else {
             Ok(previous.public())
         };
@@ -162,7 +162,7 @@ fn update(driver: &impl Driver, id: &str, snapshot: Snapshot) -> Result<Activity
         ..previous
     };
     let next = replace(&records, &record);
-    deliver(driver, record, next)
+    deliver(driver, record, &next, &records)
 }
 
 fn end(driver: &impl Driver, id: &str, policy: EndPolicy) -> Result<ActivityRecord> {
@@ -306,10 +306,45 @@ fn validate_observation(previous: &DriverRecord, native: &Observation) -> Result
     Ok(())
 }
 
+/// Posts the pending receipt of `record` again, for the same start or the same update.
+///
+/// When the adapter now refuses it as invalid, an activity that was updated keeps its receipt: the
+/// content before the refused update is not known. One that never was has only this content, so it
+/// goes, after the notification that an earlier post may have left without its answer.
+fn retry(
+    driver: &impl Driver,
+    record: DriverRecord,
+    records: &[DriverRecord],
+) -> Result<ActivityRecord> {
+    let refusal = match deliver(driver, record.clone(), records, records) {
+        Err(failure) if failure.code == ErrorCode::InvalidInput => failure,
+        other => return other,
+    };
+    if record.snapshot != record.origin.snapshot {
+        return Err(refusal);
+    }
+    driver.cancel(&record.id)?;
+    let without: Vec<_> = records
+        .iter()
+        .filter(|other| other.id != record.id)
+        .cloned()
+        .collect();
+    save(driver, &without)?;
+    Err(refusal)
+}
+
+/// Stores `record` among `records` as a pending receipt, posts it and confirms it.
+///
+/// `before` is what was stored when the operation began. The adapter refuses a post as invalid
+/// before it posts anything, and would refuse it again: that content must hold neither the key nor
+/// the revision, so the receipts go back to `before`. Any other failure leaves the pending receipt
+/// for the same operation to post again. So does a failure to store `before`, whose error is then
+/// the answer: the same operation meets the refusal again and restores again.
 fn deliver(
     driver: &impl Driver,
     record: DriverRecord,
-    records: Vec<DriverRecord>,
+    records: &[DriverRecord],
+    before: &[DriverRecord],
 ) -> Result<ActivityRecord> {
     let pending = DriverRecord {
         promotion_state: if record.promotion_requested {
@@ -320,9 +355,14 @@ fn deliver(
         post_failed: true,
         ..record
     };
-    let pending_records = replace(&records, &pending);
+    let pending_records = replace(records, &pending);
     save(driver, &pending_records)?;
-    driver.post(&pending)?;
+    if let Err(failure) = driver.post(&pending) {
+        if failure.code == ErrorCode::InvalidInput {
+            save(driver, before)?;
+        }
+        return Err(failure);
+    }
     let confirmed = DriverRecord {
         post_failed: false,
         ..pending

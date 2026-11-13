@@ -17,7 +17,7 @@
 3. Rust writes a receipt marked `postFailed` before crossing JNI.
 4. The adapter builds the notification from the receipt and posts it.
 5. Rust marks the receipt posted and reconciles again; a failure leaves a receipt that the same start
-   posts again.
+   posts again. A post the adapter refuses as invalid leaves none: it would be refused again.
 
 ## Recovery
 

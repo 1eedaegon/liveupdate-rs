@@ -246,6 +246,10 @@ fn a_bridge_error_is_returned_as_it_is() {
     let _bridge: FakeBridge = driver.into_inner();
 }
 
+/// The title of content that [`JsonAdapter`] refuses, as the adapter refuses what only the device
+/// can check.
+const REFUSED_TITLE: &str = "Refused";
+
 /// The managed adapter's JSON behavior: storage keeps the records as JSON, a post makes the
 /// record's JSON observable, a cancel removes it.
 #[derive(Clone, Default)]
@@ -293,6 +297,13 @@ impl Bridge for JsonAdapter {
             ),
             "post" => {
                 let record = payload["record"].clone();
+                if record["snapshot"]["title"] == json!(REFUSED_TITLE) {
+                    let refusal = json!({
+                        "status": "error",
+                        "error": { "code": "INVALID_INPUT", "message": "Invalid live update request." }
+                    });
+                    return Ok(refusal.to_string());
+                }
                 let id = record["id"].as_str().unwrap().to_string();
                 self.shown.lock().unwrap().insert(id, record);
                 Value::Null
@@ -339,5 +350,38 @@ fn a_client_over_the_json_bridge_runs_the_whole_lifecycle() {
     assert_eq!(
         stored[0]["origin"]["snapshot"]["title"],
         json!(request.snapshot.title)
+    );
+}
+
+// LU-START-8, LU-UPDATE-9
+#[test]
+fn a_post_the_adapter_refuses_over_the_bridge_holds_neither_the_key_nor_the_revision() {
+    let adapter = JsonAdapter::default();
+    let client = LiveUpdate::new(JsonDriver::new(adapter.clone()));
+    let mut refused = record().origin;
+    refused.snapshot.title = REFUSED_TITLE.into();
+
+    let error = client.start(refused).unwrap_err();
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert_eq!(*adapter.stored.lock().unwrap(), json!([]));
+
+    // The key is free for the corrected start, and a refused update leaves what was accepted.
+    let started = client.start(record().origin).unwrap();
+    let mut update = started.snapshot.clone();
+    update.revision += 1;
+    update.title = REFUSED_TITLE.into();
+    let error = client.update(&started.id, update.clone()).unwrap_err();
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    let stored = adapter.stored.lock().unwrap().clone();
+    assert_eq!(
+        stored[0]["snapshot"]["revision"],
+        json!(started.snapshot.revision)
+    );
+    assert_eq!(stored[0]["postFailed"], json!(false));
+
+    update.title = "Corrected".into();
+    assert_eq!(
+        client.update(&started.id, update).unwrap().state,
+        ActivityState::Active
     );
 }

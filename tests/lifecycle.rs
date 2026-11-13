@@ -548,3 +548,189 @@ fn uuid_version(id: &str) -> Option<char> {
         && id.chars().all(|c| c == '-' || c.is_ascii_hexdigit());
     shaped.then(|| groups[2].chars().next()).flatten()
 }
+
+// LU-START-8
+#[test]
+fn a_start_the_adapter_refuses_as_invalid_leaves_no_receipt() {
+    let driver = FakeDriver::default();
+    let client = LiveUpdate::new(driver.clone());
+    driver.edit(|state| state.refuse_next_post = true);
+
+    assert_code(client.start(request("delivery:1")), ErrorCode::InvalidInput);
+
+    assert_eq!(
+        driver.take_calls(),
+        ["capabilities", "read", "observe", "write", "post", "write"]
+    );
+    assert!(driver.records().is_empty());
+    assert!(client.list().unwrap().is_empty());
+
+    // The other receipts, live and ended, are what they were.
+    let live = client.start(request("delivery:live")).unwrap();
+    let ended = client.start(request("delivery:ended")).unwrap();
+    client.end(&ended.id, EndPolicy::Immediate).unwrap();
+    let others = driver.records();
+    driver.edit(|state| state.refuse_next_post = true);
+    assert_code(client.start(request("delivery:2")), ErrorCode::InvalidInput);
+    assert_eq!(driver.records(), others);
+    assert_eq!(others[0].id, live.id);
+
+    // The key is free for the corrected request.
+    let mut corrected = request("delivery:1");
+    corrected.snapshot.title = "Corrected".into();
+    let posts = driver.counts().0;
+    let started = client.start(corrected).unwrap();
+    assert_eq!(started.state, ActivityState::Active);
+    assert_eq!(started.snapshot.title, "Corrected");
+    assert_eq!(driver.counts().0, posts + 1);
+}
+
+// LU-START-8
+#[test]
+fn a_retried_start_the_adapter_then_refuses_is_removed_unless_it_was_updated() {
+    let driver = FakeDriver::default();
+    let client = LiveUpdate::new(driver.clone());
+    driver.edit(|state| state.fail_next_post = true);
+    assert_code(client.start(request("delivery:1")), ErrorCode::NativeError);
+    assert_eq!(driver.records().len(), 1);
+
+    // A retry that fails again in another way is no refusal: the receipt stays for the next one.
+    driver.edit(|state| state.fail_next_post = true);
+    assert_code(client.start(request("delivery:1")), ErrorCode::NativeError);
+    assert_eq!(driver.records().len(), 1);
+    assert_eq!(driver.counts().1, 0);
+
+    // The earlier post may have reached Android without its answer: its notification is cancelled
+    // before the receipt goes.
+    driver.edit(|state| state.refuse_next_post = true);
+    driver.take_calls();
+    assert_code(client.start(request("delivery:1")), ErrorCode::InvalidInput);
+    assert_eq!(
+        driver.take_calls(),
+        [
+            "capabilities",
+            "read",
+            "observe",
+            "write",
+            "post",
+            "write",
+            "cancel",
+            "write"
+        ]
+    );
+    assert!(driver.records().is_empty());
+
+    // The same update of a start that was never shown is such a retry too.
+    driver.edit(|state| state.fail_next_post = true);
+    assert_code(client.start(request("delivery:1")), ErrorCode::NativeError);
+    let pending = driver.records()[0].clone();
+    driver.edit(|state| state.refuse_next_post = true);
+    assert_code(
+        client.update(&pending.id, pending.snapshot.clone()),
+        ErrorCode::InvalidInput,
+    );
+    assert!(driver.records().is_empty());
+    assert_eq!(driver.counts().1, 2);
+
+    // A cancel that fails keeps the receipt, so that the same start comes here again.
+    driver.edit(|state| state.fail_next_post = true);
+    assert_code(client.start(request("delivery:1")), ErrorCode::NativeError);
+    driver.edit(|state| {
+        state.refuse_next_post = true;
+        state.fail_next_cancel = true;
+    });
+    assert_code(client.start(request("delivery:1")), ErrorCode::NativeError);
+    assert_eq!(driver.records().len(), 1);
+    driver.edit(|state| state.refuse_next_post = true);
+    assert_code(client.start(request("delivery:1")), ErrorCode::InvalidInput);
+    assert!(driver.records().is_empty());
+
+    // An activity whose update failed keeps its receipt when the retry is refused: the content
+    // before that update is no longer known.
+    let started = client.start(request("delivery:2")).unwrap();
+    driver.edit(|state| state.fail_next_post = true);
+    assert_code(
+        client.update(&started.id, snapshot(1)),
+        ErrorCode::NativeError,
+    );
+    driver.edit(|state| state.refuse_next_post = true);
+    assert_code(client.start(request("delivery:2")), ErrorCode::InvalidInput);
+    let kept = driver.records();
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].snapshot.revision, 1);
+    assert!(kept[0].post_failed);
+    assert_eq!(
+        client.update(&started.id, snapshot(2)).unwrap().state,
+        ActivityState::Active
+    );
+}
+
+// LU-UPDATE-9
+#[test]
+fn an_update_the_adapter_refuses_as_invalid_restores_the_accepted_snapshot() {
+    let driver = FakeDriver::default();
+    let client = LiveUpdate::new(driver.clone());
+    let started = client.start(request("delivery:1")).unwrap();
+    let mut refused = snapshot(4);
+    refused.title = "Refused".into();
+    driver.edit(|state| state.refuse_next_post = true);
+    driver.take_calls();
+
+    assert_code(client.update(&started.id, refused), ErrorCode::InvalidInput);
+
+    assert_eq!(
+        driver.take_calls(),
+        ["read", "observe", "capabilities", "write", "post", "write"]
+    );
+    let stored = driver.records();
+    assert_eq!(stored[0].snapshot, snapshot(0));
+    assert_eq!(stored[0].state, ActivityState::Active);
+    assert!(!stored[0].post_failed);
+    assert!(!stored[0].awaiting_observation);
+    assert_eq!(client.list().unwrap()[0].snapshot, snapshot(0));
+
+    // The revision is free for the corrected content.
+    let mut corrected = snapshot(4);
+    corrected.title = "Corrected".into();
+    let updated = client.update(&started.id, corrected.clone()).unwrap();
+    assert_eq!(updated.snapshot, corrected);
+    assert_eq!(updated.state, ActivityState::Active);
+    assert_eq!(driver.counts().0, 3);
+
+    // An update that Android does not list yet comes back as it was, still awaited, and the other
+    // receipts are what they were.
+    let ended = client.start(request("delivery:ended")).unwrap();
+    client.end(&ended.id, EndPolicy::Immediate).unwrap();
+    driver.edit(|state| state.delay_observation = true);
+    client.update(&started.id, snapshot(5)).unwrap();
+    let awaited = driver.records();
+    assert!(awaited[0].awaiting_observation);
+    driver.edit(|state| state.refuse_next_post = true);
+    assert_code(
+        client.update(&started.id, snapshot(6)),
+        ErrorCode::InvalidInput,
+    );
+    assert_eq!(driver.records(), awaited);
+    assert_eq!(client.list().unwrap()[0].snapshot, snapshot(5));
+}
+
+// LU-START-8
+#[test]
+fn a_refusal_whose_receipts_cannot_be_restored_is_met_again() {
+    let driver = FakeDriver::default();
+    let client = LiveUpdate::new(driver.clone());
+    driver.edit(|state| {
+        state.refuse_next_post = true;
+        state.fail_write_after = Some(1);
+    });
+
+    // The pending receipt was written, the restoring write failed: that failure is the answer.
+    assert_code(client.start(request("delivery:1")), ErrorCode::NativeError);
+    assert_eq!(driver.records().len(), 1);
+    assert!(driver.records()[0].post_failed);
+
+    // The same start is refused again, and this time the receipt goes.
+    driver.edit(|state| state.refuse_next_post = true);
+    assert_code(client.start(request("delivery:1")), ErrorCode::InvalidInput);
+    assert!(driver.records().is_empty());
+}
