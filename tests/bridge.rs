@@ -47,6 +47,7 @@ fn success(data: Value) -> Value {
 
 fn record() -> DriverRecord {
     DriverRecord {
+        reported_state: None,
         dismiss_at: None,
         id: "activity-id".into(),
         origin: StartRequest {

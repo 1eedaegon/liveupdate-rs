@@ -201,6 +201,21 @@ impl EndPolicy {
     }
 }
 
+/// When [`crate::LiveUpdate::state_changes`] can next have something that no operation of the
+/// caller brings. The crate has no clock: the caller compares a time with its own and owns the timer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NextCheck {
+    /// A state that an operation already reconciled has not been answered: ask now.
+    Now,
+    /// A post is not listed by Android yet. Ask again shortly, a little later each time, and give up
+    /// after a few: a post that Android never lists stays unknown until the next one.
+    Soon,
+    /// The earliest stale time ahead, in Unix milliseconds. A time that has passed means now.
+    At(u64),
+    /// Nothing is due until an operation or an event.
+    Never,
+}
+
 /// Lifecycle state observed for a live update.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

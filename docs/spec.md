@@ -77,6 +77,20 @@ Errors are `liveupdate::ErrorCode` values. Revisions and timestamps are integers
 | LU-LIST-9 | A list writes storage only when reconciliation changed a record. | Two lists → no write; a dismissal → one write. | — | all |
 | LU-LIST-10 | A stored receipt whose snapshot is of the other schema generation is still read: an earlier release wrote one for an update that mixed the generations, before the adapter refused its post. Such an update is refused now (LU-UPDATE-5), and the next update that fits replaces the receipt. A schema-1 receipt of another template is refused as before. | A schema-1 activity with a stored schema-2 snapshot → `list` succeeds. | `NativeError` (another template) | all |
 
+## State changes
+
+`docs/design/state-changes`. The core has no clock and no thread: it answers which states are due and
+when to ask again, and the caller owns the timer.
+
+| ID | Behavior | Input → expected result | Errors | Platform |
+| --- | --- | --- | --- | --- |
+| LU-STATE-1 | `state_changes()` reconciles and answers the records whose state is another than the one it last answered for them, each once, in the order `list` has them: `active` once Android lists the activity, `stale` once its stale time has passed, `active` again after an update, `ended`, `dismissed`. A state that was never asked for in between is skipped, and so is the end of an activity whose receipt storage dropped before it was asked for (LU-LIMIT-2). | Start, ask → `active`; ask → nothing; the stale time passes, ask → `stale`; update, ask → `active`; end, ask → `ended`. | — | all |
+| LU-STATE-2 | `unknown` is never answered and never taken as answered. A post that Android has not listed yet neither reports nor hides a state: `active`, an awaited update, `active` again is silence; `stale`, an awaited update, `active` is one answer. | A start Android lists late → nothing, then `active`. | — | all |
+| LU-STATE-3 | The state last answered is part of the stored receipt (`reportedState`), so a new client continues. A new activity has `unknown`, nothing answered. A receipt of an earlier version, without the member, is adopted with its state, unanswered; its next state is answered. | Client A asks, client B asks → nothing. | — | all |
+| LU-STATE-4 | A record that is posted goes to the driver without `reportedState`, also the last content of a delayed end: the adapter's record check and the record inside the notification are what they were. Updates and ends leave the stored member alone. | Three posts → none has the member; the receipt has it. | — | all |
+| LU-STATE-5 | When the receipts cannot be stored, `state_changes()` fails and answers nothing: the same states are due at the next call. With nothing due it stores nothing. | The store fails → error; the next call → `active`. | `NativeError` | all |
+| LU-STATE-6 | `next_check()` reads the receipts, with one driver call, and answers when to call `state_changes()` next: `Now` when a receipt has a state that an operation already reconciled and that was not answered; else `Soon` while a live receipt awaits Android's listing of a post that did not fail; else `At(time)`, the earliest `staleAt` of the receipts that are `active`; else `Never`. Answered stale, ended and dismissed activities, and one whose post failed, ask for nothing. A post that Android never lists keeps `Soon`: a caller gives up after a few times. | Stale times 5000 and 3000 → `At(3000)`; the earlier one is stale → `At(5000)`. | — | all |
+
 ## Limits
 
 | ID | Behavior | Input → expected result | Errors | Platform |
@@ -447,3 +461,9 @@ when unset, and schema version 1 has none of them.
 | LU-LIST-10 | `tests/extensions.rs::a_receipt_of_the_other_generation_from_an_earlier_release_is_read_and_replaced` (integration) |
 | LU-START-8 | `tests/lifecycle.rs::a_start_the_adapter_refuses_as_invalid_leaves_no_receipt` (integration)<br>`tests/lifecycle.rs::a_retried_start_the_adapter_then_refuses_is_removed_unless_it_was_updated` (integration)<br>`tests/lifecycle.rs::a_refusal_whose_receipts_cannot_be_restored_is_met_again` (integration)<br>`tests/extensions.rs::a_refused_foreground_start_does_not_hold_the_placement` (integration)<br>`tests/bridge.rs::a_post_the_adapter_refuses_over_the_bridge_holds_neither_the_key_nor_the_revision` (integration) |
 | LU-UPDATE-9 | `tests/lifecycle.rs::an_update_the_adapter_refuses_as_invalid_restores_the_accepted_snapshot` (integration)<br>`tests/bridge.rs::a_post_the_adapter_refuses_over_the_bridge_holds_neither_the_key_nor_the_revision` (integration) |
+| LU-STATE-1 | `tests/state.rs::each_state_of_an_activity_is_answered_once` (integration) |
+| LU-STATE-2 | `tests/state.rs::an_unknown_state_is_not_answered_and_hides_nothing` (integration) |
+| LU-STATE-3 | `tests/state.rs::a_new_client_continues_and_an_earlier_receipt_is_adopted_unanswered` (integration) |
+| LU-STATE-4 | `tests/state.rs::the_state_last_answered_is_stored_and_never_posted` (integration) |
+| LU-STATE-5 | `tests/state.rs::a_store_that_fails_answers_nothing_and_loses_nothing` (integration) |
+| LU-STATE-6 | `tests/state.rs::the_next_check_is_now_for_a_due_answer_soon_for_an_awaited_post_then_the_earliest_stale_time` (integration) |

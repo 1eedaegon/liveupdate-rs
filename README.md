@@ -201,6 +201,28 @@ delivered); the record's `template` follows the latest snapshot. Schema v1 keeps
 | Keep the last content | `end(id, EndPolicy::After { at })` | It stays, no longer ongoing, until `at`; update first to change it, end again with `Immediate` to remove it early |
 | What the person did | `LiveUpdate::events()` | `Action`, `Dismissed` and `Opened` events, drained once |
 | What happened to it | `list()` and every returned record | `state`, `promotion_state`, `degraded_features` |
+| Each new state, once | `state_changes()` | `active`, `stale`, `ended` and `dismissed`; see [State changes](#state-changes) |
+
+### State changes
+
+Android tells nobody when a notification's stale time passes, and the crate has no timer.
+`state_changes()` reconciles and answers the activities whose state is another than the one it last
+answered for them, each once: `active` once Android lists the activity, `stale` once its `stale_at`
+has passed, `active` again after an update, `ended`, `dismissed`. What it answered is stored with the
+receipts, so the answers continue after a restart, and `unknown` is never one of them.
+
+`next_check()` reads the receipts and says when to call it again:
+
+| `next_check()` | Meaning | What a host does |
+| --- | --- | --- |
+| `NextCheck::Now` | A state is known and was not answered yet | Ask now |
+| `NextCheck::Soon` | A post is not listed by Android yet | Ask in about half a second, then a little later each time, and give up after a few |
+| `NextCheck::At(time)` | The earliest stale time ahead, in Unix milliseconds | Set a timer; a time that has passed means now |
+| `NextCheck::Never` | Nothing is due | Wait for an operation, an event or the app's return to the foreground |
+
+A host asks after its own `start` and `update`, at the time `next_check()` named, and when the app
+returns to the foreground. A frozen process runs no timer: what it missed is answered at the next
+call.
 
 ### Links
 
