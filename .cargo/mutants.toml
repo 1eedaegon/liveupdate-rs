@@ -8,5 +8,5 @@ exclude_globs = ["src/android.rs"]
 # rejected again by the segment validator below the fast-path check.
 exclude_re = [
   'src/driver\.rs:105:9: replace Driver::drain_events -> Result<EventBatch> with Ok\(Default::default\(\)\)',
-  'src/presentation\.rs:665:9: replace \|\| with && in valid_app_file',
+  'src/presentation\.rs:669:9: replace \|\| with && in valid_app_file',
 ]

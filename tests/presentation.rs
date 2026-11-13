@@ -547,6 +547,49 @@ fn metrics_are_finite_labeled_and_have_a_valid_critical_index() {
     );
 }
 
+// LU-V2-METRIC-3
+#[test]
+fn a_stopwatch_and_a_countdown_metric_are_written_in_the_adapters_names_and_the_earlier_names_are_read()
+ {
+    let cases = [
+        (
+            MetricValue::Stopwatch { started_at: 1_000 },
+            json!({ "kind": "stopwatch", "value": { "startedAt": 1000 } }),
+            json!({ "kind": "stopwatch", "value": { "started_at": 1000 } }),
+        ),
+        (
+            MetricValue::Countdown { ends_at: 2_000 },
+            json!({ "kind": "countdown", "value": { "endsAt": 2000 } }),
+            json!({ "kind": "countdown", "value": { "ends_at": 2000 } }),
+        ),
+    ];
+    for (value, wire, earlier) in cases {
+        assert_eq!(serde_json::to_value(&value).unwrap(), wire);
+        assert_eq!(
+            serde_json::from_value::<MetricValue>(wire.clone()).unwrap(),
+            value
+        );
+        // What versions up to 0.3.0 wrote is read, and written in the contract's names.
+        let read: MetricValue = serde_json::from_value(earlier).unwrap();
+        assert_eq!(read, value);
+        assert_eq!(serde_json::to_value(&read).unwrap(), wire);
+    }
+
+    for refused in [
+        json!({ "kind": "stopwatch", "value": { "startedAt": 1, "started_at": 1 } }),
+        json!({ "kind": "countdown", "value": { "endsAt": 2, "ends_at": 2 } }),
+        json!({ "kind": "stopwatch", "value": { "startedAt": 1, "x": 0 } }),
+        json!({ "kind": "stopwatch", "value": { "endsAt": 1 } }),
+        json!({ "kind": "countdown", "value": { "startedAt": 2 } }),
+        json!({ "kind": "countdown", "value": {} }),
+    ] {
+        assert!(
+            serde_json::from_value::<MetricValue>(refused.clone()).is_err(),
+            "{refused}"
+        );
+    }
+}
+
 // LU-V2-METRIC-1, LU-V2-VALID-1
 #[test]
 fn timer_metric_and_vendor_values_enforce_exact_bounds() {

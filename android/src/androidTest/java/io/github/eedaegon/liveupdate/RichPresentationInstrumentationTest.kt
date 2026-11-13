@@ -23,6 +23,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
 import java.io.RandomAccessFile
+import java.time.Instant
 
 @RunWith(AndroidJUnit4::class)
 class RichPresentationInstrumentationTest {
@@ -101,6 +102,35 @@ class RichPresentationInstrumentationTest {
         assertEquals(12.5f, (restored.metrics[1].value as Notification.Metric.FixedFloat).value)
         assertEquals("Ready", (restored.metrics[2].value as Notification.Metric.FixedText).value.toString())
         assertEquals(restored.metrics[1], restored.criticalMetric)
+    }
+
+    // LU-V2-METRIC-2
+    @Test
+    fun metricStyleCountsFromAStopwatchStartAndToACountdownEnd() {
+        assertTrue(Build.VERSION.SDK_INT >= 37)
+        val startedAt = System.currentTimeMillis() - 60_000
+        val endsAt = startedAt + 660_000
+        fun times(started: String, ends: String) = JSONObject().put("kind", "metric").put("value", JSONObject()
+            .put("metrics", JSONArray()
+                .put(metric("Elapsed", "stopwatch", JSONObject().put(started, startedAt), null))
+                .put(metric("Left", "countdown", JSONObject().put(ends, endsAt), null))))
+
+        adapter.post(v2Record("times", "metric", v2Snapshot(times("startedAt", "endsAt"))))
+
+        val restored = Notification.Builder.recoverBuilder(context, Device.waitForShown("times")).style
+            as Notification.MetricStyle
+        val stopwatch = restored.metrics[0].value as Notification.Metric.TimeDifference
+        assertTrue(stopwatch.isStopwatch)
+        assertEquals(Instant.ofEpochMilli(startedAt), stopwatch.zeroTime)
+        val countdown = restored.metrics[1].value as Notification.Metric.TimeDifference
+        assertTrue(countdown.isTimer)
+        assertEquals(Instant.ofEpochMilli(endsAt), countdown.zeroTime)
+
+        // The adapter reads the contract's names only: the lifecycle writes them.
+        listOf("started_at" to "endsAt", "startedAt" to "ends_at").forEachIndexed { index, (started, ends) ->
+            val refused = v2Record("times-$index", "metric", v2Snapshot(times(started, ends)))
+            assertEquals("INVALID_INPUT", failureCode { adapter.post(refused) })
+        }
     }
 
     // LU-V2-ADAPTER-2

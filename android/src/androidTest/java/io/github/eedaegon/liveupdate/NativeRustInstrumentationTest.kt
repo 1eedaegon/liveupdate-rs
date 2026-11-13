@@ -17,6 +17,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.time.Instant
 
 /** The crate's Android path end to end: Rust code calls `LiveUpdate::android()` through JNI. */
 @RunWith(AndroidJUnit4::class)
@@ -136,6 +137,42 @@ class NativeRustInstrumentationTest {
         assertEquals(0, ok(NativeRust.run("events", "")).getJSONArray("events").length())
     }
 
+    // LU-V2-METRIC-3
+    @Test
+    fun stopwatchAndCountdownMetricsCrossRustJniInTheAdaptersNames() {
+        assertTrue(Build.VERSION.SDK_INT >= 37)
+        val startedAt = System.currentTimeMillis() - 60_000
+        val endsAt = startedAt + 660_000
+        fun snapshot(revision: Long, started: String, ends: String, shift: Long = 0) = Device.v2Snapshot(
+            JSONObject().put("kind", "metric").put("value", JSONObject().put("metrics", JSONArray()
+                .put(timeMetric("Elapsed", "stopwatch", started, startedAt + shift))
+                .put(timeMetric("Left", "countdown", ends, endsAt + shift)))),
+            revision,
+        )
+        val request = JSONObject()
+            .put("activityKey", "native:metric-times")
+            .put("schemaVersion", 2)
+            .put("template", "metric")
+            .put("fallback", "notification")
+            .put("visibility", "private")
+            .put("snapshot", snapshot(0, "startedAt", "endsAt"))
+
+        val started = ok(NativeRust.run("start", request.toString()))
+        val id = started.getString("id")
+        assertEquals(styleOf(request.getJSONObject("snapshot")), styleOf(started.getJSONObject("snapshot")))
+        assertMetricTimes(Device.waitForShown(id, 0), startedAt, endsAt)
+
+        // The names that versions up to 0.3.0 wrote are read, and posted in the adapter's names.
+        Device.paceUpdate()
+        val earlier = JSONObject().put("id", id).put("snapshot", snapshot(1, "started_at", "ends_at", 1_000))
+        val updated = ok(NativeRust.run("update", earlier.toString()))
+        assertEquals(
+            styleOf(snapshot(1, "startedAt", "endsAt", 1_000)),
+            styleOf(updated.getJSONObject("snapshot")),
+        )
+        assertMetricTimes(Device.waitForShown(id, 1), startedAt + 1_000, endsAt + 1_000)
+    }
+
     // LU-LIST-3, LU-UPDATE-6
     @Test
     fun aNotificationTheUserRemovesBecomesDismissed() {
@@ -248,6 +285,24 @@ class NativeRustInstrumentationTest {
         .put("fallback", "notification")
         .put("visibility", "private")
         .put("snapshot", snapshot)
+
+    private fun timeMetric(label: String, kind: String, member: String, time: Long): JSONObject = JSONObject()
+        .put("label", label)
+        .put("value", JSONObject().put("kind", kind).put("value", JSONObject().put(member, time)))
+
+    /** The style of a snapshot in a comparable form: Rust leaves out an empty list of actions. */
+    private fun styleOf(snapshot: JSONObject): String =
+        Device.canonical(snapshot.getJSONObject("presentation").getJSONObject("style"))
+
+    private fun assertMetricTimes(notification: Notification, startedAt: Long, endsAt: Long) {
+        val style = Notification.Builder.recoverBuilder(context, notification).style as Notification.MetricStyle
+        val stopwatch = style.metrics[0].value as Notification.Metric.TimeDifference
+        assertTrue(stopwatch.isStopwatch)
+        assertEquals(Instant.ofEpochMilli(startedAt), stopwatch.zeroTime)
+        val countdown = style.metrics[1].value as Notification.Metric.TimeDifference
+        assertTrue(countdown.isTimer)
+        assertEquals(Instant.ofEpochMilli(endsAt), countdown.zeroTime)
+    }
 
     private fun ok(raw: String): JSONObject {
         val outcome = JSONObject(raw)
