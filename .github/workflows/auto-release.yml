@@ -2,7 +2,10 @@ name: Auto release
 
 # Conventional commits prepare patch/minor releases after main passes CI. Major releases enter through
 # the manual input, but still receive a generated commit and must pass exact-SHA CI before they are tagged.
-# Pushes made by GITHUB_TOKEN do not recursively trigger workflows, so both follow-up runs are dispatched.
+# Pushes made by GITHUB_TOKEN do not recursively trigger workflows, and the CI run this workflow dispatches
+# for the version commit does not start it again either. So the run that prepares a release dispatches that
+# CI run, waits for it, tags the commit and dispatches the publish workflow. A run by hand tags a version
+# commit that was left untagged.
 on:
   workflow_run:
     workflows: [CI]
@@ -64,7 +67,8 @@ jobs:
           else
             tools/release.sh plan
           fi
-      - name: Prepare the version commit and run its CI
+      - name: Prepare the version commit and wait for its CI
+        id: prepare
         if: steps.plan.outputs.action == 'prepare'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -94,8 +98,18 @@ jobs:
             sleep 2
           done
           gh workflow run ci.yml --ref main -f fresh=false -f retest=false
+          # The dispatched run is found by the version commit, which no other run has.
+          run_id=
+          for attempt in $(seq 1 30); do
+            run_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$release_sha&event=workflow_dispatch&per_page=1" \
+              --jq '.workflow_runs[0].id // empty')
+            [ -n "$run_id" ] && break
+            sleep 4
+          done
+          [ -n "$run_id" ] || { echo "the CI run of $release_sha did not start"; exit 1; }
+          gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status --interval 15
       - name: Tag the validated version and start the GitHub release
-        if: steps.plan.outputs.action == 'tag'
+        if: steps.plan.outputs.action == 'tag' || steps.prepare.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.plan.outputs.tag }}
