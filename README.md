@@ -33,9 +33,12 @@ runtimes already do this before application code runs. Before that, `LiveUpdate:
 `NATIVE_ERROR`, as long as the build unwinds on panic (Rust's default): with `panic = "abort"`, the
 process aborts.
 
-The Android namespace is `io.github.gon.liveupdate`: an Android package segment cannot start with
-a digit, so it cannot be the owner's name. The repository, Cargo author and project owner remain
-`1eedaegon`.
+The Android namespace is `io.github.eedaegon.liveupdate`: an Android package segment cannot start with
+a digit, so the owner's name (github.com/1eedaegon) loses its first character there, and in the JNI
+names made from it. Names that are plain strings keep it whole, under
+`io.github.1eedaegon.liveupdate`: the preferences file, the notification's record key, and the actions
+and extras of the library's intents. Versions 0.2.0 and 0.2.1 named all of them
+`io.github.gon.liveupdate`.
 
 ## Use
 
@@ -231,8 +234,8 @@ opened with `ACTION_VIEW` inside your own package only, so one of your activitie
 must have an intent filter for it; a URL nothing opens fails the post. `intent:`, `content:`, `file:`, `javascript:`,
 `data:` and `android-app:` are refused.
 
-The opening intent carries the extras `io.github.gon.liveupdate.activityId` and, for a button,
-`io.github.gon.liveupdate.actionId`. Hand the intent back to get an `Opened` event:
+The opening intent carries the extras `io.github.1eedaegon.liveupdate.activityId` and, for a button,
+`io.github.1eedaegon.liveupdate.actionId`. Hand the intent back to get an `Opened` event:
 
 ```kotlin
 override fun onCreate(savedInstanceState: Bundle?) {

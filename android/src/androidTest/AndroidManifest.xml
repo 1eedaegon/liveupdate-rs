@@ -5,7 +5,7 @@
     <application>
         <!-- Gives the test package a launch activity, which a notification's content intent opens. -->
         <activity
-            android:name="io.github.gon.liveupdate.LaunchActivity"
+            android:name="io.github.eedaegon.liveupdate.LaunchActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -21,20 +21,20 @@
 
         <!-- A host's foreground service, which holds a notification the adapter built. -->
         <service
-            android:name="io.github.gon.liveupdate.ForegroundProbeService"
+            android:name="io.github.eedaegon.liveupdate.ForegroundProbeService"
             android:exported="false"
             android:foregroundServiceType="shortService" />
 
         <!-- The same in a process of its own, which a test kills. -->
         <service
-            android:name="io.github.gon.liveupdate.RemoteForegroundProbeService"
+            android:name="io.github.eedaegon.liveupdate.RemoteForegroundProbeService"
             android:exported="false"
             android:foregroundServiceType="shortService"
             android:process=":probe" />
 
         <!-- Hears each post and removal of the test package's notifications, once a test allows it. -->
         <service
-            android:name="io.github.gon.liveupdate.NotificationProbe"
+            android:name="io.github.eedaegon.liveupdate.NotificationProbe"
             android:exported="true"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>

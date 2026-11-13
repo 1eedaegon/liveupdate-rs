@@ -19,7 +19,7 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 out=${OUT:-$root/android/build/device-suite}
 minimum=${RUST_ANDROID_MIN:-90}
 regions=${RUST_ANDROID_REGIONS_MIN:-85}
-package=io.github.gon.liveupdate.test
+package=io.github.eedaegon.liveupdate.test
 runner=$package/androidx.test.runner.AndroidJUnitRunner
 sdk=${ANDROID_SDK_ROOT:-${ANDROID_HOME:?ANDROID_HOME or ANDROID_SDK_ROOT names the Android SDK}}
 adb=$sdk/platform-tools/adb
@@ -84,13 +84,13 @@ instrument() {
 
 device uninstall "$package" >/dev/null 2>&1 || true
 device install -r -t -g "$apk"
-passed=$(instrument main -e notClass io.github.gon.liveupdate.PermissionInstrumentationTest \
+passed=$(instrument main -e notClass io.github.eedaegon.liveupdate.PermissionInstrumentationTest \
   ${EXPECTED_SDK:+-e expectedSdk "$EXPECTED_SDK"})
 device exec-out run-as "$package" cat files/liveupdate.profraw >"$out/liveupdate.profraw"
 device logcat -d -s TestRunner:I System.out:I >"$out/logcat.txt" 2>/dev/null || true
 # Revoking the notification permission kills the app, so the class that needs it revoked runs alone.
 device shell pm revoke "$package" android.permission.POST_NOTIFICATIONS
-denied=$(instrument denied -e class io.github.gon.liveupdate.PermissionInstrumentationTest -e notifications denied)
+denied=$(instrument denied -e class io.github.eedaegon.liveupdate.PermissionInstrumentationTest -e notifications denied)
 device uninstall "$package" >/dev/null
 [ -s "$out/liveupdate.profraw" ] || { echo "no Rust profile on $serial" >&2; exit 1; }
 python3 -I tests/android/instrumentation.py --spec docs/spec.md \
