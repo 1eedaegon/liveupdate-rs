@@ -1,9 +1,10 @@
 //! JSON bridge contract tests for managed Android adapters.
 
 use liveupdate::{
-    ActivityEvent, ActivityState, Bridge, Capabilities, Driver, DriverRecord, EndPolicy, Error,
-    ErrorCode, EventBatch, EventKind, Fallback, JsonDriver, LiveUpdate, Observation,
-    PresentationCapabilities, PromotionState, Snapshot, StartRequest, Template, Visibility,
+    ActivityEvent, ActivityState, AndroidPresentation, Bridge, Capabilities, Driver, DriverRecord,
+    EndPolicy, Error, ErrorCode, EventBatch, EventKind, Fallback, JsonDriver, LiveUpdate, Metric,
+    MetricStyle, MetricValue, Observation, PresentationCapabilities, PresentationStyle,
+    PromotionState, Snapshot, StartRequest, Template, Visibility,
 };
 use serde_json::{Value, json};
 use std::{
@@ -384,5 +385,96 @@ fn a_post_the_adapter_refuses_over_the_bridge_holds_neither_the_key_nor_the_revi
     assert_eq!(
         client.update(&started.id, update).unwrap().state,
         ActivityState::Active
+    );
+}
+
+fn time_metrics(started_at: u64, ends_at: u64) -> StartRequest {
+    let metric = |label: &str, value| Metric {
+        label: label.into(),
+        value,
+        semantic_style: None,
+    };
+    let style = PresentationStyle::Metric(MetricStyle {
+        metrics: vec![
+            metric("Elapsed", MetricValue::Stopwatch { started_at }),
+            metric("Left", MetricValue::Countdown { ends_at }),
+        ],
+        critical_metric: None,
+    });
+    let origin = record().origin;
+    StartRequest {
+        schema_version: 2,
+        template: Template::Metric,
+        snapshot: Snapshot {
+            progress: None,
+            presentation: Some(AndroidPresentation::new(style)),
+            ..origin.snapshot.clone()
+        },
+        ..origin
+    }
+}
+
+/// The values of the two metrics of `snapshot`, as the JSON has them.
+fn metric_values(snapshot: &Value) -> Vec<Value> {
+    snapshot["presentation"]["style"]["value"]["metrics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|metric| metric["value"].clone())
+        .collect()
+}
+
+// LU-V2-METRIC-3
+#[test]
+fn metric_times_are_posted_in_the_adapters_names_and_a_receipt_with_the_earlier_names_is_read() {
+    let adapter = JsonAdapter::default();
+    let client = LiveUpdate::new(JsonDriver::new(adapter.clone()));
+    let wire = |started_at: u64, ends_at: u64| {
+        vec![
+            json!({ "kind": "stopwatch", "value": { "startedAt": started_at } }),
+            json!({ "kind": "countdown", "value": { "endsAt": ends_at } }),
+        ]
+    };
+
+    let started = client.start(time_metrics(1_000, 2_000)).unwrap();
+    let shown = adapter.shown.lock().unwrap()[&started.id].clone();
+    assert_eq!(metric_values(&shown["snapshot"]), wire(1_000, 2_000));
+    assert_eq!(
+        metric_values(&shown["origin"]["snapshot"]),
+        wire(1_000, 2_000)
+    );
+
+    // A receipt as a version up to 0.3.0 stored it, and as Android still shows it.
+    let earlier = |snapshot: &mut Value| {
+        let metrics = &mut snapshot["presentation"]["style"]["value"]["metrics"];
+        metrics[0]["value"]["value"] = json!({ "started_at": 1_000 });
+        metrics[1]["value"]["value"] = json!({ "ends_at": 2_000 });
+    };
+    for records in [
+        &mut *adapter.stored.lock().unwrap(),
+        adapter.shown.lock().unwrap().get_mut(&started.id).unwrap(),
+    ] {
+        let record = if records.is_array() {
+            &mut records[0]
+        } else {
+            records
+        };
+        earlier(&mut record["snapshot"]);
+        earlier(&mut record["origin"]["snapshot"]);
+    }
+    let listed = client.list().unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].state, ActivityState::Active);
+    assert_eq!(listed[0].snapshot, started.snapshot);
+
+    // Its next post has the contract's names.
+    let mut next = time_metrics(3_000, 4_000).snapshot;
+    next.revision = started.snapshot.revision + 1;
+    client.update(&started.id, next).unwrap();
+    let shown = adapter.shown.lock().unwrap()[&started.id].clone();
+    assert_eq!(metric_values(&shown["snapshot"]), wire(3_000, 4_000));
+    assert_eq!(
+        metric_values(&shown["origin"]["snapshot"]),
+        wire(1_000, 2_000)
     );
 }

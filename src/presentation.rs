@@ -308,12 +308,16 @@ pub enum MetricValue {
     Text(String),
     /// Running stopwatch from a Unix timestamp in milliseconds.
     Stopwatch {
-        /// Stopwatch start.
+        /// Stopwatch start. Versions up to 0.3.0 wrote `started_at`, which the adapter refused:
+        /// it is still read.
+        #[serde(rename = "startedAt", alias = "started_at")]
         started_at: u64,
     },
     /// Running countdown to a Unix timestamp in milliseconds.
     Countdown {
-        /// Countdown end.
+        /// Countdown end. Versions up to 0.3.0 wrote `ends_at`, which the adapter refused: it is
+        /// still read.
+        #[serde(rename = "endsAt", alias = "ends_at")]
         ends_at: u64,
     },
 }
