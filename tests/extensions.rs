@@ -693,3 +693,22 @@ fn a_receipt_of_the_other_generation_from_an_earlier_release_is_read_and_replace
     driver.edit(|state| state.records[0].snapshot = common::timer_snapshot(1));
     assert_code(client.list(), ErrorCode::NativeError);
 }
+
+// LU-START-8
+#[test]
+fn a_refused_foreground_start_does_not_hold_the_placement() {
+    let driver = FakeDriver::default();
+    driver.edit(|state| {
+        state.capabilities.presentation.foreground_placement = true;
+        state.refuse_next_post = true;
+    });
+    let client = LiveUpdate::new(driver.clone());
+
+    assert_code(
+        client.start(foreground_request("ride:1")),
+        ErrorCode::InvalidInput,
+    );
+    let next = client.start(foreground_request("ride:2")).unwrap();
+    assert_eq!(next.state, ActivityState::Active);
+    assert_eq!(driver.records().len(), 1);
+}

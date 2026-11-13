@@ -285,7 +285,8 @@ Android system notification / promoted ongoing UI
 ```
 
 Rust writes the receipt before posting. If the process or framework call fails, the next identical
-operation retries safely. `list` reconciles receipts with Android's active notifications, so a
+operation retries safely. A post that the adapter refuses as invalid, such as a URL no activity
+opens or an icon the app does not have, leaves no receipt: correct the request and send it again. `list` reconciles receipts with Android's active notifications, so a
 notification removed by the user becomes `Dismissed`. At most 32 active records and 128 terminal
 tombstones are retained, the oldest tombstone going first; malformed or oversized adapter data fails
 closed as `NATIVE_ERROR`.

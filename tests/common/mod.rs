@@ -37,7 +37,12 @@ pub struct FakeState {
     /// A post is accepted but Android does not list it yet.
     pub delay_observation: bool,
     pub fail_next_post: bool,
+    /// The adapter refuses the next post as invalid, before it posts anything, as it does for content
+    /// that only the device can check.
+    pub refuse_next_post: bool,
     pub fail_next_cancel: bool,
+    /// Fails one write after this many more have passed.
+    pub fail_write_after: Option<usize>,
     pub fail_next_observe: bool,
     /// How many further `observe` calls still list a cancelled notification, as Android's
     /// asynchronous cancel does.
@@ -69,7 +74,9 @@ impl Default for FakeDriver {
                 history: Vec::new(),
                 delay_observation: false,
                 fail_next_post: false,
+                refuse_next_post: false,
                 fail_next_cancel: false,
+                fail_write_after: None,
                 fail_next_observe: false,
                 cancel_linger: 0,
                 lingering: BTreeMap::new(),
@@ -103,6 +110,14 @@ impl Driver for FakeDriver {
     fn write(&self, records: &[DriverRecord]) -> liveupdate::Result<()> {
         let mut state = self.state.lock().unwrap();
         state.calls.push("write");
+        match state.fail_write_after {
+            Some(0) => {
+                state.fail_write_after = None;
+                return Err(Error::new(ErrorCode::NativeError, "Writing failed."));
+            }
+            Some(remaining) => state.fail_write_after = Some(remaining - 1),
+            None => {}
+        }
         state.writes += 1;
         state.records = records.to_vec();
         state.history.push(records.to_vec());
@@ -136,6 +151,12 @@ impl Driver for FakeDriver {
         state.posts += 1;
         if std::mem::take(&mut state.fail_next_post) {
             return Err(Error::new(ErrorCode::NativeError, "Posting failed."));
+        }
+        if std::mem::take(&mut state.refuse_next_post) {
+            return Err(Error::new(
+                ErrorCode::InvalidInput,
+                "Invalid live update request.",
+            ));
         }
         if record.state == ActivityState::Ended {
             state.observed.remove(&record.id);
