@@ -11,16 +11,16 @@ public API in Rust, while a small Android AAR only talks to `NotificationManager
 
 ```toml
 [dependencies]
-liveupdate = { version = "0.3.1", features = ["android"] }
+liveupdate = { version = "0.3.2", features = ["android"] }
 ```
 
-Put `liveupdate-android-0.3.1.aar` from the [GitHub release](https://github.com/1eedaegon/liveupdate-rs/releases)
+Put `liveupdate-android-0.3.2.aar` from the [GitHub release](https://github.com/1eedaegon/liveupdate-rs/releases)
 into `app/libs/`. The AAR is written in Kotlin and a file dependency brings no dependencies of its own, so
 add the Kotlin standard library too:
 
 ```kotlin
 dependencies {
-    implementation(files("libs/liveupdate-android-0.3.1.aar"))
+    implementation(files("libs/liveupdate-android-0.3.2.aar"))
     implementation("org.jetbrains.kotlin:kotlin-stdlib:2.2.10") // or newer
 }
 ```

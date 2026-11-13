@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.3.2 - 2026-11-13
+
+- fix: a schema-2 progress is posted on Android 16 (`e483690`)
+
 ## 0.3.1 - 2026-11-13
 
 - fix: a stopwatch or countdown metric is written in the names the adapter reads (`7632cb4`)
