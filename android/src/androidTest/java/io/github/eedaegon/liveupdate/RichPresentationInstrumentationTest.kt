@@ -79,6 +79,39 @@ class RichPresentationInstrumentationTest {
         assertTrue(notification.hasPromotableCharacteristics())
     }
 
+    // LU-V2-PROGRESS-2
+    @Test
+    fun progressStyleOnApi36IsPostedWithoutSemanticStyles() {
+        // A device of API 36, or this one as API 36: the semantic style of a segment and of a point is a
+        // method of API 37, which API 36 does not have.
+        val api36 = AndroidAdapter(context, sdk = 36)
+        val progress = JSONObject()
+            .put("progress", 250)
+            .put("segments", JSONArray()
+                .put(segment(400, 1, 0xff00ff00.toInt(), "safe"))
+                .put(segment(600, null, null, null)))
+            .put("points", JSONArray().put(point(400, 10, 0xff2196f3.toInt(), "info")))
+        val style = JSONObject().put("kind", "progress").put("value", progress)
+
+        api36.post(v2Record("api36-progress", "progress", v2Snapshot(style)))
+
+        val notification = Device.waitForShown("api36-progress")
+        val restored = Notification.Builder.recoverBuilder(context, notification).style
+            as Notification.ProgressStyle
+        assertEquals(250, restored.progress)
+        assertEquals(1000, restored.progressMax)
+        assertEquals(listOf(400, 600), restored.progressSegments.map { it.length })
+        assertEquals(1, restored.progressSegments[0].id)
+        assertEquals(0xff00ff00.toInt(), restored.progressSegments[0].color)
+        assertEquals(listOf(400), restored.progressPoints.map { it.position })
+        assertEquals(10, restored.progressPoints.single().id)
+        assertEquals(0xff2196f3.toInt(), restored.progressPoints.single().color)
+        if (Build.VERSION.SDK_INT >= 37) {
+            assertEquals(Notification.SEMANTIC_STYLE_UNSPECIFIED, restored.progressSegments[0].semanticStyle)
+            assertEquals(Notification.SEMANTIC_STYLE_UNSPECIFIED, restored.progressPoints.single().semanticStyle)
+        }
+    }
+
     // LU-V2-METRIC-2
     @Test
     fun metricStyleCarriesThreeTypedMetricsAndCriticalSelection() {

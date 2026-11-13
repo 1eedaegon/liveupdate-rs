@@ -56,6 +56,9 @@ internal object LiveUpdateProtocol {
         error(failure.code, failure.message ?: NATIVE_MESSAGE).toString()
     } catch (_: Exception) {
         error("NATIVE_ERROR", NATIVE_MESSAGE).toString()
+    } catch (_: LinkageError) {
+        // A platform method or class that this device lacks: an answer, not a throw into the host.
+        error("NATIVE_ERROR", NATIVE_MESSAGE).toString()
     }
 
     private fun <T> emptyPayload(payload: JSONObject, action: () -> T): T {
