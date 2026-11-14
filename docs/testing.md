@@ -150,7 +150,8 @@ instrumentation tests were run by hand on an API 36 emulator (Google APIs image,
   one expects the Samsung capability that the adapter reports from API 37. One asserts
   `hasPromotableCharacteristics()`, which that image answers with false for every notification, a plain
   ongoing one with a title included. One foreground-service probe failed in the full run and passed three
-  times on its own.
+  times on its own: the probe service made itself known after its notification, and a test that saw
+  the notification first found no service. It makes itself known first now.
 - No member newer than API 36 is referenced by the release classes outside the metric style, which runs
   on API 37 only (`javap` over the AAR against the platform's `api-versions.xml`).
 
