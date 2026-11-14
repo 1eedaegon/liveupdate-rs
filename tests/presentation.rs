@@ -51,6 +51,7 @@ fn v2_snapshot(style: PresentationStyle) -> Snapshot {
 fn v2_start(template: Template, style: PresentationStyle) -> StartRequest {
     StartRequest {
         placement: liveupdate::Placement::Tagged,
+        start_at: None,
         activity_key: "delivery:42".into(),
         schema_version: 2,
         template,
@@ -211,6 +212,7 @@ fn schema_one_keeps_its_exact_wire_shape() {
 fn schema_versions_cannot_mix_legacy_and_rich_presentations() {
     let legacy = StartRequest {
         placement: liveupdate::Placement::Tagged,
+        start_at: None,
         activity_key: "delivery:42".into(),
         schema_version: 1,
         template: Template::Progress,

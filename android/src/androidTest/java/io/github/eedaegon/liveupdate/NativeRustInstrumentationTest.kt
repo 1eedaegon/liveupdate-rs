@@ -132,6 +132,58 @@ class NativeRustInstrumentationTest {
         }
     }
 
+    // LU-SCHED-14
+    @Test
+    fun aScheduledStartFromRustBeginsAtItsTimeAndIsAnsweredOnceEach() {
+        val firstStartAt = System.currentTimeMillis() + 5_000
+        val request = JSONObject()
+            .put("activityKey", "native:scheduled")
+            .put("schemaVersion", 2)
+            .put("template", "standard")
+            .put("fallback", "notification")
+            .put("visibility", "private")
+            .put("snapshot", Device.v2Snapshot(JSONObject().put("kind", "standard")))
+            .put("startAt", firstStartAt)
+        fun answered(): List<String> = okArray(NativeRust.run("stateChanges", "")).let { changes ->
+            List(changes.length()) { changes.getJSONObject(it).getString("state") }
+        }
+
+        // A start and nothing after it: the alarm alone begins the activity.
+        val alone = JSONObject(request.toString()).put("activityKey", "native:alone")
+        val left = ok(NativeRust.run("start", alone.toString()))
+        Device.waitForShown(left.getString("id"))
+        assertTrue(System.currentTimeMillis() >= firstStartAt)
+        assertEquals(listOf("active"), answered())
+
+        request.put("startAt", System.currentTimeMillis() + 5_000)
+        val startAt = request.getLong("startAt")
+        val started = ok(NativeRust.run("start", request.toString()))
+
+        assertEquals("scheduled", started.getString("state"))
+        assertEquals(startAt, started.getLong("startAt"))
+        assertEquals(listOf("scheduled"), answered())
+        assertEquals(null, Device.shown(started.getString("id")))
+        assertEquals("CONFLICT", errorCode(NativeRust.run("update", JSONObject()
+            .put("id", started.getString("id"))
+            .put("snapshot", Device.v2Snapshot(JSONObject().put("kind", "standard"), revision = 1)).toString())))
+        // The alarm posts it: Rust is not asked until Android shows it.
+        Device.waitForShown(started.getString("id"))
+        assertTrue(System.currentTimeMillis() >= startAt)
+        assertEquals(listOf("active"), answered())
+        assertTrue(answered().isEmpty())
+        assertEquals(started.getString("id"), ok(NativeRust.run("start", request.toString())).getString("id"))
+
+        // A time that has passed begins at once: the first record is that of a post, never `scheduled`, and
+        // `scheduled` is not answered for it.
+        val passed = JSONObject(request.toString())
+            .put("activityKey", "native:passed")
+            .put("startAt", System.currentTimeMillis() - 1_000)
+        val begun = ok(NativeRust.run("start", passed.toString()))
+        assertTrue(begun.getString("state"), begun.getString("state") in setOf("unknown", "active"))
+        Device.waitForShown(begun.getString("id"))
+        assertEquals(listOf("active"), answered())
+    }
+
     // LU-V2-JNI-1, LU-V2-EVENT-4
     @Test
     fun richPresentationAndActionEventsCrossRustJniUnchanged() {

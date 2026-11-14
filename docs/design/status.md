@@ -17,6 +17,9 @@
 - `state_changes()` and `next_check()` ([state-changes](state-changes/PRD.md)): each state of an
   activity answered once, and when to ask again, without a timer in the crate.
 
+- A scheduled start ([scheduled-start](scheduled-start/PRD.md)): `start_at` stores an activity that the
+  AAR begins at its time through an alarm and a receiver, also while the application does not run.
+
 ## Not done
 
 - Tauri-side TSX/React projection and JavaScript event routing over the new core event drain.

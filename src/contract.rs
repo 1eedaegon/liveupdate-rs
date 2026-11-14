@@ -67,6 +67,12 @@ pub struct PresentationCapabilities {
     pub public_version: bool,
     /// A small icon, an accent color and a sub text.
     pub branding: bool,
+    /// `StartRequest::start_at`: a start that the adapter begins at its time, also while the
+    /// application does not run.
+    pub scheduled_start: bool,
+    /// Whether the adapter may set an exact alarm for a scheduled start now. Without it Android
+    /// chooses the moment, some minutes after the time.
+    pub exact_start: bool,
 }
 
 /// What to do when the system cannot promote an ongoing notification.

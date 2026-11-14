@@ -24,7 +24,7 @@ private const val MAX_METRICS = 3
 private const val MAX_SUB_TEXT = 64
 private const val INVALID_MESSAGE = "Invalid live update request."
 private val ACTION_ID = Regex("[A-Za-z0-9][A-Za-z0-9._:-]{0,63}")
-private val VALID_STATES = setOf("unknown", "active", "stale", "ended", "dismissed")
+private val VALID_STATES = setOf("unknown", "scheduled", "active", "stale", "ended", "dismissed")
 private val VALID_PROMOTION_STATES = setOf("promoted", "notPromoted", "notApplicable", "unknown")
 private val VALID_STYLES = setOf("standard", "bigText", "progress", "timer", "metric")
 private val VALID_PLACEMENTS = setOf("tagged", "foreground")
@@ -86,14 +86,22 @@ internal class NotificationRenderer(
         requireFields(
             origin,
             setOf("activityKey", "schemaVersion", "template", "fallback", "visibility", "snapshot"),
-            setOf("placement"),
+            setOf("placement", "startAt"),
         )
         requiredText(origin, "activityKey", 128)
         if (requiredText(origin, "fallback", 16) !in setOf("none", "notification")) invalid()
         requiredObject(origin, "snapshot")
         val placement = optionalText(origin, "placement", 16)
         if (placement != null && placement !in VALID_PLACEMENTS) invalid()
-        if (placement == "foreground" && requiredInt(origin, "schemaVersion", 1, 2) == 1) invalid()
+        val legacy = requiredInt(origin, "schemaVersion", 1, 2) == 1
+        if (placement == "foreground" && legacy) invalid()
+        val timed = !origin.isMissingOrNull("startAt")
+        if (timed) {
+            // A start time is of schema version 2 and of the tagged placement.
+            requiredLong(origin, "startAt", 0, MAX_TIMESTAMP)
+            if (legacy || placement == "foreground") invalid()
+        }
+        if (state == "scheduled" && !timed) invalid()
     }
 
     @SuppressLint("InlinedApi")

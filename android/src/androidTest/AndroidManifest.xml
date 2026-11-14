@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- For the probe services below: the AAR declares no service and no foreground permission. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- What a host adds to have the alarm of a scheduled start set again after a restart of the device: the
+         AAR does not declare it. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application>
         <!-- Gives the test package a launch activity, which a notification's content intent opens. -->
@@ -18,6 +21,15 @@
                 <data android:scheme="liveupdate-test" />
             </intent-filter>
         </activity>
+
+        <!-- The AAR's receiver of a scheduled start, declared again with the restart a host opts in to. -->
+        <receiver
+            android:name="io.github.eedaegon.liveupdate.LiveUpdateStartReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <!-- A host's foreground service, which holds a notification the adapter built. -->
         <service

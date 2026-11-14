@@ -157,6 +157,7 @@ mod scenarios {
                 record(LiveUpdate::android()?.end(&end.id, end.policy)?)
             }
             "list" => Ok(json!(LiveUpdate::android()?.list()?)),
+            "stateChanges" => Ok(json!(LiveUpdate::android()?.state_changes()?)),
             "events" => Ok(json!(LiveUpdate::android()?.events()?)),
             "lifecycle" => lifecycle(&LiveUpdate::android()?),
             "threads" => threads(Arc::new(LiveUpdate::android()?)),
@@ -261,6 +262,7 @@ mod scenarios {
     fn request(key: &str, revision: u64, progress: f64) -> StartRequest {
         StartRequest {
             placement: liveupdate::Placement::Tagged,
+            start_at: None,
             activity_key: key.into(),
             schema_version: 1,
             template: Template::Progress,

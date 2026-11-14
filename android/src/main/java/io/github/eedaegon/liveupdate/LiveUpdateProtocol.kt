@@ -35,6 +35,8 @@ internal interface ManagedAdapter {
     fun post(record: JSONObject)
     fun cancel(id: String)
     fun drainEvents(): JSONObject
+    fun schedule(record: JSONObject)
+    fun starts(): JSONArray
 }
 
 internal object LiveUpdateProtocol {
@@ -49,6 +51,8 @@ internal object LiveUpdateProtocol {
             "post" -> post(adapter, payload)
             "cancel" -> cancel(adapter, payload)
             "events" -> emptyPayload(payload) { adapter.drainEvents() }
+            "schedule" -> schedule(adapter, payload)
+            "starts" -> emptyPayload(payload) { adapter.starts() }
             else -> invalid()
         }
         success(data).toString()
@@ -79,6 +83,14 @@ internal object LiveUpdateProtocol {
         val record = payload.getJSONObject("record")
         validId(record.optionalString("id"))
         adapter.post(record)
+        return JSONObject.NULL
+    }
+
+    private fun schedule(adapter: ManagedAdapter, payload: JSONObject): Any {
+        requireFields(payload, setOf("record"))
+        val record = payload.getJSONObject("record")
+        validId(record.optionalString("id"))
+        adapter.schedule(record)
         return JSONObject.NULL
     }
 

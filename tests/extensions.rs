@@ -55,6 +55,7 @@ fn rich_request(key: &str, snapshot: Snapshot) -> StartRequest {
         visibility: Visibility::Private,
         snapshot,
         placement: Placement::Tagged,
+        start_at: None,
     }
 }
 
@@ -392,6 +393,7 @@ fn a_placement_is_part_of_a_schema_two_start_and_left_out_when_tagged() {
 
     let foreground = StartRequest {
         placement: Placement::Foreground,
+        start_at: None,
         ..tagged
     };
     foreground.validate().unwrap();
@@ -408,6 +410,7 @@ fn a_placement_is_part_of_a_schema_two_start_and_left_out_when_tagged() {
     assert_invalid(
         StartRequest {
             placement: Placement::Foreground,
+            start_at: None,
             ..request("delivery:1")
         }
         .validate(),
@@ -423,6 +426,7 @@ fn a_placement_is_part_of_a_schema_two_start_and_left_out_when_tagged() {
 fn foreground_request(key: &str) -> StartRequest {
     StartRequest {
         placement: Placement::Foreground,
+        start_at: None,
         ..rich_request(key, styled(0, PresentationStyle::Standard))
     }
 }

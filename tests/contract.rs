@@ -39,7 +39,9 @@ fn capabilities_use_the_stable_camel_case_contract() {
                 "foregroundPlacement": false,
                 "alert": false,
                 "publicVersion": false,
-                "branding": false
+                "branding": false,
+                "scheduledStart": false,
+                "exactStart": false
             }
         })
     );
@@ -210,6 +212,7 @@ fn records_cross_the_bridge_with_the_names_the_adapter_reads() {
         id: "id".into(),
         origin: StartRequest {
             placement: liveupdate::Placement::Tagged,
+            start_at: None,
             activity_key: "delivery:1".into(),
             schema_version: 1,
             template: Template::Timer,
@@ -283,6 +286,7 @@ fn public_records_do_not_leak_cross_platform_backend_discriminators() {
         state: ActivityState::Active,
         visibility: Visibility::Unknown,
         degraded_features: vec!["nativeLiveActivity".into()],
+        start_at: None,
         promotion_requested: true,
         promotion_state: PromotionState::NotPromoted,
     };

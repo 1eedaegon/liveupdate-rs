@@ -39,4 +39,20 @@ class LiveUpdateDismissReceiver : BroadcastReceiver() {
     }
 }
 
+/**
+ * Receives the alarm of a scheduled start and begins what is due from the stored receipts, without the
+ * application's own code. A host that also declares it for `BOOT_COMPLETED` has the alarm set again after the
+ * device restarted.
+ */
+class LiveUpdateStartReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action != LIVE_UPDATE_START && intent.action != Intent.ACTION_BOOT_COMPLETED) return
+        try {
+            AndroidAdapter(context).startDue()
+        } catch (_: Exception) {
+            Log.e(LOG_TAG, "Could not begin a scheduled live update.")
+        }
+    }
+}
+
 private const val LOG_TAG = "LiveUpdate"

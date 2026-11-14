@@ -1,6 +1,6 @@
 use crate::{
-    ActivityState, Capabilities, EventBatch, PromotionState, Result, Snapshot, StartRequest,
-    Visibility,
+    ActivityState, Capabilities, Error, ErrorCode, EventBatch, PromotionState, Result, Snapshot,
+    StartRequest, Visibility,
 };
 use serde::{Deserialize, Serialize};
 
@@ -60,8 +60,29 @@ impl DriverRecord {
             },
             promotion_requested: self.promotion_requested,
             promotion_state: self.promotion_state,
+            start_at: self.origin.start_at,
         }
     }
+}
+
+/// What the adapter did with a scheduled activity whose time has come.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartReport {
+    /// Opaque activity handle of the stored receipt.
+    pub id: String,
+    /// What became of its start.
+    pub outcome: StartOutcome,
+}
+
+/// The outcome of a scheduled start that Android does not list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StartOutcome {
+    /// Posted a moment ago: Android may not list it yet.
+    Posted,
+    /// Not shown: posted longer ago and no longer listed, or the post failed at its time.
+    Gone,
 }
 
 /// State read from an Android notification currently owned by the driver.
@@ -104,6 +125,21 @@ pub trait Driver: Send + Sync {
     fn drain_events(&self) -> Result<EventBatch> {
         Ok(EventBatch::default())
     }
+    /// Takes a stored receipt whose state is `scheduled`: checks it as a post, and begins it at its
+    /// time, also while the application does not run. A time that has passed begins it at once.
+    ///
+    /// The default offers none, which keeps existing custom drivers source-compatible.
+    fn schedule(&self, _record: &DriverRecord) -> Result<()> {
+        Err(Error::new(
+            ErrorCode::UnsupportedFeature,
+            "A scheduled start is unavailable.",
+        ))
+    }
+    /// Begins the scheduled receipts whose time has come, and reports those it began that Android
+    /// does not list. It is asked only while a receipt is scheduled, before an observation.
+    fn starts(&self) -> Result<Vec<StartReport>> {
+        Ok(Vec::new())
+    }
 }
 
 #[cfg(test)]
@@ -127,6 +163,7 @@ mod tests {
             id: "id".into(),
             origin: StartRequest {
                 placement: crate::Placement::Tagged,
+                start_at: None,
                 activity_key: "delivery:1".into(),
                 schema_version: 1,
                 template: Template::Progress,
