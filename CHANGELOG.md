@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.3.3 - 2026-11-14
+
+- fix: a clock Android would ignore is refused (`20d63ab`)
+- fix: a service attaches to an activity the lifecycle stored (`b535b51`)
+- test: the probe service is known before its notification (`1ce3968`)
+
 ## 0.3.2 - 2026-11-13
 
 - fix: a schema-2 progress is posted on Android 16 (`e483690`)
