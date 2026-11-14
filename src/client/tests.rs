@@ -65,6 +65,7 @@ fn record(id: &str, state: ActivityState) -> DriverRecord {
         id: id.into(),
         origin: StartRequest {
             placement: crate::Placement::Tagged,
+            start_at: None,
             activity_key: format!("key:{id}"),
             schema_version: 1,
             template: Template::Progress,
@@ -261,7 +262,7 @@ fn one_record_moves_between_states_by_what_android_shows() {
         ..record("id", ActivityState::Unknown)
     };
     let shown = observation(&awaiting);
-    let observed = reconcile_record(&awaiting, Some(&shown)).unwrap();
+    let observed = reconcile_record(&awaiting, Some(&shown), None).unwrap();
     assert_eq!(observed.state, ActivityState::Active);
     assert!(!observed.awaiting_observation && !observed.post_failed);
 
@@ -270,28 +271,34 @@ fn one_record_moves_between_states_by_what_android_shows() {
         ..shown.clone()
     };
     assert_eq!(
-        reconcile_record(&awaiting, Some(&stale)).unwrap().state,
+        reconcile_record(&awaiting, Some(&stale), None)
+            .unwrap()
+            .state,
         ActivityState::Stale
     );
     let older = Observation {
         snapshot: snapshot(1),
         ..shown.clone()
     };
-    assert_eq!(reconcile_record(&awaiting, Some(&older)).unwrap(), awaiting);
+    assert_eq!(
+        reconcile_record(&awaiting, Some(&older), None).unwrap(),
+        awaiting
+    );
     let newer = Observation {
         snapshot: snapshot(3),
         ..shown
     };
-    assert!(reconcile_record(&awaiting, Some(&newer)).is_err());
-    assert!(reconcile_record(&observed, Some(&older)).is_err());
+    assert!(reconcile_record(&awaiting, Some(&newer), None).is_err());
+    assert!(reconcile_record(&observed, Some(&older), None).is_err());
 
-    assert_eq!(reconcile_record(&awaiting, None).unwrap(), awaiting);
+    assert_eq!(reconcile_record(&awaiting, None, None).unwrap(), awaiting);
     for state in [ActivityState::Active, ActivityState::Stale] {
         let gone = reconcile_record(
             &DriverRecord {
                 state,
                 ..observed.clone()
             },
+            None,
             None,
         )
         .unwrap();
@@ -302,8 +309,11 @@ fn one_record_moves_between_states_by_what_android_shows() {
             state,
             ..observed.clone()
         };
-        assert_eq!(reconcile_record(&terminal, None).unwrap(), terminal);
-        assert_eq!(reconcile_record(&terminal, Some(&older)).unwrap(), terminal);
+        assert_eq!(reconcile_record(&terminal, None, None).unwrap(), terminal);
+        assert_eq!(
+            reconcile_record(&terminal, Some(&older), None).unwrap(),
+            terminal
+        );
     }
 }
 

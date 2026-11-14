@@ -123,7 +123,7 @@ class LiveUpdateBridgeInstrumentationTest {
         assertEquals("ok", response.getString("status"))
     }
 
-    // LU-AAR-1
+    // LU-AAR-1, LU-SCHED-13
     @Test
     fun theManifestMergesBothNotificationPermissions() {
         val info = context.packageManager.getPackageInfo(
@@ -134,7 +134,11 @@ class LiveUpdateBridgeInstrumentationTest {
         assertTrue(requested.toString(), Manifest.permission.POST_NOTIFICATIONS in requested)
         assertTrue(requested.toString(), Manifest.permission.POST_PROMOTED_NOTIFICATIONS in requested)
 
-        val receivers = listOf(LiveUpdateActionReceiver::class.java, LiveUpdateDismissReceiver::class.java)
+        val receivers = listOf(
+            LiveUpdateActionReceiver::class.java,
+            LiveUpdateDismissReceiver::class.java,
+            LiveUpdateStartReceiver::class.java,
+        )
         for (receiver in receivers) {
             val info = context.packageManager.getReceiverInfo(ComponentName(context, receiver), 0)
             assertEquals(receiver.name, false, info.exported)

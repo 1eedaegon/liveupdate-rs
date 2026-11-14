@@ -1,4 +1,6 @@
-use crate::{Capabilities, Driver, DriverRecord, Error, EventBatch, Observation, Result};
+use crate::{
+    Capabilities, Driver, DriverRecord, Error, EventBatch, Observation, Result, StartReport,
+};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 const MAX_BRIDGE_BYTES: usize = 1_048_576;
@@ -61,6 +63,14 @@ impl<B: Bridge> Driver for JsonDriver<B> {
         let events: EventBatch = self.request("events", &Empty {})?;
         events.validate()?;
         Ok(events)
+    }
+
+    fn schedule(&self, record: &DriverRecord) -> Result<()> {
+        self.request("schedule", &PostRequest { record })
+    }
+
+    fn starts(&self) -> Result<Vec<StartReport>> {
+        self.request("starts", &Empty {})
     }
 }
 

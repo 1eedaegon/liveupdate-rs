@@ -152,6 +152,12 @@ pub struct StartRequest {
     /// How Android keys the notification; schema version 2 only.
     #[serde(default, skip_serializing_if = "Placement::is_tagged")]
     pub placement: Placement,
+    /// When the activity begins instead of now, in Unix milliseconds, where the adapter offers it;
+    /// schema version 2 and the tagged placement only. Until then its record is `scheduled`, and
+    /// the adapter begins it also while the application does not run. A time that has passed
+    /// begins it at once.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_at: Option<u64>,
 }
 
 impl StartRequest {
@@ -166,6 +172,7 @@ impl StartRequest {
         if (self.schema_version == 1) != self.snapshot.presentation.is_none()
             || (self.schema_version == 1 && self.placement != Placement::Tagged)
             || !self.snapshot.public_version_fits(self.visibility)
+            || !self.start_time_fits()
         {
             return Err(Error::invalid());
         }
@@ -174,6 +181,14 @@ impl StartRequest {
             return Err(Error::invalid());
         }
         Ok(())
+    }
+
+    /// A start time needs schema version 2 and the tagged placement: no service holds the
+    /// notification at that time.
+    fn start_time_fits(&self) -> bool {
+        self.start_at.is_none_or(|at| {
+            at <= MAX_TIMESTAMP && self.schema_version == 2 && self.placement == Placement::Tagged
+        })
     }
 }
 
@@ -210,7 +225,8 @@ pub enum NextCheck {
     /// A post is not listed by Android yet. Ask again shortly, a little later each time, and give up
     /// after a few: a post that Android never lists stays unknown until the next one.
     Soon,
-    /// The earliest stale time ahead, in Unix milliseconds. A time that has passed means now.
+    /// The earliest stale time or start time ahead, in Unix milliseconds. A time that has passed
+    /// means now.
     At(u64),
     /// Nothing is due until an operation or an event.
     Never,
@@ -223,6 +239,8 @@ pub enum NextCheck {
 pub enum ActivityState {
     /// The request is accepted but not yet observed in Android.
     Unknown,
+    /// The activity has a start time that has not come, or that the adapter has not acted on yet.
+    Scheduled,
     /// Android currently shows the notification.
     Active,
     /// Android shows content whose stale timestamp elapsed.
@@ -257,6 +275,9 @@ pub struct ActivityRecord {
     pub promotion_requested: bool,
     /// Promotion state observed from Android.
     pub promotion_state: PromotionState,
+    /// The start time the request named, in Unix milliseconds; absent for a start at once.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_at: Option<u64>,
 }
 
 pub(crate) fn valid_id(value: &str) -> bool {
@@ -330,6 +351,7 @@ mod tests {
     fn start(snapshot: Snapshot) -> StartRequest {
         StartRequest {
             placement: Placement::Tagged,
+            start_at: None,
             activity_key: "delivery:1".into(),
             schema_version: 1,
             template: snapshot.template().unwrap_or(Template::Progress),

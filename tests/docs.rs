@@ -117,6 +117,7 @@ fn the_docs_state_what_an_app_must_know() {
         "one retained client per process",
         "`EndPolicy::After` keeps the last content until its time",
         "cannot be more than 14 days old",
+        "A scheduled start is on the minute only with the exact-alarm permission",
         "Visibility is reported as `Unknown`",
         "A Galaxy S23 (`SM-S911N`) on Android 17 / One UI 9 has passed",
         "`LiveUpdate::events()`",
@@ -149,6 +150,8 @@ fn the_docs_state_what_an_app_must_know() {
         "LiveUpdateForeground.attach(this, ",
         "`state_changes()`",
         "`next_check()`",
+        "`start_at: Some(time)`",
+        "io.github.eedaegon.liveupdate.LiveUpdateStartReceiver",
         "`NextCheck::Soon`",
         "`AndroidPresentation::new(style)`",
     ] {

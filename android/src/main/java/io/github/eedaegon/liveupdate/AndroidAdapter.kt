@@ -21,6 +21,8 @@ private const val NOTIFICATION_ID = 1
 private const val MAX_RECORDS = 160
 private const val MAX_RECORD_BYTES = 1_048_576
 private const val PROMOTION_API = 36
+/** How long Android may take to list a post. */
+private const val LISTING_GRACE = 10_000L
 private const val OLD_TIME_API = 35
 private const val MAX_TIME_AGE = 14 * 24 * 60 * 60 * 1000L
 /** What a post may take from the adapter's check to Android's. */
@@ -34,17 +36,21 @@ private const val NATIVE_MESSAGE = "The Android live update adapter failed."
  *
  * [sdk] and [manufacturer] describe the device behavior the adapter follows. They use the real
  * device values; tests override them to exercise platform- and vendor-specific paths, and
- * [alertChannelId] to block the alerting channel as a user does.
+ * [alertChannelId] to block the alerting channel as a user does. [exactAlarms] says whether an exact alarm may
+ * be set, where Android is not to be asked, and [listingGrace] how long a post may stay unlisted.
  */
 internal class AndroidAdapter(
     context: Context,
     private val sdk: Int = Build.VERSION.SDK_INT,
     private val manufacturer: String = Build.MANUFACTURER,
     private val alertChannelId: String = ALERT_CHANNEL_ID,
+    exactAlarms: Boolean? = null,
+    listingGrace: Long = LISTING_GRACE,
 ) : ManagedAdapter {
     private val application = context.applicationContext
     private val manager = application.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     private val preferences = application.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+    private val scheduled = ScheduledStarts(application, this, preferences, exactAlarms, listingGrace)
 
     override fun capabilities(): JSONObject {
         ensureChannel()
@@ -69,7 +75,9 @@ internal class AndroidAdapter(
                 .put("foregroundPlacement", true)
                 .put("alert", true)
                 .put("publicVersion", true)
-                .put("branding", true))
+                .put("branding", true)
+                .put("scheduledStart", true)
+                .put("exactStart", scheduled.exact()))
     }
 
     override fun read(): JSONArray {
@@ -153,9 +161,36 @@ internal class AndroidAdapter(
 
     override fun cancel(id: String) {
         if (!validId(id)) invalid()
-        manager.cancel(TAG_PREFIX + id, NOTIFICATION_ID)
+        // An activity that ended before its time has no alarm left.
+        scheduled.rearm { manager.cancel(TAG_PREFIX + id, NOTIFICATION_ID) }
         cancelForeground(id)
     }
+
+    override fun schedule(record: JSONObject) {
+        ensureChannel()
+        if (!notificationsAllowed()) {
+            throw AdapterFailure("PERMISSION_DENIED", "Notifications are disabled.")
+        }
+        val id = record.optionalString("id") ?: invalid()
+        if (!validId(id)) invalid()
+        // What a post would refuse at the time is refused now, also a clock that is too old by then.
+        val notification = build(record)
+        if (record.optionalString("state") != "scheduled") invalid()
+        val startAt = record.getJSONObject("origin").getLong("startAt")
+        refuseOldTime(notification, maxOf(System.currentTimeMillis(), startAt))
+        // The alarm is set for the stored receipts, which the lifecycle writes before it schedules.
+        if (stored(id)?.optionalString("state") != "scheduled") invalid()
+        scheduled.take(id)
+    }
+
+    override fun starts(): JSONArray = scheduled.report()
+
+    /** Begins the scheduled receipts whose time has come: for the alarm, and for a restart of the device. */
+    internal fun startDue() = scheduled.run()
+
+    /** Whether Android lists the tagged notification of [id]. */
+    internal fun lists(id: String): Boolean =
+        manager.activeNotifications.any { it.tag == TAG_PREFIX + id && it.id == NOTIFICATION_ID }
 
     /** Removes the notification of [id] under the foreground id, if it is this activity's. */
     private fun cancelForeground(id: String) {
@@ -195,16 +230,18 @@ internal class AndroidAdapter(
      * A stored receipt as the lifecycle posts it: without the state it last answered, which only the stored
      * receipt has and no posted record.
      */
-    private fun posted(receipt: JSONObject): JSONObject =
+    internal fun posted(receipt: JSONObject): JSONObject =
         JSONObject(receipt.toString()).apply { remove("reportedState") }
 
     /**
      * Refuses [notification] when Android would ignore it. From API 35 Android does not post a notification whose
      * time the application set more than 14 days before the device's clock, and tells the application nothing.
-     * The adapter sets the time of a header clock only: any other notification has the time it was built at.
+     * The adapter sets the time of a header clock only: any other notification has the time of its post.
+     * [postedAt] is when the notification is posted, which is later for a scheduled start.
      */
-    private fun refuseOldTime(notification: Notification) {
-        val age = System.currentTimeMillis() - notification.`when`
+    private fun refuseOldTime(notification: Notification, postedAt: Long = System.currentTimeMillis()) {
+        if (!notification.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER)) return
+        val age = postedAt - notification.`when`
         if (sdk >= OLD_TIME_API && age > MAX_TIME_AGE - POST_MARGIN) {
             throw AdapterFailure("INVALID_INPUT", OLD_CLOCK_MESSAGE)
         }

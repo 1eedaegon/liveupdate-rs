@@ -4,9 +4,11 @@
 exclude_globs = ["src/android.rs"]
 
 # These generated mutants are behaviorally identical to the original code: the default driver
-# already returns the proposed empty batch, and either vendor-path character is independently
-# rejected again by the segment validator below the fast-path check.
+# already returns the proposed empty batch and the proposed empty list of starts, and either
+# vendor-path character is independently rejected again by the segment validator below the fast-path
+# check.
 exclude_re = [
-  'src/driver\.rs:105:9: replace Driver::drain_events -> Result<EventBatch> with Ok\(Default::default\(\)\)',
+  'src/driver\.rs:126:9: replace Driver::drain_events -> Result<EventBatch> with Ok\(Default::default\(\)\)',
+  'src/driver\.rs:141:9: replace Driver::starts -> Result<Vec<StartReport>> with Ok\(vec!\[\]\)',
   'src/presentation\.rs:669:9: replace \|\| with && in valid_app_file',
 ]
