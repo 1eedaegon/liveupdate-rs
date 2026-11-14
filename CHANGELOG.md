@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.4.0 - 2026-11-14
+
+- feat: a start that begins at its time while the application does not run (`8ca4486`)
+
 ## 0.3.3 - 2026-11-14
 
 - fix: a clock Android would ignore is refused (`20d63ab`)
