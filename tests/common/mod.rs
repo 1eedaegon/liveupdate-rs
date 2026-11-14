@@ -9,7 +9,7 @@
 
 use liveupdate::{
     ActivityState, Capabilities, Driver, DriverRecord, Error, ErrorCode, EventBatch, Fallback,
-    Observation, PromotionState, Snapshot, StartRequest, Template, Timer, Visibility,
+    Observation, PromotionState, Snapshot, StartReport, StartRequest, Template, Timer, Visibility,
 };
 use std::{
     collections::BTreeMap,
@@ -54,6 +54,14 @@ pub struct FakeState {
     pub promotion_outcome: PromotionState,
     pub panic_next_capabilities: bool,
     pub events: EventBatch,
+    /// Every record the driver was given to schedule, oldest first, also those it then refused.
+    pub scheduled: Vec<DriverRecord>,
+    pub fail_next_schedule: bool,
+    /// The adapter refuses the next scheduling as invalid, as it refuses a post.
+    pub refuse_next_schedule: bool,
+    /// What the adapter reports of the scheduled starts when it is asked.
+    pub starts: Vec<StartReport>,
+    pub fail_next_starts: bool,
 }
 
 impl Default for FakeDriver {
@@ -86,6 +94,11 @@ impl Default for FakeDriver {
                 promotion_outcome: PromotionState::Promoted,
                 panic_next_capabilities: false,
                 events: EventBatch::default(),
+                scheduled: Vec::new(),
+                fail_next_schedule: false,
+                refuse_next_schedule: false,
+                starts: Vec::new(),
+                fail_next_starts: false,
             })),
         }
     }
@@ -208,6 +221,31 @@ impl Driver for FakeDriver {
         state.calls.push("drain_events");
         Ok(std::mem::take(&mut state.events))
     }
+
+    fn schedule(&self, record: &DriverRecord) -> liveupdate::Result<()> {
+        let mut state = self.state.lock().unwrap();
+        state.calls.push("schedule");
+        state.scheduled.push(record.clone());
+        if std::mem::take(&mut state.fail_next_schedule) {
+            return Err(Error::new(ErrorCode::NativeError, "Scheduling failed."));
+        }
+        if std::mem::take(&mut state.refuse_next_schedule) {
+            return Err(Error::new(
+                ErrorCode::InvalidInput,
+                "Invalid live update request.",
+            ));
+        }
+        Ok(())
+    }
+
+    fn starts(&self) -> liveupdate::Result<Vec<StartReport>> {
+        let mut state = self.state.lock().unwrap();
+        state.calls.push("starts");
+        if std::mem::take(&mut state.fail_next_starts) {
+            return Err(Error::new(ErrorCode::NativeError, "Asking failed."));
+        }
+        Ok(state.starts.clone())
+    }
 }
 
 impl FakeDriver {
@@ -261,6 +299,7 @@ pub fn timer_snapshot(revision: u64) -> Snapshot {
 
 pub fn request(key: &str) -> StartRequest {
     StartRequest {
+        start_at: None,
         placement: liveupdate::Placement::Tagged,
         activity_key: key.into(),
         schema_version: 1,

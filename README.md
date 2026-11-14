@@ -121,6 +121,7 @@ pub fn run_delivery<D: Driver>(updates: &LiveUpdate<D>) -> Result<()> {
     }
     let activity = updates.start(StartRequest {
         placement: Placement::Tagged,
+        start_at: None,
         activity_key: "delivery:order-123".into(),
         schema_version: 2,
         template: Template::Progress,
@@ -200,11 +201,12 @@ delivered); the record's `template` follows the latest snapshot. Schema v1 keeps
 | Lock screen | `visibility: Visibility::Public`, `Private` or `Secret` | `Private` hides the content on a secure lock screen unless it has a `public_version` |
 | Foreground service | `placement: Placement::Foreground` | A service of the app holds the notification; see [Foreground service](#foreground-service) |
 | Stale content | `Snapshot::stale_at` | The record reads `Stale` from that time |
+| Start later | `start_at: Some(time)` | Stored now and begun at that time, also while the app does not run; see [Scheduled start](#scheduled-start) |
 | End at once | `end(id, EndPolicy::Immediate)` | The notification is removed |
 | Keep the last content | `end(id, EndPolicy::After { at })` | It stays, no longer ongoing, until `at`; update first to change it, end again with `Immediate` to remove it early |
 | What the person did | `LiveUpdate::events()` | `Action`, `Dismissed` and `Opened` events, drained once |
 | What happened to it | `list()` and every returned record | `state`, `promotion_state`, `degraded_features` |
-| Each new state, once | `state_changes()` | `active`, `stale`, `ended` and `dismissed`; see [State changes](#state-changes) |
+| Each new state, once | `state_changes()` | `scheduled`, `active`, `stale`, `ended` and `dismissed`; see [State changes](#state-changes) |
 
 ### State changes
 
@@ -220,12 +222,66 @@ receipts, so the answers continue after a restart, and `unknown` is never one of
 | --- | --- | --- |
 | `NextCheck::Now` | A state is known and was not answered yet | Ask now |
 | `NextCheck::Soon` | A post is not listed by Android yet | Ask in about half a second, then a little later each time, and give up after a few |
-| `NextCheck::At(time)` | The earliest stale time ahead, in Unix milliseconds | Set a timer; a time that has passed means now |
+| `NextCheck::At(time)` | The earliest stale time or start time ahead, in Unix milliseconds | Set a timer; a time that has passed means now |
 | `NextCheck::Never` | Nothing is due | Wait for an operation, an event or the app's return to the foreground |
 
 A host asks after its own `start` and `update`, at the time `next_check()` named, and when the app
 returns to the foreground. A frozen process runs no timer: what it missed is answered at the next
 call.
+
+### Scheduled start
+
+`StartRequest { start_at: Some(time), .. }` stores the activity now and begins it at `time`, in Unix
+milliseconds. Nothing is shown before. At the time the AAR posts the notification from the stored
+receipt, through an alarm and a receiver of its own, so the app does not have to run and no Rust is
+loaded. A time that has passed begins at once, and the record is then that of an ordinary start,
+never `Scheduled`. It needs schema version 2 and the tagged placement,
+and `capabilities()?.presentation.scheduled_start`.
+
+Until it begins the record reads `Scheduled` and names its `start_at`:
+
+| While it waits | What happens |
+| --- | --- |
+| The same `start` again | Answers the same record |
+| `update` | `CONFLICT`: it begins with the content of its start. End it and schedule again for other content |
+| `end`, whatever its policy | Nothing is shown at the time |
+| `state_changes()` | Answers `scheduled` once, and `active` once after it began |
+| `next_check()` | Names the start time: an app that asks then has it begin on the dot, whatever the alarm does |
+
+What happened while the app did not run is answered at its next call: an activity that began reads
+`Active`, and one that the person removed in the meantime, or that could not be posted because
+notifications were off by then, reads `Dismissed`. Set `alert: true` in the presentation for a start
+that makes itself heard.
+
+How close to its time it begins is Android's to say:
+
+| The app | Alarm | Begins |
+| --- | --- | --- |
+| May set exact alarms: `presentation.exact_start` | Exact, also while the device dozes | At its time |
+| May not, as most apps | Two inexact ones | Within about ten minutes while the device is awake, later while it dozes |
+
+The AAR declares no alarm permission. For the exact one, declare `SCHEDULE_EXACT_ALARM` in your
+manifest and send the person to the "Alarms & reminders" setting: from Android 14 it is off until
+they allow it. `USE_EXACT_ALARM` is for alarm and calendar apps only, by Google Play's policy.
+
+Android drops alarms when the device restarts, when the person force-stops the app, and when they
+take the exact-alarm permission away. The activity then begins at the app's next lifecycle call, late. To have the alarm set again after a restart,
+declare the AAR's receiver for it in your manifest:
+
+```xml
+<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+<receiver
+    android:name="io.github.eedaegon.liveupdate.LiveUpdateStartReceiver"
+    android:exported="false">
+    <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+    </intent-filter>
+</receiver>
+```
+
+Android asks that a Live Update appears only when its activity is imminent, and mostly for
+activities the person started: schedule the start of something they asked for, not a reminder.
 
 ### Links
 
@@ -340,7 +396,11 @@ closed as `NATIVE_ERROR`.
   of a clock that counts up. An activity that runs longer leaves the clock out, or from API 37 shows
   the time as a stopwatch metric, which has no such limit.
 - An update needs the app's process: Android has no push that updates a notification. In the
-  background, use a foreground service or a data message that wakes the app.
+  background, use a foreground service or a data message that wakes the app. A start does not:
+  `start_at` begins an activity while the app does not run.
+- A scheduled start is on the minute only with the exact-alarm permission, which the person grants.
+  Without it Android chooses the moment. It cannot be updated before it begins, and it does not take
+  the foreground placement.
 - Visibility is reported as `Unknown`: requesting private notification content does not prove what
   an OEM system UI actually revealed.
 - Use one retained client per process so operations share the same serialization boundary. Every

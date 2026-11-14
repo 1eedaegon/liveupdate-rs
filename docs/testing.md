@@ -155,6 +155,13 @@ instrumentation tests were run by hand on an API 36 emulator (Google APIs image,
 - No member newer than API 36 is referenced by the release classes outside the metric style, which runs
   on API 37 only (`javap` over the AAR against the platform's `api-versions.xml`).
 
+On 2026-11-14 a scheduled start (LU-SCHED-10) was followed by hand on the API 37 emulator, because no
+instrumentation outlives its process. A receipt for a time 40 seconds ahead was written into the test
+package's preferences, and the receiver was sent its alarm's broadcast once, in a process started for it:
+`dumpsys alarm` then listed one `RTC_WAKEUP` alarm for the package at that time. The process was killed.
+At the time Android started a new process for the alarm and the notification was listed, ongoing and
+promoted. The Rust test library was not mapped in that process.
+
 On 2026-11-14 the tests of LU-ADAPTER-10 and LU-ADAPTER-11 and the attach test of LU-FGS-6 passed on that
 API 36 emulator as on API 37. Both images ignore a post whose time is more than 14 days old and log
 "Ignored enqueue for old" for it; no API 35 image was run.

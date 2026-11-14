@@ -12,7 +12,7 @@ unzip -q "$aar" -d "$work"
 failures=0
 fail() { echo "FAIL $1"; failures=$((failures + 1)); }
 
-# LU-AAR-1
+# LU-AAR-1, LU-SCHED-13
 manifest_declares_both_notification_permissions() {
   for permission in POST_NOTIFICATIONS POST_PROMOTED_NOTIFICATIONS; do
     grep -q "\"android.permission.$permission\"" "$work/AndroidManifest.xml" \
@@ -21,13 +21,19 @@ manifest_declares_both_notification_permissions() {
   if grep -qE '<(activity|service|provider)' "$work/AndroidManifest.xml"; then
     fail "the manifest declares an unexpected component"
   fi
+  permission_count=$(grep -c '<uses-permission' "$work/AndroidManifest.xml" || true)
+  [ "$permission_count" = 2 ] || fail "the manifest must declare exactly two permissions"
   receiver_count=$(grep -c '<receiver' "$work/AndroidManifest.xml" || true)
-  [ "$receiver_count" = 2 ] || fail "the manifest must declare exactly two receivers"
-  for receiver in LiveUpdateActionReceiver LiveUpdateDismissReceiver; do
+  [ "$receiver_count" = 3 ] || fail "the manifest must declare exactly three receivers"
+  for receiver in LiveUpdateActionReceiver LiveUpdateDismissReceiver LiveUpdateStartReceiver; do
     grep -A2 "android:name=\"io.github.eedaegon.liveupdate.$receiver\"" \
       "$work/AndroidManifest.xml" | grep -q 'android:exported="false"' \
       || fail "$receiver is missing or exported"
   done
+  # A restart of the device is the host's to declare.
+  if grep -q '<intent-filter' "$work/AndroidManifest.xml"; then
+    fail "the manifest declares an intent filter"
+  fi
 }
 
 # LU-AAR-2
@@ -40,7 +46,8 @@ consumer_rules_keep_the_jni_entry_point() {
 the_aar_holds_the_bridge_and_its_resources() {
   classes=$(unzip -Z1 "$work/classes.jar")
   for class in LiveUpdateBridge AndroidAdapter LiveUpdateProtocol AdapterFailure \
-    LiveUpdateActionReceiver LiveUpdateDismissReceiver NotificationRenderer EventStore IconResolver; do
+    LiveUpdateActionReceiver LiveUpdateDismissReceiver LiveUpdateStartReceiver ScheduledStarts \
+    NotificationRenderer EventStore IconResolver; do
     printf '%s\n' "$classes" | grep -qx "io/github/eedaegon/liveupdate/$class.class" \
       || fail "classes.jar lacks $class"
   done

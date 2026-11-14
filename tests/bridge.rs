@@ -53,6 +53,7 @@ fn record() -> DriverRecord {
         id: "activity-id".into(),
         origin: StartRequest {
             placement: liveupdate::Placement::Tagged,
+            start_at: None,
             activity_key: "delivery:1".into(),
             schema_version: 1,
             template: Template::Progress,

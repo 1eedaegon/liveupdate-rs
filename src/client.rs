@@ -1,7 +1,7 @@
 use crate::{
     ActivityRecord, ActivityState, Capabilities, Driver, DriverRecord, EndPolicy, Error, ErrorCode,
     EventBatch, Fallback, NextCheck, Observation, Placement, PromotionState, Result, Snapshot,
-    StartRequest, model::valid_id,
+    StartOutcome, StartReport, StartRequest, model::valid_id,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -36,7 +36,8 @@ impl<D: Driver> LiveUpdate<D> {
         self.serialized(|driver| driver.capabilities())
     }
 
-    /// Starts an idempotent live update for an application key.
+    /// Starts an idempotent live update for an application key. With `start_at` the activity is
+    /// stored as `scheduled` and the adapter begins it at that time.
     pub fn start(&self, request: StartRequest) -> Result<ActivityRecord> {
         self.serialized(|driver| start(driver, request))
     }
@@ -64,8 +65,8 @@ impl<D: Driver> LiveUpdate<D> {
     }
 
     /// Reconciles, and answers the activities whose state is another than the one this method last
-    /// answered for them, each once: `active`, `stale`, `ended` or `dismissed`, in the order of
-    /// [`list`](Self::list). `unknown` is never answered. What was answered is stored with the
+    /// answered for them, each once: `scheduled`, `active`, `stale`, `ended` or `dismissed`, in the
+    /// order of [`list`](Self::list). `unknown` is never answered. What was answered is stored with the
     /// receipts, so a new client continues.
     pub fn state_changes(&self) -> Result<Vec<ActivityRecord>> {
         self.serialized(|driver| state_changes(driver))
@@ -126,6 +127,13 @@ fn start(driver: &impl Driver, request: StartRequest) -> Result<ActivityRecord> 
         ));
     }
     ensure_placement(request.placement, capabilities, &records)?;
+    let scheduled = request.start_at.is_some();
+    if scheduled && !capabilities.presentation.scheduled_start {
+        return Err(failure(
+            ErrorCode::UnsupportedFeature,
+            "A scheduled start is unavailable.",
+        ));
+    }
     if records.iter().filter(|record| !record.terminal()).count() >= ACTIVE_LIMIT {
         return Err(failure(
             ErrorCode::SystemLimit,
@@ -138,14 +146,19 @@ fn start(driver: &impl Driver, request: StartRequest) -> Result<ActivityRecord> 
         id: Uuid::new_v4().to_string(),
         snapshot: request.snapshot.clone(),
         origin: request,
-        state: ActivityState::Unknown,
+        // Nothing is posted for a scheduled activity until the adapter begins it.
+        state: if scheduled {
+            ActivityState::Scheduled
+        } else {
+            ActivityState::Unknown
+        },
         promotion_requested: promote,
         promotion_state: if promote {
             PromotionState::Unknown
         } else {
             PromotionState::NotApplicable
         },
-        awaiting_observation: true,
+        awaiting_observation: !scheduled,
         post_failed: false,
         dismiss_at: None,
     };
@@ -162,6 +175,13 @@ fn update(driver: &impl Driver, id: &str, snapshot: Snapshot) -> Result<Activity
     let previous = find_record(&records, id)?;
     if previous.terminal() {
         return Err(not_found());
+    }
+    // A scheduled activity begins with the content of its start.
+    if previous.state == ActivityState::Scheduled {
+        return Err(failure(
+            ErrorCode::Conflict,
+            "The activity has not begun yet.",
+        ));
     }
     if !replaces(&previous, &snapshot)? {
         return if previous.post_failed {
@@ -201,8 +221,13 @@ fn end(driver: &impl Driver, id: &str, policy: EndPolicy) -> Result<ActivityReco
             "Delayed activity dismissal is unavailable.",
         ));
     }
-    // A notification the user removed is not posted again.
-    let dismiss_at = dismiss_at.filter(|_| previous.state != ActivityState::Dismissed);
+    // A notification the user removed is not posted again, and an activity that never began has
+    // no last content.
+    let shown = !matches!(
+        previous.state,
+        ActivityState::Dismissed | ActivityState::Scheduled
+    );
+    let dismiss_at = dismiss_at.filter(|_| shown);
     let ended = DriverRecord {
         state: ActivityState::Ended,
         awaiting_observation: false,
@@ -269,17 +294,24 @@ fn state_changes(driver: &impl Driver) -> Result<Vec<ActivityRecord>> {
 /// Whether `record` has a state that was not answered yet. `unknown` is never answered, and a
 /// receipt of an earlier version, which has no state last answered, adopts the one it has.
 fn due(record: &DriverRecord) -> bool {
-    record.state != ActivityState::Unknown
+    !unsettled(record)
         && record
             .reported_state
             .is_some_and(|reported| reported != record.state)
+}
+
+/// Whether `record` has no state to answer yet: a post that Android has not listed, or a
+/// scheduling that the adapter has not taken.
+fn unsettled(record: &DriverRecord) -> bool {
+    record.state == ActivityState::Unknown
+        || (record.state == ActivityState::Scheduled && record.post_failed)
 }
 
 /// `record` once its state has been answered. `unknown` is never taken as answered, so a post that
 /// Android has not listed yet neither reports nor hides a state.
 fn answer(record: &DriverRecord) -> DriverRecord {
     let reported = match record.reported_state {
-        Some(reported) if record.state == ActivityState::Unknown => reported,
+        Some(reported) if unsettled(record) => reported,
         Some(_) | None => record.state,
     };
     DriverRecord {
@@ -298,10 +330,15 @@ fn next_check(driver: &impl Driver) -> Result<NextCheck> {
     if live().any(|record| record.awaiting_observation && !record.post_failed) {
         return Ok(NextCheck::Soon);
     }
-    // Only an activity that is active has a stale time ahead: Android reports it as stale then.
     Ok(live()
-        .filter(|record| record.state == ActivityState::Active)
-        .filter_map(|record| record.snapshot.stale_at)
+        .filter_map(|record| match record.state {
+            // Only an activity that is active has a stale time ahead: Android reports it as stale
+            // then.
+            ActivityState::Active => record.snapshot.stale_at,
+            // A scheduling that failed needs its start again, not time.
+            ActivityState::Scheduled if !record.post_failed => record.origin.start_at,
+            _ => None,
+        })
         .min()
         .map_or(NextCheck::Never, NextCheck::At))
 }
@@ -316,6 +353,16 @@ fn settle(
     records: Vec<DriverRecord>,
     always: bool,
 ) -> Result<Vec<DriverRecord>> {
+    // The adapter begins what is due before it is observed, and is asked only for a scheduled
+    // receipt.
+    let starts = if records
+        .iter()
+        .any(|record| record.state == ActivityState::Scheduled)
+    {
+        checked_starts(driver.starts()?)?
+    } else {
+        BTreeMap::new()
+    };
     let observations = checked_observations(driver.observe()?)?;
     for record in records
         .iter()
@@ -325,7 +372,10 @@ fn settle(
     }
     let reconciled: Vec<_> = records
         .iter()
-        .map(|record| reconcile_record(record, observations.get(record.id.as_str())))
+        .map(|record| {
+            let id = record.id.as_str();
+            reconcile_record(record, observations.get(id), starts.get(id).copied())
+        })
         .collect::<Result<_>>()?;
     if always || reconciled != records {
         let previous_terminal: BTreeSet<_> = records
@@ -342,7 +392,11 @@ fn settle(
     Ok(reconciled)
 }
 
-fn reconcile_record(previous: &DriverRecord, native: Option<&Observation>) -> Result<DriverRecord> {
+fn reconcile_record(
+    previous: &DriverRecord,
+    native: Option<&Observation>,
+    start: Option<StartOutcome>,
+) -> Result<DriverRecord> {
     if previous.terminal() {
         return Ok(previous.clone());
     }
@@ -363,10 +417,22 @@ fn reconcile_record(previous: &DriverRecord, native: Option<&Observation>) -> Re
             ..previous.clone()
         });
     }
-    let state = if matches!(previous.state, ActivityState::Active | ActivityState::Stale) {
-        ActivityState::Dismissed
-    } else {
-        ActivityState::Unknown
+    let state = match (previous.state, start) {
+        // A scheduled activity that Android does not list waits for its time,
+        (ActivityState::Scheduled, None) => ActivityState::Scheduled,
+        // was posted a moment ago, and is awaited as any post: the adapter has taken it,
+        (ActivityState::Scheduled, Some(StartOutcome::Posted)) => {
+            return Ok(DriverRecord {
+                state: ActivityState::Unknown,
+                awaiting_observation: true,
+                post_failed: false,
+                ..previous.clone()
+            });
+        }
+        // or is not shown, though its time has come.
+        (ActivityState::Scheduled, Some(StartOutcome::Gone)) => ActivityState::Dismissed,
+        (ActivityState::Active | ActivityState::Stale, _) => ActivityState::Dismissed,
+        _ => ActivityState::Unknown,
     };
     Ok(DriverRecord {
         state,
@@ -415,7 +481,8 @@ fn retry(
     Err(refusal)
 }
 
-/// Stores `record` among `records` as a pending receipt, posts it and confirms it.
+/// Stores `record` among `records` as a pending receipt, posts it and confirms it. A scheduled
+/// receipt is given to the adapter to begin at its time instead of being posted.
 ///
 /// `before` is what was stored when the operation began. The adapter refuses a post as invalid
 /// before it posts anything, and would refuse it again: that content must hold neither the key nor
@@ -439,7 +506,13 @@ fn deliver(
     };
     let pending_records = replace(records, &pending);
     save(driver, &pending_records)?;
-    if let Err(failure) = driver.post(&posted(&pending)) {
+    let handed = posted(&pending);
+    let outcome = if pending.state == ActivityState::Scheduled {
+        driver.schedule(&handed)
+    } else {
+        driver.post(&handed)
+    };
+    if let Err(failure) = outcome {
         if failure.code == ErrorCode::InvalidInput {
             save(driver, before)?;
         }
@@ -468,11 +541,23 @@ fn checked_records(records: Vec<DriverRecord>) -> Result<Vec<DriverRecord>> {
             || record.origin.validate().is_err()
             || record.snapshot.validate().is_err()
             || !kept(&record.origin, &record.snapshot)
+            || (record.state == ActivityState::Scheduled && record.origin.start_at.is_none())
         {
             return Err(Error::native());
         }
     }
     Ok(records)
+}
+
+/// What the adapter reports of the scheduled starts, by activity.
+fn checked_starts(reports: Vec<StartReport>) -> Result<BTreeMap<String, StartOutcome>> {
+    let mut checked = BTreeMap::new();
+    for report in reports {
+        if !valid_id(&report.id) || checked.insert(report.id, report.outcome).is_some() {
+            return Err(Error::native());
+        }
+    }
+    Ok(checked)
 }
 
 fn checked_observations(observations: Vec<Observation>) -> Result<BTreeMap<String, Observation>> {

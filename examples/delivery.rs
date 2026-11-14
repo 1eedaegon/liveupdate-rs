@@ -72,6 +72,7 @@ pub fn run_delivery<D: Driver>(updates: &LiveUpdate<D>) -> Result<()> {
     }
     let activity = updates.start(StartRequest {
         placement: Placement::Tagged,
+        start_at: None,
         activity_key: "delivery:order-123".into(),
         schema_version: 2,
         template: Template::Progress,

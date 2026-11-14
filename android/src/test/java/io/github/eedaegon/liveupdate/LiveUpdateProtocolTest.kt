@@ -12,7 +12,7 @@ private const val NATIVE_MESSAGE = "The Android live update adapter failed."
 private const val MEBIBYTE = 1_048_576
 
 class LiveUpdateProtocolTest {
-    // LU-BRIDGE-6
+    // LU-BRIDGE-6, LU-SCHED-8
     @Test
     fun dispatchesEveryStableDriverCommand() {
         val adapter = FakeAdapter()
@@ -31,10 +31,15 @@ class LiveUpdateProtocolTest {
             .getJSONObject("data").getJSONArray("events")
             .getJSONObject(0).getJSONObject("kind").getString("kind"))
 
-        assertEquals(listOf("write:0", "post:one", "cancel:one"), adapter.mutations)
+        assertTrue(ok(LiveUpdateProtocol.dispatch(adapter, "schedule", "{\"record\":{\"id\":\"one\"}}"))
+            .isNull("data"))
+        assertEquals("posted", ok(LiveUpdateProtocol.dispatch(adapter, "starts", "{}"))
+            .getJSONArray("data").getJSONObject(0).getString("outcome"))
+
+        assertEquals(listOf("write:0", "post:one", "cancel:one", "schedule:one"), adapter.mutations)
     }
 
-    // LU-BRIDGE-6
+    // LU-BRIDGE-6, LU-SCHED-8
     @Test
     fun rejectsUnknownCommandsFieldsAndInvalidIdentifiers() {
         val adapter = FakeAdapter()
@@ -55,6 +60,10 @@ class LiveUpdateProtocolTest {
             "cancel" to "{\"id\":\"\"}",
             "cancel" to "{\"id\":\"${"x".repeat(257)}\"}",
             "cancel" to "{}",
+            "schedule" to "{}",
+            "schedule" to "{\"record\":{}}",
+            "schedule" to "{\"record\":{\"id\":\"one\"},\"extra\":true}",
+            "starts" to "{\"extra\":true}",
         )) {
             assertError("INVALID_INPUT", LiveUpdateProtocol.dispatch(adapter, command, payload))
         }
@@ -241,6 +250,12 @@ private open class FakeAdapter(private val fail: Boolean = false) : ManagedAdapt
     override fun post(record: JSONObject) {
         mutations += "post:${record.getString("id")}"
     }
+
+    override fun schedule(record: JSONObject) {
+        mutations += "schedule:${record.getString("id")}"
+    }
+
+    override fun starts() = JSONArray().put(JSONObject().put("id", "one").put("outcome", "posted"))
 
     override fun cancel(id: String) {
         mutations += "cancel:$id"
