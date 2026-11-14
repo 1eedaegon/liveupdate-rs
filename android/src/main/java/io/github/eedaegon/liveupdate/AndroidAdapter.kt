@@ -21,7 +21,12 @@ private const val NOTIFICATION_ID = 1
 private const val MAX_RECORDS = 160
 private const val MAX_RECORD_BYTES = 1_048_576
 private const val PROMOTION_API = 36
+private const val OLD_TIME_API = 35
+private const val MAX_TIME_AGE = 14 * 24 * 60 * 60 * 1000L
+/** What a post may take from the adapter's check to Android's. */
+private const val POST_MARGIN = 60_000L
 private const val INVALID_MESSAGE = "Invalid live update request."
+private const val OLD_CLOCK_MESSAGE = "The clock is more than 14 days old: Android would not post it."
 private const val NATIVE_MESSAGE = "The Android live update adapter failed."
 
 /**
@@ -125,11 +130,13 @@ internal class AndroidAdapter(
         if (!validId(id)) invalid()
         val notification = build(record)
         val foreground = isForegroundPlaced(record)
+        val removes = !record.isNull("dismissAt") && record.getLong("dismissAt") <= System.currentTimeMillis()
+        if (!removes) refuseOldTime(notification)
         if (!record.isNull("dismissAt")) {
             // The last content of an ended activity has the activity's own tag, also after a foreground
             // placement: the service's notification goes with the service. A time that has passed removes it.
             if (foreground) cancelForeground(id)
-            if (record.getLong("dismissAt") <= System.currentTimeMillis()) {
+            if (removes) {
                 manager.cancel(TAG_PREFIX + id, NOTIFICATION_ID)
             } else {
                 manager.notify(TAG_PREFIX + id, NOTIFICATION_ID, notification)
@@ -179,7 +186,21 @@ internal class AndroidAdapter(
             isForegroundPlaced(record) && record.optionalString("state") !in setOf("ended", "dismissed")
         } ?: return null
         val id = record.optionalString("id") ?: return null
-        return id to NotificationRenderer(application, sdk, CHANNEL_ID, manufacturer).build(record)
+        val notification = NotificationRenderer(application, sdk, CHANNEL_ID, manufacturer).build(record)
+        refuseOldTime(notification)
+        return id to notification
+    }
+
+    /**
+     * Refuses [notification] when Android would ignore it. From API 35 Android does not post a notification whose
+     * time the application set more than 14 days before the device's clock, and tells the application nothing.
+     * The adapter sets the time of a header clock only: any other notification has the time it was built at.
+     */
+    private fun refuseOldTime(notification: Notification) {
+        val age = System.currentTimeMillis() - notification.`when`
+        if (sdk >= OLD_TIME_API && age > MAX_TIME_AGE - POST_MARGIN) {
+            throw AdapterFailure("INVALID_INPUT", OLD_CLOCK_MESSAGE)
+        }
     }
 
     /** Whether a receipt of the activity [id] is stored. */

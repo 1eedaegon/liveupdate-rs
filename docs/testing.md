@@ -154,6 +154,10 @@ instrumentation tests were run by hand on an API 36 emulator (Google APIs image,
 - No member newer than API 36 is referenced by the release classes outside the metric style, which runs
   on API 37 only (`javap` over the AAR against the platform's `api-versions.xml`).
 
+On 2026-11-14 the tests of LU-ADAPTER-10 and LU-ADAPTER-11 and the attach test of LU-FGS-6 passed on that
+API 36 emulator as on API 37. Both images ignore a post whose time is more than 14 days old and log
+"Ignored enqueue for old" for it; no API 35 image was run.
+
 The connected Galaxy S23 (`SM-S911N`) on Android 17 / One UI 9 is also tested explicitly by serial.
 It has passed the rich ProgressStyle and MetricStyle reconstruction, Samsung Now Bar extras,
 immutable actions, durable action/dismissal events, private images, v1 regressions and Rust/JNI

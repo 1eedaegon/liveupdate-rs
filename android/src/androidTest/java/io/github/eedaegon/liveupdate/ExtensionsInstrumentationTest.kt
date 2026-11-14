@@ -358,6 +358,21 @@ class ExtensionsInstrumentationTest {
         assertFalse(LiveUpdateForeground.attach(service, type))
         assertNull(held())
 
+        // A clock that Android would ignore is no notification to hold; the same activity with a newer one is.
+        val day = 86_400_000L
+        fun clocked(startedAt: Long) = foreground("clocked").put("snapshot", snapshot {
+            val timer = Device.timer(startedAt, startedAt + 30 * day)
+            put("chronometer", JSONObject().put("timer", timer).put("countsDown", false))
+        })
+        store(clocked(System.currentTimeMillis() - 15 * day))
+        assertFalse(LiveUpdateForeground.attach(service, type))
+        assertNull(held())
+        store(clocked(System.currentTimeMillis() - 13 * day))
+        assertTrue(LiveUpdateForeground.attach(service, type))
+        waitForHeld { it.isForeground() && idOf(it) == "clocked" }
+        adapter.cancel("clocked")
+        Device.waitUntil("the clocked notification is gone") { held() == null }
+
         // Storage that cannot be read is no reason to fail the service.
         context.getSharedPreferences(Device.PREFERENCES, android.content.Context.MODE_PRIVATE)
             .edit().putString("records", "not json").commit()
