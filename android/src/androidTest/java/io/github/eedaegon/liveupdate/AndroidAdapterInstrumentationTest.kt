@@ -14,6 +14,8 @@ import io.github.eedaegon.liveupdate.Device.manager
 import io.github.eedaegon.liveupdate.Device.record
 import io.github.eedaegon.liveupdate.Device.snapshot
 import io.github.eedaegon.liveupdate.Device.timer
+import io.github.eedaegon.liveupdate.Device.v2Record
+import io.github.eedaegon.liveupdate.Device.v2Snapshot
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
@@ -31,6 +33,10 @@ import org.junit.runner.RunWith
 /** The managed adapter's notifications, observations and storage on the device. */
 @RunWith(AndroidJUnit4::class)
 class AndroidAdapterInstrumentationTest {
+    private companion object {
+        const val DAY = 86_400_000L
+    }
+
     private val adapter = AndroidAdapter(context)
 
     @Before
@@ -252,6 +258,81 @@ class AndroidAdapterInstrumentationTest {
         assertEquals("kept", AndroidAdapter(context).read().getJSONObject(0).getString("id"))
     }
 
+    // LU-ADAPTER-10
+    @Test
+    fun aClockAndroidWouldIgnoreIsRefusedAndOneItTakesIsShown() {
+        assertTrue(Build.VERSION.SDK_INT >= 35)
+        val now = System.currentTimeMillis()
+        val ahead = now + 600_000
+        val refused = listOf(
+            // Schema 1 counts down to its end.
+            record("legacy", snapshot(progress = null).put("timer", timer(now - 16 * DAY, now - 15 * DAY))),
+            timerStyle("style-up", now - 15 * DAY, ahead, countsDown = false),
+            timerStyle("style-down", now - 16 * DAY, now - 15 * DAY, countsDown = true),
+            chronometer("beside-up", now - 15 * DAY, ahead, countsDown = false),
+            chronometer("beside-down", now - 16 * DAY, now - 15 * DAY, countsDown = true),
+            // Within the minute that a post may take to reach Android.
+            chronometer("within-the-minute", now - 14 * DAY + 30_000, ahead, countsDown = false),
+        )
+        for (record in refused) {
+            val failure = assertThrows(record.getString("id"), AdapterFailure::class.java) { adapter.post(record) }
+            assertEquals("INVALID_INPUT", failure.code)
+            assertEquals("The clock is more than 14 days old: Android would not post it.", failure.message)
+        }
+        assertEquals(0, manager.activeNotifications.size)
+
+        // A clock that counts down has the time of its end, whenever it started, and a metric's time is not
+        // the notification's. Android shows what the adapter takes.
+        val elapsed = JSONObject().put("label", "Elapsed").put("value", JSONObject()
+            .put("kind", "stopwatch").put("value", JSONObject().put("startedAt", now - 30 * DAY)))
+        val metric = JSONObject().put("kind", "metric").put("value", JSONObject().put("metrics", JSONArray().put(elapsed)))
+        val taken = listOf(
+            record("legacy-ahead", snapshot(progress = null).put("timer", timer(now - 15 * DAY, ahead))),
+            chronometer("down-ahead", now - 15 * DAY, ahead, countsDown = true),
+            chronometer("five-minutes-short", now - 14 * DAY + 300_000, ahead, countsDown = false),
+            v2Record("metric", "metric", v2Snapshot(metric)),
+        )
+        for (record in taken) {
+            adapter.post(record)
+            Device.waitForShown(record.getString("id"))
+        }
+
+        // The last content of an ended activity is a post as well, until its time has passed: then nothing is
+        // posted, and the notification is removed whatever its clock.
+        fun ended(dismissAt: Long) = chronometer("down-ahead", now - 15 * DAY, ahead, countsDown = false)
+            .put("state", "ended").put("awaitingObservation", false).put("dismissAt", dismissAt)
+        assertEquals("INVALID_INPUT", failureCode { adapter.post(ended(ahead)) })
+        assertTrue(Device.waitForShown("down-ahead").flags and Notification.FLAG_ONGOING_EVENT != 0)
+        adapter.post(ended(now - 1_000))
+        Device.waitForGone("down-ahead")
+    }
+
+    // LU-ADAPTER-10
+    @Test
+    fun belowApi35AnOldClockIsLeftToAndroid() {
+        val now = System.currentTimeMillis()
+        val record = chronometer("older-android", now - 15 * DAY, now + 600_000, countsDown = false)
+
+        // Android 14 and earlier show it. This device does not: the adapter's answer is all there is to read.
+        AndroidAdapter(context, sdk = 34).post(record)
+    }
+
+    // LU-ADAPTER-11
+    @Test
+    fun androidIgnoresAPostWhoseTimeIsMoreThanFourteenDaysOld() {
+        assertTrue(Build.VERSION.SDK_INT >= 36)
+        adapter.capabilities()
+        val now = System.currentTimeMillis()
+
+        foreign("old", 2, null, time = now - 15 * DAY)
+        // Android takes the posts of an application in their order: the later one is listed once the earlier
+        // one had its turn.
+        foreign("recent", 2, null, time = now - 13 * DAY)
+        Device.waitUntil("the recent notification is shown") { manager.activeNotifications.any { it.tag == "recent" } }
+
+        assertEquals(listOf("recent"), manager.activeNotifications.map { it.tag })
+    }
+
     // LU-ADAPTER-8
     @Test
     fun cancelRemovesOnlyItsOwnNotification() {
@@ -282,10 +363,26 @@ class AndroidAdapterInstrumentationTest {
         }
     }
 
-    private fun foreign(tag: String, id: Int, extra: String?) {
+    /** A schema-2 record whose style is a clock. */
+    private fun timerStyle(id: String, startedAt: Long, endsAt: Long, countsDown: Boolean): JSONObject {
+        val style = JSONObject().put("kind", "timer").put("value", clock(startedAt, endsAt, countsDown))
+        return v2Record(id, "timer", v2Snapshot(style))
+    }
+
+    /** A schema-2 record with a clock beside the standard style. */
+    private fun chronometer(id: String, startedAt: Long, endsAt: Long, countsDown: Boolean): JSONObject {
+        val standard = JSONObject().put("kind", "standard")
+        return v2Record(id, "standard", v2Snapshot(standard, chronometer = clock(startedAt, endsAt, countsDown)))
+    }
+
+    private fun clock(startedAt: Long, endsAt: Long, countsDown: Boolean): JSONObject =
+        JSONObject().put("timer", timer(startedAt, endsAt)).put("countsDown", countsDown)
+
+    private fun foreign(tag: String, id: Int, extra: String?, time: Long? = null) {
         val builder = Notification.Builder(context, Device.CHANNEL_ID)
             .setSmallIcon(R.drawable.liveupdate_status)
             .setContentTitle("Foreign")
+        if (time != null) builder.setWhen(time)
         if (extra != null) {
             builder.setExtras(Bundle().apply { putString("io.github.1eedaegon.liveupdate.record", extra) })
         }

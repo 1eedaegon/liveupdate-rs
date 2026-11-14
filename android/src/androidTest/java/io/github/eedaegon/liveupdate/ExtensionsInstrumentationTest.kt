@@ -274,6 +274,10 @@ class ExtensionsInstrumentationTest {
         val ride = store(foreground("ride"))
         adapter.post(ride)
         val posted = waitForHeld { !it.isForeground() }
+        // The stored receipt is read as the record that was posted.
+        val (heldId, built) = checkNotNull(adapter.foregroundNotification())
+        assertEquals("ride", heldId)
+        assertEquals(Device.canonical(ride), Device.canonical(JSONObject(built.extras.getString(RECORD_EXTRA)!!)))
 
         Device.paceUpdate()
         ForegroundProbeService.attach(context)
@@ -357,6 +361,21 @@ class ExtensionsInstrumentationTest {
         store(foreground("ride").put("state", "dismissed"))
         assertFalse(LiveUpdateForeground.attach(service, type))
         assertNull(held())
+
+        // A clock that Android would ignore is no notification to hold; the same activity with a newer one is.
+        val day = 86_400_000L
+        fun clocked(startedAt: Long) = foreground("clocked").put("snapshot", snapshot {
+            val timer = Device.timer(startedAt, startedAt + 30 * day)
+            put("chronometer", JSONObject().put("timer", timer).put("countsDown", false))
+        })
+        store(clocked(System.currentTimeMillis() - 15 * day))
+        assertFalse(LiveUpdateForeground.attach(service, type))
+        assertNull(held())
+        store(clocked(System.currentTimeMillis() - 13 * day))
+        assertTrue(LiveUpdateForeground.attach(service, type))
+        waitForHeld { it.isForeground() && idOf(it) == "clocked" }
+        adapter.cancel("clocked")
+        Device.waitUntil("the clocked notification is gone") { held() == null }
 
         // Storage that cannot be read is no reason to fail the service.
         context.getSharedPreferences(Device.PREFERENCES, android.content.Context.MODE_PRIVATE)
@@ -522,9 +541,13 @@ class ExtensionsInstrumentationTest {
     private fun ended(record: JSONObject, dismissAt: Long): JSONObject = JSONObject(record.toString())
         .put("state", "ended").put("awaitingObservation", false).put("dismissAt", dismissAt)
 
-    /** Stores [record] alone, as the lifecycle does before it posts, and answers it. */
+    /**
+     * Stores [record] alone, as the lifecycle does before it posts: with the state it last answered, which only
+     * a stored receipt has. Answers [record] as it is posted, without it.
+     */
     private fun store(record: JSONObject): JSONObject {
-        dispatch("write", JSONObject().put("records", JSONArray().put(record)))
+        val receipt = JSONObject(record.toString()).put("reportedState", "unknown")
+        dispatch("write", JSONObject().put("records", JSONArray().put(receipt)))
         return record
     }
 

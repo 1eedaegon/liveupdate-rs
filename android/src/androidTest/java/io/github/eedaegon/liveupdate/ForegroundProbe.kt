@@ -20,6 +20,8 @@ open class ForegroundProbeService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Before the notification: a test that sees it held looks for the service at once.
+        running = this
         val type = if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE else 0
         val notification = intent?.let(::notificationOf)
         when {
@@ -30,7 +32,6 @@ open class ForegroundProbeService : Service() {
             Build.VERSION.SDK_INT >= 29 -> startForeground(intent.getIntExtra(EXTRA_ID, 0), notification, type)
             else -> startForeground(intent.getIntExtra(EXTRA_ID, 0), notification)
         }
-        running = this
         return START_NOT_STICKY
     }
 
