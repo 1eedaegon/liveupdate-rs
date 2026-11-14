@@ -274,6 +274,10 @@ class ExtensionsInstrumentationTest {
         val ride = store(foreground("ride"))
         adapter.post(ride)
         val posted = waitForHeld { !it.isForeground() }
+        // The stored receipt is read as the record that was posted.
+        val (heldId, built) = checkNotNull(adapter.foregroundNotification())
+        assertEquals("ride", heldId)
+        assertEquals(Device.canonical(ride), Device.canonical(JSONObject(built.extras.getString(RECORD_EXTRA)!!)))
 
         Device.paceUpdate()
         ForegroundProbeService.attach(context)
@@ -537,9 +541,13 @@ class ExtensionsInstrumentationTest {
     private fun ended(record: JSONObject, dismissAt: Long): JSONObject = JSONObject(record.toString())
         .put("state", "ended").put("awaitingObservation", false).put("dismissAt", dismissAt)
 
-    /** Stores [record] alone, as the lifecycle does before it posts, and answers it. */
+    /**
+     * Stores [record] alone, as the lifecycle does before it posts: with the state it last answered, which only
+     * a stored receipt has. Answers [record] as it is posted, without it.
+     */
     private fun store(record: JSONObject): JSONObject {
-        dispatch("write", JSONObject().put("records", JSONArray().put(record)))
+        val receipt = JSONObject(record.toString()).put("reportedState", "unknown")
+        dispatch("write", JSONObject().put("records", JSONArray().put(receipt)))
         return record
     }
 

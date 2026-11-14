@@ -186,10 +186,17 @@ internal class AndroidAdapter(
             isForegroundPlaced(record) && record.optionalString("state") !in setOf("ended", "dismissed")
         } ?: return null
         val id = record.optionalString("id") ?: return null
-        val notification = NotificationRenderer(application, sdk, CHANNEL_ID, manufacturer).build(record)
+        val notification = NotificationRenderer(application, sdk, CHANNEL_ID, manufacturer).build(posted(record))
         refuseOldTime(notification)
         return id to notification
     }
+
+    /**
+     * A stored receipt as the lifecycle posts it: without the state it last answered, which only the stored
+     * receipt has and no posted record.
+     */
+    private fun posted(receipt: JSONObject): JSONObject =
+        JSONObject(receipt.toString()).apply { remove("reportedState") }
 
     /**
      * Refuses [notification] when Android would ignore it. From API 35 Android does not post a notification whose
