@@ -9,5 +9,8 @@
         <receiver
             android:name=".LiveUpdateDismissReceiver"
             android:exported="false" />
+        <receiver
+            android:name=".LiveUpdateStartReceiver"
+            android:exported="false" />
     </application>
 </manifest>

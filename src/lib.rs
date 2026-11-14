@@ -28,7 +28,7 @@ pub use android::{AndroidBridge, AndroidDriver};
 pub use bridge::{Bridge, JsonDriver};
 pub use client::LiveUpdate;
 pub use contract::{Capabilities, Fallback, PresentationCapabilities, PromotionState, Visibility};
-pub use driver::{Driver, DriverRecord, Observation};
+pub use driver::{Driver, DriverRecord, Observation, StartOutcome, StartReport};
 pub use error::{Error, ErrorCode, Result};
 pub use event::{ActivityEvent, EventBatch, EventKind, MAX_EVENTS};
 pub use model::{

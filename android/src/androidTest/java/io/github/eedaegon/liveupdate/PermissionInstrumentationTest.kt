@@ -5,6 +5,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import io.github.eedaegon.liveupdate.Device.context
 import io.github.eedaegon.liveupdate.Device.manager
 import io.github.eedaegon.liveupdate.Device.record
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -44,5 +45,28 @@ class PermissionInstrumentationTest {
         ))
         assertEquals("PERMISSION_DENIED", response.getJSONObject("error").getString("code"))
         assertEquals(0, manager.activeNotifications.size)
+    }
+
+    // LU-SCHED-9, LU-SCHED-11
+    @Test
+    fun withoutTheNotificationPermissionNothingIsScheduledAndADueStartIsGone() {
+        val adapter = AndroidAdapter(context)
+        val due = Device.v2Record("due", "standard", Device.v2Snapshot(JSONObject().put("kind", "standard")))
+            .put("state", "scheduled")
+            .put("awaitingObservation", false)
+            .apply { getJSONObject("origin").put("startAt", System.currentTimeMillis() - 1_000) }
+        adapter.write(JSONArray().put(due))
+
+        val failure = assertThrows(AdapterFailure::class.java) { adapter.schedule(due) }
+
+        assertEquals("PERMISSION_DENIED", failure.code)
+        // Its time has come and it cannot be posted: gone, and not tried again.
+        val reports = adapter.starts()
+        assertEquals(1, reports.length())
+        assertEquals("due", reports.getJSONObject(0).getString("id"))
+        assertEquals("gone", reports.getJSONObject(0).getString("outcome"))
+        assertEquals(1, adapter.starts().length())
+        assertEquals(0, manager.activeNotifications.size)
+        adapter.write(JSONArray())
     }
 }
