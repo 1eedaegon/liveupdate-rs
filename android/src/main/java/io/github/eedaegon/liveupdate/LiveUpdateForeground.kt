@@ -37,16 +37,17 @@ object LiveUpdateForeground {
      * attaches after its process restarted, before the first lifecycle call, shows the activity again.
      * [foregroundServiceType] is the type the service declares; it is passed on from API 29.
      *
-     * False means that no live activity has the placement or that its receipt cannot be read. A service that
-     * Android started in the foreground must then show a notification of its own or stop. What `startForeground`
-     * itself throws, as for a type the manifest does not declare, is the caller's to see.
+     * False means that no live activity has the placement, that its receipt cannot be read, or that its clock is
+     * older than Android posts. A service that Android started in the foreground must then show a notification of
+     * its own or stop. What `startForeground` itself throws, as for a type the manifest does not declare, is the
+     * caller's to see.
      */
     @JvmStatic
     fun attach(service: Service, foregroundServiceType: Int): Boolean = synchronized(lock) {
         val (activityId, notification) = try {
             AndroidAdapter(service).foregroundNotification()
         } catch (_: Exception) {
-            Log.e(LOG_TAG, "Could not read the live update a service attaches to.")
+            Log.e(LOG_TAG, "Could not read the live update a service attaches to, or its clock is too old.")
             null
         } ?: return false
         // One service holds the notification: another one that did lets go of it.

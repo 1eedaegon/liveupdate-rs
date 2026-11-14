@@ -98,6 +98,40 @@ class NativeRustInstrumentationTest {
         assertEquals(started.getString("id"), ok(NativeRust.run("start", request("native:text", snapshot, "timer").toString())).getString("id"))
     }
 
+    // LU-FGS-4, LU-STATE-4
+    @Test
+    fun aServiceAttachesToAnActivityThatRustStartedAndStored() {
+        val request = JSONObject()
+            .put("activityKey", "native:held")
+            .put("schemaVersion", 2)
+            .put("template", "standard")
+            .put("fallback", "notification")
+            .put("visibility", "private")
+            .put("snapshot", Device.v2Snapshot(JSONObject().put("kind", "standard")))
+            .put("placement", "foreground")
+        fun held() = Device.manager.activeNotifications
+            .firstOrNull { it.tag == null && it.id == LiveUpdateForeground.NOTIFICATION_ID }
+
+        val started = ok(NativeRust.run("start", request.toString()))
+        Device.waitUntil("the activity that Rust started is shown") { held() != null }
+        // The receipt that Rust stored has the state it last answered, which a posted record never has.
+        assertEquals(started.getString("id"), AndroidAdapter(context).foregroundNotification()?.first)
+
+        Device.paceUpdate()
+        ForegroundProbeService.attach(context)
+        try {
+            Device.waitUntil("the service holds the activity") {
+                held()?.let { it.notification.flags and Notification.FLAG_FOREGROUND_SERVICE != 0 } == true
+            }
+        } finally {
+            val end = JSONObject().put("id", started.getString("id")).put("policy", JSONObject().put("kind", "immediate"))
+            ok(NativeRust.run("end", end.toString()))
+            val placeholder = Notification.Builder(context, Device.CHANNEL_ID)
+                .setSmallIcon(R.drawable.liveupdate_status).build()
+            ForegroundProbeService.stop(LiveUpdateForeground.NOTIFICATION_ID, placeholder)
+        }
+    }
+
     // LU-V2-JNI-1, LU-V2-EVENT-4
     @Test
     fun richPresentationAndActionEventsCrossRustJniUnchanged() {

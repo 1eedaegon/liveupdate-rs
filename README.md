@@ -334,6 +334,11 @@ closed as `NATIVE_ERROR`.
   OEM extras: a link is a URL that the app's own package opens.
 - An end removes the notification at once. `EndPolicy::After` keeps the last content until its time,
   as an ordinary notification that the person can remove; it is no longer promoted.
+- From Android 15 a clock in the header, of a `Timer` style, a `chronometer` or a schema-v1 timer,
+  cannot be more than 14 days old: the system drops such a post without an error, so the adapter
+  refuses it with `INVALID_INPUT`. The age is counted from the end of a countdown and from the start
+  of a clock that counts up. An activity that runs longer leaves the clock out, or from API 37 shows
+  the time as a stopwatch metric, which has no such limit.
 - An update needs the app's process: Android has no push that updates a notification. In the
   background, use a foreground service or a data message that wakes the app.
 - Visibility is reported as `Unknown`: requesting private notification content does not prove what

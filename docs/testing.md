@@ -150,9 +150,14 @@ instrumentation tests were run by hand on an API 36 emulator (Google APIs image,
   one expects the Samsung capability that the adapter reports from API 37. One asserts
   `hasPromotableCharacteristics()`, which that image answers with false for every notification, a plain
   ongoing one with a title included. One foreground-service probe failed in the full run and passed three
-  times on its own.
+  times on its own: the probe service made itself known after its notification, and a test that saw
+  the notification first found no service. It makes itself known first now.
 - No member newer than API 36 is referenced by the release classes outside the metric style, which runs
   on API 37 only (`javap` over the AAR against the platform's `api-versions.xml`).
+
+On 2026-11-14 the tests of LU-ADAPTER-10 and LU-ADAPTER-11 and the attach test of LU-FGS-6 passed on that
+API 36 emulator as on API 37. Both images ignore a post whose time is more than 14 days old and log
+"Ignored enqueue for old" for it; no API 35 image was run.
 
 The connected Galaxy S23 (`SM-S911N`) on Android 17 / One UI 9 is also tested explicitly by serial.
 It has passed the rich ProgressStyle and MetricStyle reconstruction, Samsung Now Bar extras,
