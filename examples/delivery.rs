@@ -1,6 +1,8 @@
 //! One delivery from start to end. `run_delivery` works with any `Driver`, so tests can pass a fake
 //! one; on Android, `on_android` hands it the client of the companion AAR.
 
+#![deny(clippy::unwrap_used, clippy::expect_used)]
+
 use liveupdate::{
     AndroidPresentation, Driver, EndPolicy, Fallback, IconSource, LiveUpdate, NotificationAction,
     Placement, PresentationStyle, ProgressPoint, ProgressSegment, ProgressStyle, Result,
