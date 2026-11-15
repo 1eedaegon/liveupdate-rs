@@ -25,6 +25,9 @@ android {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+        // The test package targets what a host does. Without this it would target minSdk, where Android applies
+        // none of the rules a host is under: an exact alarm, for one, would need no permission.
+        targetSdk = 36
     }
 
     buildTypes {

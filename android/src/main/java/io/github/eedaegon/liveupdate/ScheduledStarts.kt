@@ -146,9 +146,11 @@ internal class ScheduledStarts(
     }
 
     /**
-     * One alarm for [at], the earliest start that waits, or none. Exact where the application may set one.
-     * Otherwise two inexact ones: within a window while the device is awake, and one that also fires while it
-     * dozes. Whichever comes first begins the activity, and the other finds its note.
+     * Two alarms for [at], the earliest start that waits, or none. One is inexact and also fires while the
+     * device dozes: Android keeps it when the person takes the exact alarm back, which removes every exact one
+     * and stops the application. Beside it is the exact alarm where the application may set one, and otherwise
+     * an inexact one within a window, which comes sooner while the device is awake. Whichever comes first begins
+     * the activity, and the other finds its note.
      */
     private fun arm(at: Long?) {
         val first = alarm(0)
@@ -159,17 +161,16 @@ internal class ScheduledStarts(
             return
         }
         // An alarm that is set replaces the one of its intent.
+        alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, second)
         if (exact()) {
             try {
                 alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, first)
-                alarms.cancel(second)
                 return
             } catch (_: SecurityException) {
                 // The permission went between the question and the call.
             }
         }
         alarms.setWindow(AlarmManager.RTC_WAKEUP, at, ALARM_WINDOW, first)
-        alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, second)
     }
 
     private fun alarm(slot: Int): PendingIntent = PendingIntent.getBroadcast(

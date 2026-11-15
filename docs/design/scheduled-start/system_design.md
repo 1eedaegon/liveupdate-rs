@@ -62,9 +62,11 @@ whether or not the alarm has fired.
   scheduling that failed begins nothing.
 - **Posted, then noted.** A process that dies between the two posts the start once more, and one that
   alerts does so twice. The other order could lose a start.
-- **The alarm.** One, for the earliest scheduled receipt without an entry. Exact and allowed while
-  idle when the application may set exact alarms. Otherwise two inexact ones for the same time: a
-  ten-minute window, and one allowed while idle. Whichever fires first posts; the other finds an entry.
+- **The alarm.** Two for the same time, that of the earliest scheduled receipt without an entry. One
+  is always inexact and allowed while idle: Android keeps it when the person takes the exact alarm
+  back, which removes every exact one. Beside it is an exact one, allowed while idle, when the
+  application may set exact alarms, and otherwise an inexact one in a ten-minute window. Whichever
+  fires first posts; the other finds an entry.
 - **Cancel.** Removes the notification, the entry and the alarm in one turn with the alarm's own run,
   so a start that is due does not post after its cancel. An alarm that cannot be set again fails no
   cancel.
@@ -79,8 +81,8 @@ operation while something is scheduled.
 - The minute, without the exact-alarm permission.
 - A start while notifications are off, or one whose post fails for another reason at its time: it is
   reported `gone` and not tried again.
-- A start right after the person took the exact-alarm permission away: Android drops the exact alarm
-  with it, and the next lifecycle call makes up for it, as after a restart.
+- The minute, after the person took the exact-alarm permission away: Android drops the exact alarm
+  with it and stops the application, and the inexact one that stays begins the start late.
 - A start after a restart before the application runs, unless the host declared the receiver for it.
 - `dismissed` for a start that was removed within ten seconds of its post and before Rust looked: it
   reads `unknown`, as any post that Android never listed.

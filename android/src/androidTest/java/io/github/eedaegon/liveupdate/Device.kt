@@ -5,6 +5,7 @@ import android.app.Notification
 import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.ParcelFileDescriptor
 import android.service.notification.StatusBarNotification
 import androidx.test.platform.app.InstrumentationRegistry
 import org.json.JSONArray
@@ -47,6 +48,23 @@ internal object Device {
 
     fun shell(command: String) {
         instrumentation.uiAutomation.executeShellCommand(command).close()
+    }
+
+    /**
+     * The windows of the alarms that Android holds for the test package, as `dumpsys alarm` prints them: `0` is
+     * an exact alarm. An application cannot ask for its own alarms otherwise.
+     */
+    fun alarmWindows(): List<String> {
+        val output = instrumentation.uiAutomation.executeShellCommand("dumpsys alarm")
+        val dump = ParcelFileDescriptor.AutoCloseInputStream(output).bufferedReader().use { it.readLines() }
+        val alarm = Regex("""^\s*[A-Z_]+ #\d+: Alarm\{.* (\S+)\}\s*$""")
+        val window = Regex("""\bwindow=(\S+)""")
+        return dump.indices.filter { alarm.find(dump[it])?.groupValues?.get(1) == context.packageName }.map { index ->
+            val lines = dump.subList(index + 1, dump.size).takeWhile { !alarm.matches(it) }
+            checkNotNull(lines.firstNotNullOfOrNull { window.find(it)?.groupValues?.get(1) }) {
+                "dumpsys alarm names no window for ${dump[index].trim()}"
+            }
+        }
     }
 
     /** One bridge call; the envelope's status must be `ok`. */

@@ -50,9 +50,14 @@ The script refuses a serial that is not an emulator, and every adb call names `A
 phone on USB is never touched. With `EXPECTED_SDK`, the tests fail on any other API level. It:
 
 1. builds the test APK, whose Rust library (`android/native-test`) uses the crate through JNI and is
-   built with `-C instrument-coverage` for the emulator's ABI;
-2. runs every instrumentation test with JaCoCo coverage, then, with the notification permission
-   revoked, the one class that needs it so (revoking a runtime permission kills the app's process).
+   built with `-C instrument-coverage` for the emulator's ABI. The test package targets API 36, as a
+   host does: a package that names no target has that of `minSdk`, where Android applies none of the
+   rules a host is under, and would for one need no permission for an exact alarm;
+2. runs every instrumentation test with JaCoCo coverage. The package declares `SCHEDULE_EXACT_ALARM`
+   and Android, from 14, allows it no exact alarm, as it allows none to a host until the person does. Then the
+   script allows it and runs the scheduled starts once more (taking it back would kill the app's
+   process, so that run comes second). Then, with the notification permission revoked, the one class
+   that needs it so (revoking a runtime permission kills the process too).
    Every test must pass: a failure, an `@Ignore` or a skip by an assumption fails the suite, and so does a
    device test that `docs/spec.md` lists but that did not pass (`tests/android/instrumentation.py`);
 3. pulls JaCoCo's data and the Rust profile that the tests write with `__llvm_profile_write_file`;
@@ -165,6 +170,49 @@ promoted. The Rust test library was not mapped in that process.
 On 2026-11-14 the tests of LU-ADAPTER-10 and LU-ADAPTER-11 and the attach test of LU-FGS-6 passed on that
 API 36 emulator as on API 37. Both images ignore a post whose time is more than 14 days old and log
 "Ignored enqueue for old" for it; no API 35 image was run.
+
+On 2026-11-15, after 0.4.0, a scheduled start was followed by hand under a host's conditions: the test
+package built to target API 36, on the API 37 emulator unless said otherwise. Each receipt was written
+into the package's preferences, the receiver set the alarms in a process of its own, the process was
+killed, and the notification was awaited. `dumpsys alarm` gave the alarms.
+
+- **The device tests at that target.** 76 of 77 passed before any change. The one that failed asserted
+  that an exact alarm needs no permission, which held for the target the package had until then,
+  API 26. The suite targets API 36 since.
+- **Without the exact alarm** Android held two alarms: one with a window of ten minutes, and one that is
+  allowed while idle with a window of three quarters of the wait, an hour for a start three hours
+  ahead or more (read on the API 36 emulator). A start 45 seconds ahead began 32 seconds after its time, and one 80 seconds ahead in
+  forced deep idle 60 seconds after: each at the end of the shorter window. One 20 minutes ahead began
+  5 minutes 11 seconds after its time on the awake emulator, and in forced deep idle 14 minutes 58
+  seconds after, at the end of the only window that counts there. That one was posted promoted.
+- **With it** (`cmd appops set … SCHEDULE_EXACT_ALARM allow`) there was an alarm with no window, and the
+  start began within a second of its time, awake and in forced deep idle. The API 36 emulator did the
+  same: 33 seconds late without it for a start 45 seconds ahead, on time with it.
+- **Standby.** Once the emulator was unplugged, the test package, which nobody had opened (standby
+  bucket 50), had its inexact alarms put off by a year, and its start in forced deep idle did not begin
+  in the ten minutes it was watched, while its exact alarm came on time. While the emulator charged,
+  and in the active bucket, the starts began as above. The alarm service lists a quota of wake-ups an
+  hour by bucket: 720, 10, 2 and 1.
+- **A restart.** With the receiver declared for `BOOT_COMPLETED`, after an orderly restart
+  (`svc power reboot`): the receiver ran 84 seconds after the device was up, the 109th to get the
+  broadcast. A start that had come due while the device was off began then, 100 seconds after its
+  time, and the alarms of a later one were set again: it began in its window. Without the declaration
+  no alarm came back and nothing was shown at either time. Both began at the next broadcast to the
+  receiver, which stood for the application's next call. Android keeps the restart from a package it
+  holds as stopped: after an `adb reboot` a few seconds after a force stop had been ended, it held the
+  package as stopped again, the receiver did not run, and Android sent it the broadcast when the
+  package was started.
+- **An update** of the package (`adb install -r`) kept both alarms, and the start began in its window.
+- **A force stop** removed both alarms. Nothing was shown at the time, and the start began at the next
+  broadcast to the receiver.
+- **The exact alarm taken back** while a start waited (`cmd appops set … SCHEDULE_EXACT_ALARM deny`):
+  Android removed the exact alarm and killed the process, and no alarm was left to begin the start.
+  The adapter sets an inexact alarm beside the exact one since. On the API 36 emulator that one stayed,
+  and the start began 35 seconds after its time in a new process.
+
+The release itself was checked the same day: the AAR of the GitHub release `v0.4.0` has the checksum
+published beside it and passes `tests/android/aar.sh`, the sources of `liveupdate` 0.4.0 on crates.io
+are those of the tag, and the README's example compiles against it for both Android targets.
 
 The connected Galaxy S23 (`SM-S911N`) on Android 17 / One UI 9 is also tested explicitly by serial.
 It has passed the rich ProgressStyle and MetricStyle reconstruction, Samsung Now Bar extras,
