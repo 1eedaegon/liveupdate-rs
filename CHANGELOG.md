@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.4.1 - 2026-11-15
+
+- fix: an inexact alarm stays beside the exact one of a scheduled start (`7009f68`)
+
 ## 0.4.0 - 2026-11-14
 
 - feat: a start that begins at its time while the application does not run (`8ca4486`)
