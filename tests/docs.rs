@@ -190,3 +190,36 @@ fn no_doc_says_what_is_no_longer_true() {
             .exists()
     );
 }
+
+// LU-ERR-5
+#[test]
+fn clippy_denies_unwrap_and_expect_outside_tests() {
+    let denied = "deny(clippy::unwrap_used, clippy::expect_used)";
+    // The library: everywhere but in its tests.
+    assert!(
+        read("src/lib.rs").contains(&format!("#![cfg_attr(not(test), {denied})]")),
+        "src/lib.rs does not deny them"
+    );
+    // An example is an application's code, and has no tests.
+    let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples");
+    let mut seen = 0;
+    for entry in std::fs::read_dir(examples).unwrap() {
+        let path = entry.unwrap().path();
+        let example = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            example.contains(&format!("#![{denied}]")),
+            "{} does not deny them",
+            path.display()
+        );
+        seen += 1;
+    }
+    assert!(seen > 0);
+    // The attributes refuse nothing by themselves: CI runs Clippy over both, for the host and for Android.
+    let ci = read(".github/workflows/ci.yml");
+    for lint in [
+        "cargo clippy --locked --all-targets --all-features -- -D warnings",
+        "cargo ndk -t arm64-v8a -t x86_64 clippy --locked --features android --all-targets -- -D warnings",
+    ] {
+        assert!(ci.contains(lint), "CI does not run {lint:?}");
+    }
+}

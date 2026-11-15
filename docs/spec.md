@@ -143,6 +143,7 @@ when to ask again, and the caller owns the timer.
 | LU-ERR-2 | The library's messages are fixed sentences: none repeats a title or a status. | A conflict about a title "Secret title" → a message without "Secret". | — | all |
 | LU-ERR-3 | An adapter error keeps its code and message. An unexpected exception in the adapter, or a platform method or class that the device lacks (a `LinkageError`), becomes `NATIVE_ERROR` with the fixed message "The Android live update adapter failed.", and its cause stays on the device. | `PERMISSION_DENIED` from the adapter → `PermissionDenied`; a parser failure → `NATIVE_ERROR`. | — | all; Android |
 | LU-ERR-4 | The adapter's `AdapterFailure` takes only the eight codes. | `TIMEOUT` → `IllegalArgumentException`. | — | Android |
+| LU-ERR-5 | The library does not `unwrap` or `expect` outside its tests, and neither does an example: a value that is not there is an error to answer, and no reason to end the host's process. Clippy denies both in the library, but for its test builds, and in each example, and CI runs Clippy over them for the host and for Android. The tests may: a test that panics has failed. So may `android/native-test`, the Rust half of the device tests. | An `unwrap` in `src/` outside a test → `cargo clippy` fails. | — | all |
 
 ## JSON bridge
 
@@ -421,6 +422,7 @@ and the adapter begins it, also while the application does not run.
 | LU-ERR-2 | `src/error.rs::the_library_messages_are_fixed_sentences` (unit)<br>`tests/lifecycle.rs::error_messages_never_repeat_notification_content` (integration) |
 | LU-ERR-3 | `tests/bridge.rs::adapter_errors_are_preserved_without_accepting_malformed_envelopes` (integration)<br>`android/src/test/java/io/github/eedaegon/liveupdate/LiveUpdateProtocolTest.kt::preservesStableAdapterErrors` (kotlin)<br>`android/src/test/java/io/github/eedaegon/liveupdate/LiveUpdateProtocolTest.kt::sanitizesUnexpectedAdapterAndParserFailures` (kotlin)<br>`android/src/test/java/io/github/eedaegon/liveupdate/LiveUpdateProtocolTest.kt::aPlatformMethodTheDeviceLacksIsANativeError` (kotlin) |
 | LU-ERR-4 | `android/src/test/java/io/github/eedaegon/liveupdate/LiveUpdateProtocolTest.kt::adapterFailuresOnlyTakeTheStableCodes` (kotlin) |
+| LU-ERR-5 | `tests/docs.rs::clippy_denies_unwrap_and_expect_outside_tests` (integration) |
 | LU-BRIDGE-1 | `src/bridge.rs::requests_serialize_as_the_adapter_expects` (unit)<br>`tests/bridge.rs::a_client_over_the_json_bridge_runs_the_whole_lifecycle` (integration)<br>`tests/bridge.rs::every_driver_operation_uses_a_bounded_stable_command` (integration)<br>`tests/contract.rs::platform_policy_enums_use_the_stable_contract` (integration)<br>`tests/contract.rs::records_cross_the_bridge_with_the_names_the_adapter_reads` (integration)<br>`tests/contract.rs::public_records_do_not_leak_cross_platform_backend_discriminators` (integration) |
 | LU-BRIDGE-2 | `src/bridge.rs::a_request_over_one_mebibyte_never_reaches_the_bridge` (unit) |
 | LU-BRIDGE-3 | `src/bridge.rs::a_reply_of_exactly_one_mebibyte_is_read_and_one_byte_more_is_not` (unit)<br>`tests/bridge.rs::oversized_adapter_replies_fail_closed` (integration) |
