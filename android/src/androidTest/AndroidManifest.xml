@@ -4,6 +4,9 @@
     <!-- What a host adds to have the alarm of a scheduled start set again after a restart of the device: the
          AAR does not declare it. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- What a host adds to have a scheduled start begin at its exact time: the AAR does not declare it. An
+         application that targets API 33 or newer has it only once the user allows it. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <application>
         <!-- Gives the test package a launch activity, which a notification's content intent opens. -->

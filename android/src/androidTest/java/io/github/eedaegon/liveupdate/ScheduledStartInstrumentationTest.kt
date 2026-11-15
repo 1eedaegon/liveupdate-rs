@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import io.github.eedaegon.liveupdate.Device.context
 import io.github.eedaegon.liveupdate.Device.dispatch
 import io.github.eedaegon.liveupdate.Device.manager
@@ -33,6 +34,11 @@ class ScheduledStartInstrumentationTest {
         const val AHEAD = 5_000L
         const val HOUR = 3_600_000L
         const val DAY = 24 * HOUR
+
+        /** What an alarm of a start an hour ahead is, by the window that Android gives it. */
+        const val EXACT = "exact"
+        const val DOZING = "inexact, also while the device dozes"
+        const val WINDOW = "inexact, within ten minutes"
     }
 
     @Before
@@ -196,29 +202,39 @@ class ScheduledStartInstrumentationTest {
     // LU-SCHED-2, LU-SCHED-12
     @Test
     fun theAlarmIsExactWhereTheApplicationMaySetOneAndInexactOtherwise() {
-        assertTrue(Build.VERSION.SDK_INT >= 31)
-        val alarms = context.getSystemService(AlarmManager::class.java)
+        // The test package targets API 36 and declares SCHEDULE_EXACT_ALARM, as a host that wants the exact
+        // alarm: from Android 14 it has none until the person allows it. tests/android/run.sh runs this class
+        // once more with the alarm allowed.
+        assertTrue(Build.VERSION.SDK_INT >= 34)
+        val allowed = InstrumentationRegistry.getArguments().getString("exactAlarms") == "allowed"
+        assertEquals(allowed, context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms())
         val presentation = dispatch("capabilities").getJSONObject("data").getJSONObject("presentation")
         assertTrue(presentation.getBoolean("scheduledStart"))
-        // The test package targets API 26, which may set exact alarms without a permission.
-        assertTrue(alarms.canScheduleExactAlarms())
-        assertTrue(presentation.getBoolean("exactStart"))
+        assertEquals(allowed, presentation.getBoolean("exactStart"))
 
-        // An application that may not, as most that target a newer API: two inexact alarms, and it begins.
-        val inexact = AndroidAdapter(context, exactAlarms = false)
-        assertFalse(inexact.capabilities().getJSONObject("presentation").getBoolean("exactStart"))
-        val loose = store(scheduled("loose", System.currentTimeMillis() + AHEAD))
-        inexact.schedule(loose)
-        assertNull(Device.shown("loose"))
-        Device.waitForShown("loose")
+        // An hour ahead: the alarm that also fires while the device dozes is always there, since it stays when
+        // the person takes the exact one back. Beside it is the exact one, or the one within ten minutes.
+        val far = store(scheduled("far", System.currentTimeMillis() + HOUR))
+        dispatch("schedule", JSONObject().put("record", far))
+        assertEquals(if (allowed) listOf(EXACT, DOZING) else listOf(DOZING, WINDOW), kinds(Device.alarmWindows()))
 
-        // One that may: the exact alarm comes at its time.
+        // An application that does not use the exact alarm it may set, and an exact one that Android refuses
+        // after all: the inexact two.
+        AndroidAdapter(context, exactAlarms = !allowed).schedule(far)
+        assertEquals(listOf(DOZING, WINDOW), kinds(Device.alarmWindows()))
+
+        // The end leaves no alarm.
+        store(JSONObject(far.toString()).put("state", "ended"))
+        dispatch("cancel", JSONObject().put("id", "far"))
+        assertTrue(Device.alarmWindows().isEmpty())
+
+        // Near its time each begins it, and the exact one at its time.
         val startAt = System.currentTimeMillis() + AHEAD
-        val exact = store(loose, scheduled("exact", startAt))
-        dispatch("schedule", JSONObject().put("record", exact))
-        Device.waitForShown("exact")
+        dispatch("schedule", JSONObject().put("record", store(scheduled("near", startAt))))
+        assertNull(Device.shown("near"))
+        Device.waitForShown("near")
         val late = System.currentTimeMillis() - startAt
-        assertTrue("$late ms after its time", late in 0 until 10_000)
+        assertTrue("$late ms after its time", late >= 0 && (!allowed || late < 10_000))
     }
 
     // LU-SCHED-13
@@ -268,6 +284,19 @@ class ScheduledStartInstrumentationTest {
     }
 
     private fun starts(): Map<String, String> = outcomes(dispatch("starts").getJSONArray("data"))
+
+    /**
+     * The alarms of a start an hour ahead, in the order of their names. Android gives the inexact one that also
+     * fires while the device dozes a window of three quarters of the wait.
+     */
+    private fun kinds(windows: List<String>): List<String> = windows.map { window ->
+        when {
+            window == "0" -> EXACT
+            window == "+10m0s0ms" -> WINDOW
+            Regex("""\+44m\d+s\d+ms""").matches(window) -> DOZING
+            else -> window
+        }
+    }.sorted()
 
     private fun outcomes(reports: JSONArray): Map<String, String> = (0 until reports.length()).associate { index ->
         val report = reports.getJSONObject(index)

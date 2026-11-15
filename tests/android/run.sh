@@ -8,7 +8,9 @@
 #    for the emulator's ABI, and runs every instrumentation test with JaCoCo coverage. EXPECTED_SDK makes
 #    the tests fail on any other API level. Every test must pass: a failure, an @Ignore or a skip by an
 #    assumption fails the suite (tests/android/instrumentation.py), and so does a device test of
-#    docs/spec.md that did not pass.
+#    docs/spec.md that did not pass. The test package targets API 36, so Android 14 and newer allow it no
+#    exact alarm: the scheduled starts run once so, and once more after the alarm is allowed as a person
+#    allows it.
 # 3. Pulls JaCoCo's execution data and the Rust profile, then checks the Kotlin line coverage of unit
 #    and instrumentation tests together (android/build.gradle.kts) and the Rust coverage of
 #    src/android.rs on the device: at least RUST_ANDROID_MIN percent of its lines (90 by default) and
@@ -88,13 +90,17 @@ passed=$(instrument main -e notClass io.github.eedaegon.liveupdate.PermissionIns
   ${EXPECTED_SDK:+-e expectedSdk "$EXPECTED_SDK"})
 device exec-out run-as "$package" cat files/liveupdate.profraw >"$out/liveupdate.profraw"
 device logcat -d -s TestRunner:I System.out:I >"$out/logcat.txt" 2>/dev/null || true
+# Taking the exact alarm back kills the app, so it is allowed after the run that has none and stays allowed.
+device shell cmd appops set "$package" SCHEDULE_EXACT_ALARM allow
+exact=$(instrument exact -e class io.github.eedaegon.liveupdate.ScheduledStartInstrumentationTest \
+  -e exactAlarms allowed)
 # Revoking the notification permission kills the app, so the class that needs it revoked runs alone.
 device shell pm revoke "$package" android.permission.POST_NOTIFICATIONS
 denied=$(instrument denied -e class io.github.eedaegon.liveupdate.PermissionInstrumentationTest -e notifications denied)
 device uninstall "$package" >/dev/null
 [ -s "$out/liveupdate.profraw" ] || { echo "no Rust profile on $serial" >&2; exit 1; }
 python3 -I tests/android/instrumentation.py --spec docs/spec.md \
-  "$out/instrumentation-main.txt" "$out/instrumentation-denied.txt"
+  "$out/instrumentation-main.txt" "$out/instrumentation-exact.txt" "$out/instrumentation-denied.txt"
 
 gradle :android:coverageVerification --no-daemon
 kotlin=$(python3 -I - android/build/reports/jacoco/coverageReport/coverageReport.xml <<'PYTHON'
@@ -132,10 +138,11 @@ PYTHON
 )
 echo "Rust coverage of src/android.rs on the device: $android"
 
+tests="$passed, $exact with the exact alarm allowed and $denied without the notification permission"
 {
   cat "$out/device.txt"
-  echo "tests $passed and $denied without the notification permission"
+  echo "tests $tests"
   echo "kotlin $kotlin"
   echo "android.rs $android"
 } >"$out/passed.txt"
-echo "device suite passed: $passed tests, and $denied without the notification permission"
+echo "device suite passed: $tests"

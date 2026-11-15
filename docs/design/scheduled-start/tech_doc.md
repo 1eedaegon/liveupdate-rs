@@ -45,7 +45,9 @@ Device tests on the API 37 emulator:
 4. A receipt that became due without an alarm begins when `starts` is asked.
 5. The reports: posted, gone after the ten seconds, gone for a failed post, none for a listed one.
 6. An end before the time leaves nothing.
-7. The exact alarm where it is allowed, the inexact ones where it is not.
+7. The exact alarm where it is allowed, the inexact ones where it is not, and the inexact one that
+   stays beside the exact one. The test package targets API 36 for it: Android allows it an exact
+   alarm only once the device suite does.
 8. `BOOT_COMPLETED` arms again.
 9. From Rust through JNI: `scheduled`, then `active`.
 

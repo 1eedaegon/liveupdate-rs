@@ -23,4 +23,9 @@
   left out of the alarm, the `starts` that a start asks before it confirms dropped the alarm again, and
   the activity began only at a later call. The tests had made later calls. They now follow the
   lifecycle's order, with a start and nothing after it; seen failing, then passing.
-- [ ] Tell the `liveactivity-rs` session what the crate answers.
+- [x] Tell the `liveactivity-rs` session what the crate answers.
+- [x] After the release, under a host's conditions (`docs/testing.md`, 2026-11-15): the device tests
+  with a test package that targets API 36, and by hand a start into a process that does not run with
+  and without the exact alarm, while the device dozes, across a restart, an update and a force stop,
+  and with the exact alarm taken back. The last began nothing until the application ran again: an
+  inexact alarm now stays beside the exact one. Seen failing, then passing.

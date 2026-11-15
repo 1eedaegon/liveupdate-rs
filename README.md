@@ -258,15 +258,20 @@ How close to its time it begins is Android's to say:
 | The app | Alarm | Begins |
 | --- | --- | --- |
 | May set exact alarms: `presentation.exact_start` | Exact, also while the device dozes | At its time |
-| May not, as most apps | Two inexact ones | Within about ten minutes while the device is awake, later while it dozes |
+| May not, as most apps | Two inexact ones | Late by up to three quarters of the wait: ten minutes at most while the device is awake, an hour while it dozes |
 
 The AAR declares no alarm permission. For the exact one, declare `SCHEDULE_EXACT_ALARM` in your
 manifest and send the person to the "Alarms & reminders" setting: from Android 14 it is off until
 they allow it. `USE_EXACT_ALARM` is for alarm and calendar apps only, by Google Play's policy.
+Without either, Android may also hold the alarm back for an app the person rarely opens. A start
+that has to be on time then begins from a data message that wakes the app at that moment, with an
+ordinary `start`.
 
-Android drops alarms when the device restarts, when the person force-stops the app, and when they
-take the exact-alarm permission away. The activity then begins at the app's next lifecycle call, late. To have the alarm set again after a restart,
-declare the AAR's receiver for it in your manifest:
+Android drops alarms when the device restarts and when the person force-stops the app. The activity
+then begins at the app's next lifecycle call, late. When the person takes the exact-alarm permission
+away, Android drops the exact alarm and stops the app: the start then begins by the inexact alarm
+that is always set beside it. To have the alarms set again after a restart, declare the AAR's
+receiver for it in your manifest:
 
 ```xml
 <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -399,8 +404,9 @@ closed as `NATIVE_ERROR`.
   background, use a foreground service or a data message that wakes the app. A start does not:
   `start_at` begins an activity while the app does not run.
 - A scheduled start is on the minute only with the exact-alarm permission, which the person grants.
-  Without it Android chooses the moment. It cannot be updated before it begins, and it does not take
-  the foreground placement.
+  Without it Android chooses the moment, up to ten minutes late while the device is awake and up to an
+  hour while it dozes. It cannot be updated before it begins, and it does not take the foreground
+  placement.
 - Visibility is reported as `Unknown`: requesting private notification content does not prove what
   an OEM system UI actually revealed.
 - Use one retained client per process so operations share the same serialization boundary. Every
