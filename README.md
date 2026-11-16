@@ -264,7 +264,9 @@ How close to its time it begins is Android's to say:
 
 The AAR declares no alarm permission. For the exact one, declare `SCHEDULE_EXACT_ALARM` in your
 manifest and send the person to the "Alarms & reminders" setting: from Android 14 it is off until
-they allow it. `USE_EXACT_ALARM` is for alarm and calendar apps only, by Google Play's policy.
+they allow it. `USE_EXACT_ALARM` is for alarm and calendar apps only, by Google Play's policy, and
+needs no setting. Android 12 does not know `USE_EXACT_ALARM`: an app that uses it also declares
+`SCHEDULE_EXACT_ALARM` with `android:maxSdkVersion="32"`, which Android 12 allows without asking.
 Without either, Android may also hold the alarm back for an app the person rarely opens. A start
 that has to be on time then begins from a data message that wakes the app at that moment, with an
 ordinary `start`.
@@ -405,10 +407,10 @@ closed as `NATIVE_ERROR`.
 - An update needs the app's process: Android has no push that updates a notification. In the
   background, use a foreground service or a data message that wakes the app. A start does not:
   `start_at` begins an activity while the app does not run.
-- A scheduled start is on the minute only with the exact-alarm permission, which the person grants.
-  Without it Android chooses the moment, up to ten minutes late while the device is awake and up to an
-  hour while it dozes. It cannot be updated before it begins, and it does not take the foreground
-  placement.
+- A scheduled start is on the minute only with the exact-alarm permission: `SCHEDULE_EXACT_ALARM`,
+  which from Android 14 the person has to allow, or `USE_EXACT_ALARM`. Without it Android chooses the
+  moment, up to ten minutes late while the device is awake and up to an hour while it dozes. It cannot
+  be updated before it begins, and it does not take the foreground placement.
 - Visibility is reported as `Unknown`: requesting private notification content does not prove what
   an OEM system UI actually revealed.
 - Use one retained client per process so operations share the same serialization boundary. Every

@@ -45,7 +45,7 @@ once when it begins.
 
 | Question | Decision | Why |
 | --- | --- | --- |
-| Exact alarm | Used when the application may set one (`canScheduleExactAlarms`). The AAR declares no alarm permission | `SCHEDULE_EXACT_ALARM` is denied by default from Android 14 and `USE_EXACT_ALARM` is for alarm and calendar applications. A library that declared either would decide it for every host |
+| Exact alarm | Used when the application may set one (`canScheduleExactAlarms`). The AAR declares no alarm permission | `SCHEDULE_EXACT_ALARM` is denied by default from Android 14, and `USE_EXACT_ALARM` is for alarm and calendar applications and unknown to Android 12. A library that declared either would decide it for every host |
 | Without it | Two inexact alarms for the same time: one in a ten-minute window, one that may fire while the device dozes | Either alone is weaker: the window waits out a doze, the other may be an hour late on an awake device |
 | With it | The inexact alarm that may fire while the device dozes stays beside the exact one | Android removes every exact alarm and stops the application when the person takes the permission back. The inexact one is kept and begins the start late, where nothing would begin it before the application ran again |
 | Restart | Alarms are lost. The receiver arms again when the host declares it for `BOOT_COMPLETED`; without that the next lifecycle call makes up for it | `RECEIVE_BOOT_COMPLETED` in the AAR would be in every host's manifest |
