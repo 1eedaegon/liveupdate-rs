@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.4.2 - 2026-11-16
+
+- chore: Clippy denies unwrap and expect outside tests (`d4abdfa`)
+- docs: Android 12 needs SCHEDULE_EXACT_ALARM beside USE_EXACT_ALARM (`bc096cd`)
+
 ## 0.4.1 - 2026-11-15
 
 - fix: an inexact alarm stays beside the exact one of a scheduled start (`7009f68`)
