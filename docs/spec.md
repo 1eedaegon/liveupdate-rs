@@ -338,20 +338,28 @@ and the adapter begins it, also while the application does not run.
   is refused (LU-UPDATE-9). No test waits that long.
 - **A scheduled start in a process that does not run.** The device tests run the receiver in the test's
   own process. That Android starts a process for the alarm, and that the receiver posts there without
-  the Rust library, was seen by hand on the API 36 and API 37 emulators (`docs/testing.md`), not by a
-  test: an instrumentation cannot outlive its process. So were a restart of the device with and without
-  the host's declaration, an update of the application and a force stop while a start waits, and the
-  exact alarm taken back, which stops the application.
+  the Rust library, was seen by hand on the API 36 and API 37 emulators, a Galaxy S23 with Android 17
+  and a Galaxy Note10 with Android 12 (`docs/testing.md`), not by a test: an instrumentation cannot
+  outlive its process. So were, on the emulators, a restart of the device with and without the host's
+  declaration, an update of the application and a force stop while a start waits, and the exact alarm
+  taken back, which stops the application.
+- **Which permission gives the exact alarm.** The device tests declare `SCHEDULE_EXACT_ALARM` and allow
+  it as a person does. By hand (`docs/testing.md`): a package that declares `USE_EXACT_ALARM` has the
+  exact alarm without a setting on the API 37 emulator and the Galaxy S23, and the inexact two on the
+  Note10, whose Android 12 does not know that permission and allows `SCHEDULE_EXACT_ALARM` without the
+  person. A package that declares both, the second up to API 32, was run on the API 37 emulator only.
+  Android 13 was not run.
 - **When an inexact alarm comes.** Without the exact-alarm permission Android chooses the moment within
   a window: ten minutes for the one alarm, and three quarters of the wait, an hour at most, for the one
-  that also fires while the device dozes. By hand on the emulators a start began anywhere up to the end
-  of the shorter window, awake and dozing (`docs/testing.md`). The tests schedule five seconds ahead, where Android
-  gives no window. While a device is not charging Android also holds an inexact alarm back by how
+  that also fires while the device dozes. By hand on the emulators and the Note10 a start began anywhere
+  up to the end of the shorter window, awake and dozing (`docs/testing.md`). The tests schedule five
+  seconds ahead, where Android gives no window. While a device is not charging Android also holds an inexact alarm back by how
   often the person opens the application: the alarms of a package that nobody had opened were put off
   by a year. Battery savers of an OEM that hold alarms back are not tested.
-- **Promotion of a start that the alarm posted.** By hand on the API 37 emulator the notification was
-  promoted, posted by a process that Android had started for the alarm. Whether an OEM's system UI
-  promotes one posted from the background is its own (LU-CAP-2).
+- **Promotion of a start that the alarm posted.** By hand on the API 37 emulator and the Galaxy S23 the
+  notification was listed as promoted, posted by a process that Android had started for the alarm. What
+  the S23 drew for it was not looked at. Whether an OEM's system UI promotes one posted from the
+  background is its own (LU-CAP-2).
 - **Android's rate limit for updates.** Android's notification service drops updates of a notification
   that an app posts faster than its enqueue rate allows. A dropped update would leave its record
   `unknown` until a later update or end, and a record that stays `unknown` is not reported as dismissed

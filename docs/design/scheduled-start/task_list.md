@@ -29,3 +29,7 @@
   and without the exact alarm, while the device dozes, across a restart, an update and a force stop,
   and with the exact alarm taken back. The last began nothing until the application ran again: an
   inexact alarm now stays beside the exact one. Seen failing, then passing.
+- [x] By hand on two phones and with the other permission (`docs/testing.md`, 2026-11-16): a test
+  package that declares `USE_EXACT_ALARM` on the API 37 emulator and a Galaxy S23, and one with either
+  permission on a Galaxy Note10 with Android 12, which does not know `USE_EXACT_ALARM`. The README says
+  what an application that uses it declares for Android 12.

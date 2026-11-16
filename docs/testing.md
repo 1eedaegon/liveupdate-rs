@@ -214,6 +214,39 @@ The release itself was checked the same day: the AAR of the GitHub release `v0.4
 published beside it and passes `tests/android/aar.sh`, the sources of `liveupdate` 0.4.0 on crates.io
 are those of the tag, and the README's example compiles against it for both Android targets.
 
+On 2026-11-16, after 0.4.1, the exact alarm was followed by hand with the other permission and on two
+phones: a Galaxy S23 (`SM-S911N`, Android 17, One UI 9) and a Galaxy Note10 (`SM-N971N`, Android 12,
+API 31, One UI 4.1). The test package was built with `USE_EXACT_ALARM` in place of
+`SCHEDULE_EXACT_ALARM`, for the Note10 also as it is, and once with both. Nothing was set for it on a
+device. A phone has no root: there the package was built once more with the receiver exported, so that
+the shell could send it the alarm's broadcast, and the process was killed from the shell, with
+`run-as … kill` on the S23 and `am kill` on the Note10. The phones were attached by USB, of which the
+Note10 reported power, with the battery saver off, and deep idle was forced
+(`dumpsys deviceidle force-idle`). A battery saver and Samsung's sleeping apps were not tried.
+
+- **`USE_EXACT_ALARM` on Android 17.** On the API 37 emulator and the S23 the permission was granted at
+  the install, the scheduled-start tests passed as with the exact alarm allowed, 7 of 7 on each, and
+  `dumpsys alarm` listed an alarm with no window, allowed by `policy_permission`, beside the inexact one.
+  A start into a killed process began 2.3 seconds after its time on the awake emulator and 0.9 seconds
+  after in forced deep idle, and on the S23 0.2 and 0.3 seconds after. On the S23 both were listed as
+  promoted.
+- **Android 12 with `SCHEDULE_EXACT_ALARM`.** On the Note10 the package had the exact alarm without
+  anything being set, allowed by `permission`. A start began half a second after its time, awake and in
+  forced deep idle, as an ordinary ongoing notification: Android 12 promotes none.
+- **Android 12 with `USE_EXACT_ALARM` alone.** The Note10 listed the permission as requested and did not
+  grant it. The package had the inexact two alarms. A start 60 seconds ahead began 44 seconds after its
+  time, and one 90 seconds ahead in forced deep idle 67 seconds after: each at the end of the window of
+  three quarters of the wait. Nobody had opened that package (standby bucket 50, where the one before
+  was in bucket 10 after its tests), and Android listed no delay for standby.
+- **Both declared**, `SCHEDULE_EXACT_ALARM` with `android:maxSdkVersion="32"`: the API 37 emulator listed
+  `USE_EXACT_ALARM` alone, granted, the scheduled-start tests passed 7 of 7, and a start began 2.1
+  seconds after its time. That package was not run on the Note10, and no Android 13 was run.
+- **The scheduled-start tests on Android 12.** The one that reads the alarms asserts Android 14 and was
+  left out. 5 of the other 6 passed. The sixth expects that a clock which is older than 14 days at the
+  start's time is refused, which the adapter does from API 35 (LU-ADAPTER-10): of the nine records it
+  expects to be refused, the two with such a clock were taken and the other seven refused. What the test
+  asserts after them was not run there.
+
 The connected Galaxy S23 (`SM-S911N`) on Android 17 / One UI 9 is also tested explicitly by serial.
 It has passed the rich ProgressStyle and MetricStyle reconstruction, Samsung Now Bar extras,
 immutable actions, durable action/dismissal events, private images, v1 regressions and Rust/JNI
