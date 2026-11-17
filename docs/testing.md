@@ -240,12 +240,28 @@ Note10 reported power, with the battery saver off, and deep idle was forced
   was in bucket 10 after its tests), and Android listed no delay for standby.
 - **Both declared**, `SCHEDULE_EXACT_ALARM` with `android:maxSdkVersion="32"`: the API 37 emulator listed
   `USE_EXACT_ALARM` alone, granted, the scheduled-start tests passed 7 of 7, and a start began 2.1
-  seconds after its time. That package was not run on the Note10, and no Android 13 was run.
+  seconds after its time. The Note10 ran that package a day later, below. No Android 13 was run.
 - **The scheduled-start tests on Android 12.** The one that reads the alarms asserts Android 14 and was
   left out. 5 of the other 6 passed. The sixth expects that a clock which is older than 14 days at the
   start's time is refused, which the adapter does from API 35 (LU-ADAPTER-10): of the nine records it
   expects to be refused, the two with such a clock were taken and the other seven refused. What the test
   asserts after them was not run there.
+
+On 2026-11-17, after 0.4.2, the package that declares both, `SCHEDULE_EXACT_ALARM` with
+`android:maxSdkVersion="32"`, was run by hand on the Note10, built for a phone as the day before, with
+the receiver exported, and its process killed with `am kill`. Nothing was set for it. The phone was
+attached by USB and reported power, with the battery saver off, and nobody had opened the package
+(standby bucket 50). The scheduled-start tests were not run with it there.
+
+- **What Android 12 grants.** It listed both permissions as requested and granted
+  `SCHEDULE_EXACT_ALARM` at the install. `USE_EXACT_ALARM` was not among those granted.
+- **The alarm.** `dumpsys alarm` listed an alarm with no window, allowed by `permission`, beside the
+  inexact one. A start into a killed process began about half a second after its time in each of three
+  runs: one on the awake phone and two in forced deep idle.
+- **Deep idle.** After the first run in deep idle the phone's idle history had it leave deep idle at
+  about the alarm's time, with the reason `alarm`, so the run was repeated with the state read about
+  every two seconds: `IDLE` by 83 seconds before the start's time, and still after the notification was
+  posted.
 
 The connected Galaxy S23 (`SM-S911N`) on Android 17 / One UI 9 is also tested explicitly by serial.
 It has passed the rich ProgressStyle and MetricStyle reconstruction, Samsung Now Bar extras,

@@ -182,6 +182,7 @@ fn no_doc_says_what_is_no_longer_true() {
             "Galaxy S23 is currently a fallback compatibility target",
             "git = \"https://github.com/1eedaegon/liveupdate-rs\"",
             "connectedDebugAndroidTest",
+            "That package was not run on the Note10",
         ] {
             assert!(!text.contains(stale), "{file} still says {stale:?}");
         }
