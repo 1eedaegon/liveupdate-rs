@@ -347,8 +347,9 @@ and the adapter begins it, also while the application does not run.
   it as a person does. By hand (`docs/testing.md`): a package that declares `USE_EXACT_ALARM` has the
   exact alarm without a setting on the API 37 emulator and the Galaxy S23, and the inexact two on the
   Note10, whose Android 12 does not know that permission and allows `SCHEDULE_EXACT_ALARM` without the
-  person. A package that declares both, the second up to API 32, was run on the API 37 emulator only.
-  Android 13 was not run.
+  person. A package that declares both, the second up to API 32, has the exact alarm without a setting
+  on the API 37 emulator, by `USE_EXACT_ALARM`, and on the Note10, by `SCHEDULE_EXACT_ALARM`. Android 13
+  was not run.
 - **When an inexact alarm comes.** Without the exact-alarm permission Android chooses the moment within
   a window: ten minutes for the one alarm, and three quarters of the wait, an hour at most, for the one
   that also fires while the device dozes. By hand on the emulators and the Note10 a start began anywhere

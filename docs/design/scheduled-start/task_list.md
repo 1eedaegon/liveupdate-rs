@@ -33,3 +33,6 @@
   package that declares `USE_EXACT_ALARM` on the API 37 emulator and a Galaxy S23, and one with either
   permission on a Galaxy Note10 with Android 12, which does not know `USE_EXACT_ALARM`. The README says
   what an application that uses it declares for Android 12.
+- [x] By hand, what the README says to declare, on the Note10 (`docs/testing.md`, 2026-11-17): of a
+  package with both permissions Android 12 grants `SCHEDULE_EXACT_ALARM`, and its start begins half a
+  second after its time, awake and in forced deep idle.
