@@ -501,7 +501,7 @@ internal class NotificationRenderer(
             val authentication = optionalBoolean(value, "authenticationRequired") ?: false
             // An action with a URL opens it; Android lets no receiver of a notification start an activity.
             val pending = optionalText(value, "openUrl", MAX_URL)?.let { url -> link(activityId, id, url) }
-                ?: actionBroadcast(activityId, id)
+                ?: actionBroadcast(activityId, id, authentication)
             builder.addAction(
                 Notification.Action.Builder(icon, title, pending).apply {
                     if (Build.VERSION.SDK_INT >= 31) setAuthenticationRequired(authentication)
@@ -510,12 +510,14 @@ internal class NotificationRenderer(
         }
     }
 
-    private fun actionBroadcast(activityId: String, actionId: String): PendingIntent {
+    /** The broadcast of an action's tap, which says whether the action requires [authentication]. */
+    private fun actionBroadcast(activityId: String, actionId: String, authentication: Boolean): PendingIntent {
         val data = Uri.Builder().scheme("liveupdate").authority("action")
             .appendPath(activityId).appendPath(actionId).build()
         val intent = Intent(application, LiveUpdateActionReceiver::class.java)
             .setAction(LIVE_UPDATE_ACTION).setData(data)
             .putExtra(ACTIVITY_ID_EXTRA, activityId).putExtra(ACTION_ID_EXTRA, actionId)
+            .putExtra(AUTHENTICATION_EXTRA, authentication)
         return PendingIntent.getBroadcast(
             application,
             0,

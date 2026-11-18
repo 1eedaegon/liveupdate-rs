@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.4.4 - 2026-11-18
+
+- fix: an action that requires authentication is not taken from a locked device below Android 12 (`9069606`)
+
 ## 0.4.3 - 2026-11-18
 
 - test: the Note10 ran the package that declares both exact-alarm permissions (`645baa5`)

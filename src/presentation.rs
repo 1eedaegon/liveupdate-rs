@@ -85,9 +85,9 @@ pub struct NotificationAction {
     /// Optional action icon.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<IconSource>,
-    /// Whether Android should authenticate before sending the action. Android has this from
-    /// version 12 (API 31): on an older version the action is posted without it, and sent as any
-    /// other.
+    /// Whether the person must unlock the device before the action is taken. Android asks from
+    /// version 12 (API 31). On an older version nothing asks, and the AAR drops a tap of the
+    /// action while the device is locked.
     #[serde(default, skip_serializing_if = "is_false")]
     pub authentication_required: bool,
     /// URL the action opens in the application, instead of queuing an event.
