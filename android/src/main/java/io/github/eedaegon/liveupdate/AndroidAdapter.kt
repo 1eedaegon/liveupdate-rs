@@ -5,6 +5,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
 import android.service.notification.StatusBarNotification
 import org.json.JSONArray
@@ -37,7 +38,8 @@ private const val NATIVE_MESSAGE = "The Android live update adapter failed."
  * [sdk] and [manufacturer] describe the device behavior the adapter follows. They use the real
  * device values; tests override them to exercise platform- and vendor-specific paths, and
  * [alertChannelId] to block the alerting channel as a user does. [exactAlarms] says whether an exact alarm may
- * be set, where Android is not to be asked, and [listingGrace] how long a post may stay unlisted.
+ * be set, where Android is not to be asked, [listingGrace] how long a post may stay unlisted, and [wearOngoing]
+ * whether a watch's Ongoing Activity is offered, where the device is not to be asked.
  */
 internal class AndroidAdapter(
     context: Context,
@@ -46,11 +48,17 @@ internal class AndroidAdapter(
     private val alertChannelId: String = ALERT_CHANNEL_ID,
     exactAlarms: Boolean? = null,
     listingGrace: Long = LISTING_GRACE,
+    wearOngoing: Boolean? = null,
 ) : ManagedAdapter {
     private val application = context.applicationContext
     private val manager = application.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     private val preferences = application.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
     private val scheduled = ScheduledStarts(application, this, preferences, exactAlarms, listingGrace)
+    private val wearOngoing = wearOngoing ?: offersWearOngoing(
+        application.packageManager.hasSystemFeature(PackageManager.FEATURE_WATCH),
+        sdk,
+        ::hasWearOngoingLibrary,
+    )
 
     override fun capabilities(): JSONObject {
         ensureChannel()
@@ -77,7 +85,8 @@ internal class AndroidAdapter(
                 .put("publicVersion", true)
                 .put("branding", true)
                 .put("scheduledStart", true)
-                .put("exactStart", scheduled.exact()))
+                .put("exactStart", scheduled.exact())
+                .put("wearOngoingActivity", wearOngoing))
     }
 
     override fun read(): JSONArray {
@@ -207,7 +216,12 @@ internal class AndroidAdapter(
 
     /** The notification of a stored receipt, on the alerting channel when its revision alerts and the user allows. */
     internal fun build(record: JSONObject): Notification =
-        NotificationRenderer(application, sdk, CHANNEL_ID, manufacturer).build(record, alertChannel(record))
+        renderer().build(record, alertChannel(record))
+
+    private fun renderer(): NotificationRenderer {
+        val ongoing: ((Context, Notification) -> Unit)? = if (wearOngoing) WearOngoing::apply else null
+        return NotificationRenderer(application, sdk, CHANNEL_ID, manufacturer, ongoing)
+    }
 
     /**
      * The id and the notification of the live activity with the foreground placement, for a service of the
@@ -221,7 +235,7 @@ internal class AndroidAdapter(
             isForegroundPlaced(record) && record.optionalString("state") !in setOf("ended", "dismissed")
         } ?: return null
         val id = record.optionalString("id") ?: return null
-        val notification = NotificationRenderer(application, sdk, CHANNEL_ID, manufacturer).build(posted(record))
+        val notification = renderer().build(posted(record))
         refuseOldTime(notification)
         return id to notification
     }

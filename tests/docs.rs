@@ -117,6 +117,7 @@ fn the_docs_state_what_an_app_must_know() {
         "one retained client per process",
         "`EndPolicy::After` keeps the last content until its time",
         "cannot be more than 14 days old",
+        "Live Updates come to watches with Wear OS 7",
         "A start or an update stores them in at most 1,000,000 bytes",
         "A scheduled start is on the minute only with the exact-alarm permission",
         "Android 12 does not know `USE_EXACT_ALARM`",
@@ -158,6 +159,8 @@ fn the_docs_state_what_an_app_must_know() {
         "io.github.eedaegon.liveupdate.LiveUpdateStartReceiver",
         "`NextCheck::Soon`",
         "`AndroidPresentation::new(style)`",
+        "androidx.wear:wear-ongoing",
+        "`capabilities()?.presentation.wear_ongoing_activity`",
     ] {
         assert!(
             readme.contains(feature),

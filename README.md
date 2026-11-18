@@ -353,6 +353,33 @@ which a service calls before it stops for another reason, leaves it as an ordina
 not end the activity in the same instant as a detach: Android may post the notification once more. A process that Android killed loses the notification; a
 restarted service that calls `attach` before the first lifecycle call shows the activity again.
 
+### Wear OS
+
+The same calls run in an application on a watch. On a Galaxy Watch4 with Wear OS 5 the instrumentation
+tests pass but for those that assert what Android 15 to 17 do ([docs/testing.md](docs/testing.md)). Its
+userspace is 32-bit, so build your Rust library for `armeabi-v7a` too (`armv7-linux-androideabi`).
+
+A watch shows an ongoing notification in its tray only. By Google's documentation, Live Updates come to
+watches with Wear OS 7 (Android 17), and below, what puts an activity on the watch face, as an icon that
+opens the application, and among the recent applications is the Ongoing Activity of AndroidX. The AAR
+adds one to every notification of a live activity when your watch application has that library; it does
+not bring it:
+
+```kotlin
+dependencies {
+    implementation("androidx.wear:wear-ongoing:1.1.0")
+}
+```
+
+`capabilities()?.presentation.wear_ongoing_activity` says whether it is offered: on a watch below
+Wear OS 7 with the library. The Ongoing Activity shows what the notification shows, the small icon, the
+title, the status and a header clock, and opens what a tap on the notification opens. Nothing changes in
+a request, and nothing on a phone.
+
+A live activity of the phone does not appear on a paired watch: by Google's documentation Android does
+not bridge ongoing notifications, and bridges Live Updates from Wear OS 7 where the manufacturer allows
+it.
+
 ## How it works
 
 ```text
@@ -414,6 +441,8 @@ oversized adapter data fails closed as `NATIVE_ERROR`.
   which from Android 14 the person has to allow, or `USE_EXACT_ALARM`. Without it Android chooses the
   moment, up to ten minutes late while the device is awake and up to an hour while it dozes. It cannot
   be updated before it begins, and it does not take the foreground placement.
+- On a watch the Ongoing Activity was seen on a Galaxy Watch4 with Wear OS 5: its icon on the watch
+  face. Wear OS 6 and 7 were not run.
 - Visibility is reported as `Unknown`: requesting private notification content does not prove what
   an OEM system UI actually revealed.
 - Use one retained client per process so operations share the same serialization boundary. Every

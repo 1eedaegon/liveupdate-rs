@@ -293,6 +293,20 @@ and the adapter begins it, also while the application does not run.
 | LU-SCHED-13 | Android drops alarms when the device restarts. A host that declares `LiveUpdateStartReceiver` for `BOOT_COMPLETED`, with the permission `RECEIVE_BOOT_COMPLETED`, has what is due begun and the alarm set again then. The AAR's manifest declares the receiver without a filter and not exported, and the receiver acts on no other broadcast than its alarm's and that one. Without the declaration LU-SCHED-10 makes up for it at the next lifecycle call. | `BOOT_COMPLETED` → the stored receipt begins at its time. | — | Android |
 | LU-SCHED-14 | A scheduled start from Rust crosses JNI: the record is `scheduled` with its `startAt`, an update is refused, the AAR begins the activity at its time while Rust is not asked, and `state_changes` answers `scheduled` and then `active`, each once. A start whose time has passed is posted within the start itself: its first record is `unknown` or `active`, as after any post, and `scheduled` is never answered for it. | A start a second in the past → `unknown` or `active`, then `active` answered alone. | — | Android |
 
+## Wear OS
+
+On a watch below Wear OS 7 the surface of an activity in progress is the Ongoing Activity of
+`androidx.wear:wear-ongoing`: an icon on the watch face and an entry among the recent applications
+([wear-ongoing-activity](design/wear-ongoing-activity/PRD.md)).
+
+| ID | Behavior | Input → expected result | Errors | Platform |
+| --- | --- | --- | --- | --- |
+| LU-WEAR-1 | The adapter offers the Ongoing Activity on a watch (`FEATURE_WATCH`) that runs API 30 to 36 when the application has the library, `androidx.wear.ongoing.OngoingActivity`, which is asked only on such a watch. It then puts one into every notification of a live activity that has a content intent, also the one a foreground service holds, and builds it anew at every post. The last content of an ended activity (LU-END-9) carries none, and neither does any notification when it is not offered. When the library fails, in whatever version the application has, the notification is posted as it is. | A watch of API 34 with the library → offered; a phone, API 29, API 37, no library → not. A post, an update → the newer status; a delayed end → none; a library that throws → the notification without one. | — | Android |
+| LU-WEAR-2 | The Ongoing Activity shows what its notification shows: the small icon as its static icon, the content intent as its touch intent, the title, the category, and the text as its status. | Title `Delivery`, text `On the way` → the same title and status, the notification's icon and intent. | — | Android |
+| LU-WEAR-3 | A header clock (LU-V2-CHRONO-1) is part of the status, after the text: a countdown as the library's timer part and a clock that counts up as its stopwatch part. The part's time is the clock's, moved from the wall clock to the time since the device started by their difference at the post. | A countdown that ends in ten minutes → a timer part ten minutes ahead of the elapsed time; one that began a minute ago and counts up → a stopwatch part a minute behind. | — | Android |
+| LU-WEAR-4 | The capability `wearOngoingActivity` says whether the adapter offers the Ongoing Activity (LU-WEAR-1). A reply that leaves it out reads it as false. | The test asks for it → true; the emulator's own answer → false. | — | all; Android |
+| LU-WEAR-5 | The AAR compiles against `androidx.wear:wear-ongoing` and does not bring it. One class, `WearOngoing`, names AndroidX classes. Its consumer ProGuard rules tell R8 not to warn of them and keep that class, so that its code is not moved into the classes that call it. An application without the library builds, and runs none of that class's code. | No other class of the AAR names `androidx`; the rules are in `proguard.txt`. | — | Android |
+
 ## Docs
 
 | ID | Behavior | Input → expected result | Errors | Platform |
@@ -367,6 +381,13 @@ and the adapter begins it, also while the application does not run.
   seconds ahead, where Android gives no window. While a device is not charging Android also holds an inexact alarm back by how
   often the person opens the application: the alarms of a package that nobody had opened were put off
   by a year. Battery savers of an OEM that hold alarms back are not tested.
+- **The Ongoing Activity on a watch.** The device tests read the Ongoing Activity back from the posted
+  notification. That a watch shows it was seen by hand on a Galaxy Watch4 Classic with Wear OS 5
+  (`docs/testing.md`): the icon on the watch face. How the recent applications show its status was not
+  looked at, Wear OS 6 and 7 were not run, and no application without the library was run on a device
+  or built with R8: the test package has the library and is not shrunk. That a watch with Wear OS 7
+  shows the promoted notification as a Live Update is from Google's documentation; a notification that is
+  not promoted there has neither that nor an Ongoing Activity.
 - **Promotion of a start that the alarm posted.** By hand on the API 37 emulator and the Galaxy S23 the
   notification was listed as promoted, posted by a process that Android had started for the alarm. What
   the S23 drew for it was not looked at. Whether an OEM's system UI promotes one posted from the
@@ -555,3 +576,8 @@ and the adapter begins it, also while the application does not run.
 | LU-SCHED-12 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/ScheduledStartInstrumentationTest.kt::anEndBeforeTheTimeLeavesNothingAndTheNextStartKeepsItsAlarm` (device)<br>`android/src/androidTest/java/io/github/eedaegon/liveupdate/ScheduledStartInstrumentationTest.kt::theAlarmIsExactWhereTheApplicationMaySetOneAndInexactOtherwise` (device) |
 | LU-SCHED-13 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/ScheduledStartInstrumentationTest.kt::aRestartOfTheDeviceSetsTheAlarmAgainForAHostThatDeclaredTheReceiver` (device)<br>`android/src/androidTest/java/io/github/eedaegon/liveupdate/LiveUpdateBridgeInstrumentationTest.kt::theManifestMergesBothNotificationPermissions` (device)<br>`tests/android/aar.sh::manifest_declares_both_notification_permissions` (build) |
 | LU-SCHED-14 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/NativeRustInstrumentationTest.kt::aScheduledStartFromRustBeginsAtItsTimeAndIsAnsweredOnceEach` (device) |
+| LU-WEAR-1 | `android/src/test/java/io/github/eedaegon/liveupdate/WearOngoingTest.kt::theOngoingActivityIsOfferedOnAWatchOfApi30To36ThatHasTheLibrary` (kotlin)<br>`android/src/androidTest/java/io/github/eedaegon/liveupdate/WearOngoingInstrumentationTest.kt::aNotificationOfALiveActivityCarriesAnOngoingActivityWhereItIsOffered` (device)<br>`android/src/androidTest/java/io/github/eedaegon/liveupdate/WearOngoingInstrumentationTest.kt::theLastContentAndAHeldNotificationFollowTheRule` (device)<br>`android/src/androidTest/java/io/github/eedaegon/liveupdate/WearOngoingInstrumentationTest.kt::aLibraryThatFailsLeavesTheNotificationAsItIs` (device) |
+| LU-WEAR-2 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/WearOngoingInstrumentationTest.kt::aNotificationOfALiveActivityCarriesAnOngoingActivityWhereItIsOffered` (device) |
+| LU-WEAR-3 | `android/src/test/java/io/github/eedaegon/liveupdate/WearOngoingTest.kt::aClocksTimeMovesToTheTimeSinceTheDeviceStarted` (kotlin)<br>`android/src/androidTest/java/io/github/eedaegon/liveupdate/WearOngoingInstrumentationTest.kt::aHeaderClockBecomesATimerOrAStopwatchPartOfTheStatus` (device) |
+| LU-WEAR-4 | `tests/contract.rs::the_wear_ongoing_activity_capability_is_read_and_false_when_left_out` (integration)<br>`android/src/androidTest/java/io/github/eedaegon/liveupdate/WearOngoingInstrumentationTest.kt::theCapabilityFollowsWhatIsOffered` (device) |
+| LU-WEAR-5 | `tests/android/aar.sh::only_the_wear_class_names_androidx` (build) |

@@ -41,7 +41,8 @@ fn capabilities_use_the_stable_camel_case_contract() {
                 "publicVersion": false,
                 "branding": false,
                 "scheduledStart": false,
-                "exactStart": false
+                "exactStart": false,
+                "wearOngoingActivity": false
             }
         })
     );
@@ -311,4 +312,18 @@ fn public_records_do_not_leak_cross_platform_backend_discriminators() {
             "promotionState": "notPromoted"
         })
     );
+}
+
+// LU-WEAR-4
+#[test]
+fn the_wear_ongoing_activity_capability_is_read_and_false_when_left_out() {
+    let offered: PresentationCapabilities =
+        serde_json::from_value(json!({ "wearOngoingActivity": true })).unwrap();
+    assert!(offered.wear_ongoing_activity);
+    assert_eq!(
+        serde_json::to_value(offered).unwrap()["wearOngoingActivity"],
+        json!(true)
+    );
+    let silent: PresentationCapabilities = serde_json::from_value(json!({})).unwrap();
+    assert!(!silent.wear_ongoing_activity);
 }

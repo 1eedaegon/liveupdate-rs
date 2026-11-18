@@ -9,6 +9,7 @@ import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
@@ -23,18 +24,23 @@ private const val MAX_ACTIONS = 3
 private const val MAX_METRICS = 3
 private const val MAX_SUB_TEXT = 64
 private const val INVALID_MESSAGE = "Invalid live update request."
+private const val LOG_TAG = "LiveUpdate"
 private val ACTION_ID = Regex("[A-Za-z0-9][A-Za-z0-9._:-]{0,63}")
 private val VALID_STATES = setOf("unknown", "scheduled", "active", "stale", "ended", "dismissed")
 private val VALID_PROMOTION_STATES = setOf("promoted", "notPromoted", "notApplicable", "unknown")
 private val VALID_STYLES = setOf("standard", "bigText", "progress", "timer", "metric")
 private val VALID_PLACEMENTS = setOf("tagged", "foreground")
 
-/** Strict schema-v1/v2 parser and Android system-template renderer. */
+/**
+ * Strict schema-v1/v2 parser and Android system-template renderer. [ongoing] puts a watch's Ongoing Activity
+ * into a notification of a live activity, where the adapter offers one.
+ */
 internal class NotificationRenderer(
     context: Context,
     private val sdk: Int,
     private val channelId: String,
     private val manufacturer: String,
+    private val ongoing: ((Context, Notification) -> Unit)? = null,
 ) {
     private val application = context.applicationContext
     private val icons = IconResolver(application)
@@ -60,7 +66,26 @@ internal class NotificationRenderer(
         }
         // The last content of an ended activity reports nothing when it goes.
         if (!record.isMissingOrNull("dismissAt")) builder.setDeleteIntent(null)
-        return builder.build()
+        val notification = builder.build()
+        // The last content of an ended activity is not ongoing, and no activity in progress.
+        if (ongoing != null && notification.flags and Notification.FLAG_ONGOING_EVENT != 0) {
+            carryOngoing(ongoing, notification)
+        }
+        return notification
+    }
+
+    /**
+     * The Ongoing Activity is the application's library at work, in whatever version it has: when it fails, the
+     * notification is posted as it is.
+     */
+    private fun carryOngoing(ongoing: (Context, Notification) -> Unit, notification: Notification) {
+        try {
+            ongoing(application, notification)
+        } catch (_: Exception) {
+            Log.e(LOG_TAG, "Could not add the Ongoing Activity to a live update.")
+        } catch (_: LinkageError) {
+            Log.e(LOG_TAG, "Could not add the Ongoing Activity to a live update.")
+        }
     }
 
     private fun validateRecordShape(record: JSONObject) {

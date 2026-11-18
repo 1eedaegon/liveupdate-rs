@@ -180,6 +180,10 @@ if "rust-lang/crates-io-auth-action@" not in publish or "cargo publish --locked"
     fail("publish.yml does not publish through Trusted Publishing")
 if "no successful CI run on main for" not in release or "git merge-base --is-ancestor" not in release:
     fail("publish.yml does not require main's CI for the tag's commit")
+# The coordinator starts publish.yml the moment the version commit's CI run ended, and GitHub lists a run as
+# successful some time after: 0.4.4 asked once, 32 seconds after, and was told of none.
+if not re.search(r"for attempt in [^\n]+; do\n\s+runs=\$\(gh api [^\n]*status=success", release):
+    fail("publish.yml asks once for the CI run of the tag's commit, and does not wait for it to be listed")
 if 'tools/release.sh notes "$VERSION" > "$RUNNER_TEMP/release-notes.md"' not in release:
     fail("publish.yml does not build release notes from the recorded commit subjects")
 if '--notes-file "$RUNNER_TEMP/release-notes.md"' not in release:

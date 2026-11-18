@@ -73,6 +73,9 @@ pub struct PresentationCapabilities {
     /// Whether the adapter may set an exact alarm for a scheduled start now. Without it Android
     /// chooses the moment, some minutes after the time.
     pub exact_start: bool,
+    /// Whether a notification carries a watch's Ongoing Activity, its icon on the watch face: on
+    /// a watch below Wear OS 7 whose application has `androidx.wear:wear-ongoing`.
+    pub wear_ongoing_activity: bool,
 }
 
 /// What to do when the system cannot promote an ongoing notification.

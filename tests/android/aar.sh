@@ -56,8 +56,23 @@ the_aar_holds_the_bridge_and_its_resources() {
   grep -q 'android:minSdkVersion="26"' "$work/AndroidManifest.xml" || fail "minSdk is not 26"
 }
 
+# LU-WEAR-5
+only_the_wear_class_names_androidx() {
+  mkdir "$work/classes"
+  unzip -q "$work/classes.jar" -d "$work/classes"
+  # A class names another by its path, with slashes.
+  naming=$(cd "$work/classes" && grep -rl 'androidx/' . | sort | tr '\n' ' ')
+  [ "$naming" = "./io/github/eedaegon/liveupdate/WearOngoing.class " ] \
+    || fail "the classes that name AndroidX are: ${naming:-none}"
+  for rule in '-dontwarn androidx.wear.ongoing.**' '-dontwarn androidx.core.app.NotificationCompat$Builder' \
+    '-keep class io.github.eedaegon.liveupdate.WearOngoing { *; }'; do
+    grep -qF -- "$rule" "$work/proguard.txt" || fail "proguard.txt lacks $rule"
+  done
+}
+
 manifest_declares_both_notification_permissions
 consumer_rules_keep_the_jni_entry_point
 the_aar_holds_the_bridge_and_its_resources
+only_the_wear_class_names_androidx
 [ "$failures" = 0 ] || { echo "$failures AAR check(s) failed"; exit 1; }
 echo "aar: permissions, keep rules, classes and resources as specified"

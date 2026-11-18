@@ -23,6 +23,8 @@
             "aarch64-linux-android"
             # Android Studio phone emulators on this Intel macOS host and CI.
             "x86_64-linux-android"
+            # Watches with a 32-bit userspace, as the Galaxy Watch4.
+            "armv7-linux-androideabi"
           ];
         };
       in

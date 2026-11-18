@@ -127,7 +127,10 @@ successful CI. Run `CI` once by hand on `main` first if that run is missing. If 
 rerun **Auto release** without `major`; its no-change recovery path dispatches `publish.yml` again.
 
 `.github/workflows/publish.yml` requires a successful CI run on main for the tag's exact commit, records
-the matching changelog section as the GitHub release notes, and attaches the AAR. After a validated tag
+the matching changelog section as the GitHub release notes, and attaches the AAR. It asks for that run
+for two minutes: the coordinator starts it the moment the run ended, and GitHub lists a run as successful
+some time after. The release of 0.4.4 asked once, 32 seconds after its CI run had ended, was told of none
+and failed with the tag pushed and nothing published; running that failed run again published it. After a validated tag
 is created, the coordinator dispatches that workflow with `publish=true`; a manual dispatch remains
 available for recovery. Publishing still requires the repository variable `CRATES_IO_PUBLISH` to be
 `true`, runs only after the AAR is attached, and uses the `crates-io` environment. The crates.io Trusted
@@ -270,3 +273,25 @@ round-trip tests. The 2026-11-09 final run passed 41 normal tests plus the isola
 test without skips; JaCoCo reported 95.36% Kotlin line coverage (658/690). The emulator remains the
 reproducible coverage gate; OEM promotion prominence still depends on device settings and system
 policy.
+
+On 2026-11-19 the instrumentation tests were run by hand on a watch, a Galaxy Watch4 Classic (`SM-R880`,
+Wear OS 5, Android 14, API 34, One UI Watch 6) over wireless debugging. Its userspace is 32-bit, so the
+test package was built with `-Pliveupdate.nativeAbis=armeabi-v7a`, which builds the tests' Rust library
+for `armv7-linux-androideabi`; the device script takes emulators only.
+
+- **The suite as it was.** 63 of 77 tests passed in the main run, the Rust and JNI ones among them, 6 of
+  7 with the exact alarm allowed, and both without the notification permission. Each of the 15 that
+  failed asserts what a newer Android does: four the refusal of an old clock (API 35), one of them
+  again in the second run; three use `hasPromotableCharacteristics` or the class of the progress style
+  (API 36); six assert API 37, and one expects the Samsung capability of API 37.
+- **The Ongoing Activity** (LU-WEAR-1 to LU-WEAR-4). With it in the build the main run has 82 tests,
+  and on the watch the adapter offers it for every notification of every test: 68 passed, the five of
+  the Ongoing Activity among them, and the same 14 failed; the other two runs were 6 of 7 and 2 of 2
+  again. The watch's own answer for the capability is true.
+- **The watch face, by hand.** A plain ongoing notification left the watch face as it was. A post
+  through the bridge, with the device's own answer, listed the notification with
+  `android.wearable.ongoingactivities.EXTENSIONS` in its extras and put the activity's icon at the bottom
+  of the watch face. The recent applications were not looked at.
+
+The test package was uninstalled after each of the day's runs but one: the watch left the network with it
+installed, and it was removed when the watch was back.
