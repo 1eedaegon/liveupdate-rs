@@ -2,6 +2,7 @@ package io.github.eedaegon.liveupdate
 
 import android.app.Notification
 import android.app.PendingIntent
+import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Build
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -288,6 +289,65 @@ class RichPresentationInstrumentationTest {
         assertEquals(0, adapter.drainEvents().getJSONArray("events").length())
     }
 
+    // LU-V2-ACTION-3
+    @Test
+    fun anActionThatRequiresAuthenticationWaitsForTheUnlockBelowApi31() {
+        val record = v2Record("guarded", "standard", v2Snapshot(
+            JSONObject().put("kind", "standard"),
+            actions = JSONArray().put(action("pay", "Pay", true)).put(action("open", "Open", false)),
+        ))
+        adapter.post(record)
+        val notification = Device.waitForShown("guarded")
+        // Each intent says whether its action requires authentication.
+        assertTrue(sent(notification.actions[0].actionIntent).getBooleanExtra("authenticationRequired", false))
+        assertFalse(sent(notification.actions[1].actionIntent).getBooleanExtra("authenticationRequired", true))
+        Device.waitUntil("both taps are queued") { EventStore(context).size() == 2 }
+
+        // A tap of [action] on a device of [sdk] that is [locked] or not, with what its intent says or, as an
+        // intent of an earlier version, nothing: the events stored and the listener's calls.
+        val heard = java.util.concurrent.atomic.AtomicInteger()
+        LiveUpdateEvents.setListener { heard.incrementAndGet() }
+        fun taken(sdk: Int, locked: Boolean, action: String = "pay", says: Boolean? = null): Pair<Int, Int> {
+            adapter.drainEvents()
+            heard.set(0)
+            val tap = Intent(LIVE_UPDATE_ACTION).putExtra(ACTIVITY_ID_EXTRA, "guarded").putExtra(ACTION_ID_EXTRA, action)
+            if (says != null) tap.putExtra(AUTHENTICATION_EXTRA, says)
+            ActionTap(sdk) { locked }.take(context, tap)
+            return EventStore(context).size() to heard.get()
+        }
+        val preferences = context.getSharedPreferences(Device.PREFERENCES, android.content.Context.MODE_PRIVATE)
+        try {
+            // Without a receipt the intent alone says it.
+            assertEquals(0 to 0, taken(sdk = 30, locked = true, says = true))
+            assertEquals(1 to 1, taken(sdk = 30, locked = false, says = true))
+            assertEquals(1 to 1, taken(sdk = 31, locked = true, says = true))
+            assertEquals(1 to 1, taken(sdk = 30, locked = true, says = false))
+            assertEquals(1 to 1, taken(sdk = 30, locked = true))
+
+            // The stored receipt says it for an intent that does not.
+            preferences.edit().putString("records", JSONArray().put(record).toString()).commit()
+            assertEquals(0 to 0, taken(sdk = 30, locked = true))
+            assertEquals(1 to 1, taken(sdk = 30, locked = false))
+            assertEquals(1 to 1, taken(sdk = 31, locked = true))
+            assertEquals(1 to 1, taken(sdk = 30, locked = true, action = "open"))
+            assertEquals(1 to 1, taken(sdk = 30, locked = true, action = "other"))
+            // Either one is enough, whatever the other says.
+            assertEquals(0 to 0, taken(sdk = 30, locked = true, says = false))
+            assertEquals(0 to 0, taken(sdk = 30, locked = true, action = "open", says = true))
+
+            // Receipts that cannot be read protect the action, and only while the device is locked.
+            preferences.edit().putString("records", "not json").commit()
+            assertEquals(0 to 0, taken(sdk = 30, locked = true, action = "open"))
+            assertEquals(1 to 1, taken(sdk = 30, locked = false, action = "open"))
+            assertEquals(1 to 1, taken(sdk = 31, locked = true, action = "open"))
+        } finally {
+            LiveUpdateEvents.setListener(null)
+        }
+        // The device's own answer is the keyguard's.
+        val keyguard = context.getSystemService(android.app.KeyguardManager::class.java)
+        assertEquals(keyguard.isDeviceLocked, deviceLocked(context))
+    }
+
     // LU-V2-EVENT-6
     @Test
     fun theListenerHearsAnActionAndADismissalOnceEachIsStored() {
@@ -481,6 +541,13 @@ class RichPresentationInstrumentationTest {
         .put("countsDown", countsDown)
 
     private fun samePendingIntent(first: PendingIntent, second: PendingIntent): Boolean = first == second
+
+    /** Sends [intent] and answers the intent that Android delivered for it. */
+    private fun sent(intent: PendingIntent): Intent {
+        val delivered = java.util.concurrent.LinkedBlockingQueue<Intent>()
+        intent.send(context, 0, null, { _, sent, _, _, _ -> delivered.put(sent) }, null)
+        return checkNotNull(delivered.poll(10, java.util.concurrent.TimeUnit.SECONDS)) { "the intent was not delivered" }
+    }
 
     private fun failureCode(action: () -> Unit): String =
         org.junit.Assert.assertThrows(AdapterFailure::class.java) { action() }.code
