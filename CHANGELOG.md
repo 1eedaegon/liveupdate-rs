@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.4.3 - 2026-11-18
+
+- test: the Note10 ran the package that declares both exact-alarm permissions (`645baa5`)
+- fix: large receipts make room in the store instead of failing every start (`8f1a2c8`)
+- ci: the mutation tests may take 90 minutes (`a6a6884`)
+- docs: an action asks for authentication from Android 12 (`859a27f`)
+
 ## 0.4.2 - 2026-11-16
 
 - chore: Clippy denies unwrap and expect outside tests (`d4abdfa`)
