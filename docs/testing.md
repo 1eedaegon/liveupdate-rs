@@ -281,12 +281,14 @@ for `armv7-linux-androideabi`; the device script takes emulators only.
   failed asserts what a newer Android does: four the refusal of an old clock (API 35), one of them
   again in the second run; three use `hasPromotableCharacteristics` or the class of the progress style
   (API 36); six assert API 37, and one expects the Samsung capability of API 37.
-- **The Ongoing Activity** (LU-WEAR-1 to LU-WEAR-4). Four device tests passed there, with the watch's
-  own answer for the capability: true. That was the build before the review, which looked for the
-  library by its name. The build after it, which asks for the library's class in code and has a fifth
-  test, of a library that fails, was not run on the watch: the watch had left the network. On the
-  emulator it is CI's.
+- **The Ongoing Activity** (LU-WEAR-1 to LU-WEAR-4). With it in the build the main run has 82 tests,
+  and on the watch the adapter offers it for every notification of every test: 68 passed, the five of
+  the Ongoing Activity among them, and the same 14 failed; the other two runs were 6 of 7 and 2 of 2
+  again. The watch's own answer for the capability is true.
 - **The watch face, by hand.** A plain ongoing notification left the watch face as it was. A post
   through the bridge, with the device's own answer, listed the notification with
   `android.wearable.ongoingactivities.EXTENSIONS` in its extras and put the activity's icon at the bottom
   of the watch face. The recent applications were not looked at.
+
+The test package was uninstalled after each of the day's runs but one: the watch left the network with it
+installed, and it was removed when the watch was back.

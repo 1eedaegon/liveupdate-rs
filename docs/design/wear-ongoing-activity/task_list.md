@@ -19,4 +19,5 @@
   its code into the renderer; the README says what passed on the watch and whose statements it repeats.
 - [x] Format, Clippy, host tests, the Kotlin unit tests and lint, the AAR checks, spec coverage. The
   device suite on API 37 is CI's: the emulator's image is not on this machine.
-- [ ] The build after the review on the watch: it had left the network.
+- [x] The build after the review on the watch, once it was back on the network: 68 of 82, 6 of 7 and 2
+  of 2 pass, the five tests of the Ongoing Activity among them.
