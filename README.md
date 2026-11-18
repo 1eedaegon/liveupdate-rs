@@ -185,6 +185,7 @@ delivered); the record's `template` follows the latest snapshot. Schema v1 keeps
 | Large icon | `large_icon: Some(IconSource::Resource("ic_order".into()))` | Or `IconSource::AppFile("icons/order.png".into())` under the app's files: at most 1 MiB and 1,024 pixels a side |
 | Button that reports a tap | `actions: vec![NotificationAction::new("cancel", "Cancel")]` | Up to three; an `Action` event |
 | Button that opens a screen | `NotificationAction { open_url: Some("myapp://orders/42/map".into()), ..NotificationAction::new("track", "Track") }` | No event; see [Links](#links) |
+| Button that asks to unlock first | `NotificationAction { authentication_required: true, ..NotificationAction::new("pay", "Pay") }` | From Android 12. An older Android has no such setting, and the button works there as any other |
 | Tap that opens a screen | `open_url: Some("myapp://orders/42".into())` | The launch activity without it |
 | Clock beside a style | `chronometer: Some(TimerStyle { timer, counts_down: true })` | With any style but `Timer`: a progress bar and a countdown |
 | Revision that alerts | `alert: true` | Posted on a second, high-importance channel; the next revision without it is quiet again |

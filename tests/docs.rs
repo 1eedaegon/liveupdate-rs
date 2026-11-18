@@ -139,6 +139,7 @@ fn the_docs_state_what_an_app_must_know() {
         "`short_critical_text:",
         "`large_icon:",
         "`NotificationAction::new(",
+        "authentication_required: true",
         "`open_url:",
         "`chronometer:",
         "`alert: true`",

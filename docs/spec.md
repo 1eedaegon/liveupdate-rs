@@ -317,6 +317,10 @@ and the adapter begins it, also while the application does not run.
   access.
 - **Distinct intents below API 29.** From API 29 an opening intent is told apart by its identifier. Below,
   only the request code tells two activities with the same URL apart, and it is a hash of their ids.
+- **An action's authentication below API 31.** The adapter gives Android an action's
+  `authenticationRequired` from API 31, where Android has it (LU-V2-ACTION-2). Below, it leaves the
+  member out and posts the action as any other: the post succeeds, and no capability says so. No device
+  below API 31 was run.
 - **Receipts and events of 0.2.0 and 0.2.1.** Those two versions named the Android namespace
   `io.github.gon.liveupdate`, and the preferences file after it. The namespace is again
   `io.github.eedaegon.liveupdate` and the preferences file `io.github.1eedaegon.liveupdate`, as in 0.1:
