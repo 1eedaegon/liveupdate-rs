@@ -5,9 +5,60 @@ mod common;
 
 use common::{FakeDriver, assert_code, request, snapshot, timer_snapshot};
 use liveupdate::{
-    ActivityState, Capabilities, DriverRecord, EndPolicy, ErrorCode, Fallback, LiveUpdate,
-    Observation, PromotionState,
+    ActivityState, AndroidPresentation, BigTextStyle, Capabilities, DriverRecord, EndPolicy,
+    ErrorCode, Fallback, LiveUpdate, Observation, PresentationStyle, PromotionState, Snapshot,
+    StartRequest, Template,
 };
+
+/// Content of schema version 2 with the long text `text`.
+fn text_snapshot(revision: u64, text: &str) -> Snapshot {
+    Snapshot {
+        progress: None,
+        presentation: Some(AndroidPresentation::new(PresentationStyle::BigText(
+            BigTextStyle {
+                text: text.into(),
+                summary: None,
+            },
+        ))),
+        ..snapshot(revision)
+    }
+}
+
+fn text_request(key: &str, text: &str) -> StartRequest {
+    StartRequest {
+        schema_version: 2,
+        template: Template::BigText,
+        snapshot: text_snapshot(0, text),
+        ..request(key)
+    }
+}
+
+/// The bytes the adapter stores for `records`: Android's JSON writes `/` as `\/`.
+fn adapter_bytes(records: &[DriverRecord]) -> usize {
+    serde_json::to_string(records)
+        .unwrap()
+        .replace('/', "\\/")
+        .len()
+}
+
+/// What the receipts may take.
+const STORE_LIMIT: usize = 1_000_000;
+
+/// A stored receipt of `request` in `state`, which `state_changes` has answered.
+fn stored(id: &str, request: StartRequest, state: ActivityState) -> DriverRecord {
+    DriverRecord {
+        id: id.into(),
+        snapshot: request.snapshot.clone(),
+        origin: request,
+        state,
+        promotion_requested: false,
+        promotion_state: PromotionState::NotApplicable,
+        awaiting_observation: false,
+        post_failed: false,
+        dismiss_at: None,
+        reported_state: Some(state),
+    }
+}
 
 // LU-LIST-1
 #[test]
@@ -291,6 +342,116 @@ fn the_oldest_tombstone_is_evicted_first() {
         client.end(&ended[0], EndPolicy::Immediate),
         ErrorCode::NotFound,
     );
+}
+
+// LU-LIMIT-5
+#[test]
+fn tombstones_go_sooner_when_the_receipts_would_pass_the_store_limit() {
+    let driver = FakeDriver::default();
+    let client = LiveUpdate::new(driver.clone());
+    // The largest text there is: 4,000 characters of four bytes, in the request and in the content.
+    let text = "🍡".repeat(4_000);
+    // Receipts of an earlier version, which kept tombstones by their number alone.
+    let left: Vec<_> = (10..43)
+        .map(|index| {
+            let request = text_request(&format!("done:{index}"), &text);
+            stored(&format!("ended-{index}"), request, ActivityState::Ended)
+        })
+        .collect();
+    let one = adapter_bytes(&left[..1]) - 1;
+    assert!(33 * one > STORE_LIMIT);
+    driver.edit(|state| state.records = left.clone());
+
+    // A start that the adapter refuses puts back what it would have let go.
+    driver.edit(|state| state.refuse_next_post = true);
+    assert_code(
+        client.start(text_request("next:00", &text)),
+        ErrorCode::InvalidInput,
+    );
+    assert_eq!(driver.records(), left);
+
+    let next = client.start(text_request("next:00", &text)).unwrap();
+    assert_eq!(next.state, ActivityState::Active);
+
+    // Fewer than the 128 that small receipts leave: the newest, and as many as fit.
+    let kept = driver.records();
+    let bytes = adapter_bytes(&kept);
+    assert!(bytes <= STORE_LIMIT && bytes + one > STORE_LIMIT, "{bytes}");
+    assert_eq!(kept.len(), 1 + 29);
+    assert_eq!(kept[0].id, next.id);
+    let tombstones: Vec<_> = kept[1..].iter().map(|record| record.id.as_str()).collect();
+    let newest: Vec<_> = left[34 - kept.len()..]
+        .iter()
+        .map(|record| record.id.as_str())
+        .collect();
+    assert_eq!(tombstones, newest);
+    assert_code(
+        client.end("ended-10", EndPolicy::Immediate),
+        ErrorCode::NotFound,
+    );
+}
+
+// LU-LIMIT-5
+#[test]
+fn live_activities_that_fill_the_store_refuse_a_start_and_a_larger_update() {
+    let driver = FakeDriver::default();
+    let client = LiveUpdate::new(driver.clone());
+    let text = "🍡".repeat(4_000);
+    // Thirty live activities of the largest text, as the lifecycle stored them and Android lists
+    // them.
+    let live: Vec<_> = (10..40)
+        .map(|index| {
+            let request = text_request(&format!("live:{index}"), &text);
+            stored(&format!("live-{index}"), request, ActivityState::Active)
+        })
+        .collect();
+    driver.edit(|state| {
+        state.records = live.clone();
+        state.observed = live
+            .iter()
+            .map(|record| {
+                let observation = Observation {
+                    id: record.id.clone(),
+                    snapshot: record.snapshot.clone(),
+                    state: ActivityState::Active,
+                    promotion_requested: false,
+                    promotion_state: PromotionState::NotApplicable,
+                };
+                (record.id.clone(), observation)
+            })
+            .collect();
+    });
+
+    // Fewer than 32 are live, and one more of this size does not fit.
+    assert_code(
+        client.start(text_request("refused", &text)),
+        ErrorCode::SystemLimit,
+    );
+    assert_eq!(driver.records(), live);
+    assert_eq!(driver.edit(|state| (state.posts, state.writes)), (0, 0));
+
+    // What is left takes a smaller one, and then not its larger content.
+    let room = STORE_LIMIT - (30 * (adapter_bytes(&live[..1]) - 1) + 1);
+    let fitting = "🍡".repeat((room - 1_500) / 8);
+    let small = client.start(text_request("small", &fitting)).unwrap();
+    assert_eq!(small.state, ActivityState::Active);
+    let before = driver.records();
+    let counts = driver.edit(|state| (state.posts, state.writes));
+    let larger = format!("{fitting}{}", "🍡".repeat(500));
+    assert_code(
+        client.update(&small.id, text_snapshot(1, &larger)),
+        ErrorCode::SystemLimit,
+    );
+    assert_eq!(driver.records(), before);
+    assert_eq!(driver.edit(|state| (state.posts, state.writes)), counts);
+
+    // An end makes room: its tombstone goes when the content needs the bytes.
+    client.end("live-10", EndPolicy::Immediate).unwrap();
+    let updated = client.update(&small.id, text_snapshot(1, &larger)).unwrap();
+    assert_eq!(updated.snapshot.revision, 1);
+    let kept = driver.records();
+    assert_eq!(kept.len(), 30);
+    assert!(kept.iter().all(|record| record.id != "live-10"));
 }
 
 // LU-LIMIT-3

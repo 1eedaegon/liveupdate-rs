@@ -14,6 +14,11 @@ const TOMBSTONE_LIMIT: usize = 128;
 /// Android can still list notifications of terminal records, whose cancellation is asynchronous,
 /// so observations are bounded by every record that can be kept, as the adapter bounds them.
 const OBSERVATION_LIMIT: usize = ACTIVE_LIMIT + TOMBSTONE_LIMIT;
+/// A start and an update store the receipts in at most this many bytes, counted as the adapter
+/// stores them (`receipt_bytes`). The bridge carries 1 MiB a call, and a read answers the stored
+/// receipts inside an envelope: this leaves room for it, and for the bytes the receipts gain until
+/// the next start or update, a state or the time of a delayed end.
+const STORE_LIMIT: usize = 1_000_000;
 
 /// Thread-safe Rust owner of Android live update lifecycle and ordering.
 pub struct LiveUpdate<D> {
@@ -504,7 +509,8 @@ fn deliver(
         post_failed: true,
         ..record
     };
-    let pending_records = replace(records, &pending);
+    // Tombstones make room for a new activity and for newer content.
+    let pending_records = fitting(&replace(records, &pending), STORE_LIMIT)?;
     save(driver, &pending_records)?;
     let handed = posted(&pending);
     let outcome = if pending.state == ActivityState::Scheduled {
@@ -639,6 +645,46 @@ fn save(driver: &impl Driver, records: &[DriverRecord]) -> Result<Vec<DriverReco
     let kept: Vec<_> = active.chain(terminal.into_iter().rev()).collect();
     driver.write(&kept)?;
     Ok(kept)
+}
+
+/// `records` as a start or an update may store them: every live one, and of the tombstones the
+/// newest that fit in `limit` bytes beside them. The oldest goes first, so nothing older stays
+/// behind the first that does not fit. Live receipts that alone pass `limit` have no room.
+fn fitting(records: &[DriverRecord], limit: usize) -> Result<Vec<DriverRecord>> {
+    let (active, mut terminal): (Vec<_>, Vec<_>) = records
+        .iter()
+        .cloned()
+        .partition(|record| !record.terminal());
+    let mut receipts = active.iter().map(receipt_bytes).sum::<Result<usize>>()?;
+    if array_bytes(receipts, active.len()) > limit {
+        return Err(failure(
+            ErrorCode::SystemLimit,
+            "The live activities are too large to store.",
+        ));
+    }
+    let mut newest = 0;
+    for record in terminal.iter().rev() {
+        receipts += receipt_bytes(record)?;
+        if array_bytes(receipts, active.len() + newest + 1) > limit {
+            break;
+        }
+        newest += 1;
+    }
+    let kept = terminal.split_off(terminal.len() - newest);
+    Ok(active.into_iter().chain(kept).collect())
+}
+
+/// The bytes the adapter stores for one receipt: its JSON, in which Android's writer has `\/`
+/// for every `/`.
+fn receipt_bytes(record: &DriverRecord) -> Result<usize> {
+    let json = serde_json::to_string(record).map_err(|_| Error::native())?;
+    Ok(json.len() + json.matches('/').count())
+}
+
+/// The bytes of the JSON array of `count` receipts that take `receipts` bytes together: with its
+/// brackets and the commas between them.
+fn array_bytes(receipts: usize, count: usize) -> usize {
+    receipts + count + 1
 }
 
 fn replace(records: &[DriverRecord], replacement: &DriverRecord) -> Vec<DriverRecord> {

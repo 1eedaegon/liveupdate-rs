@@ -2,7 +2,10 @@
 //! observation may say, and how one record moves between states.
 
 use super::*;
-use crate::{PresentationCapabilities, Template, Visibility};
+use crate::{
+    AndroidPresentation, BigTextStyle, PresentationCapabilities, PresentationStyle, Template,
+    Visibility,
+};
 use std::sync::Mutex;
 
 #[derive(Default)]
@@ -82,6 +85,69 @@ fn record(id: &str, state: ActivityState) -> DriverRecord {
     }
 }
 
+/// A record of schema version 2 whose request has the text `request` and whose latest content the
+/// text `latest`.
+fn text_record(id: &str, state: ActivityState, request: &str, latest: &str) -> DriverRecord {
+    let content = |text: &str| Snapshot {
+        progress: None,
+        presentation: Some(AndroidPresentation::new(PresentationStyle::BigText(
+            BigTextStyle {
+                text: text.into(),
+                summary: None,
+            },
+        ))),
+        ..snapshot(0)
+    };
+    let record = record(id, state);
+    DriverRecord {
+        origin: StartRequest {
+            schema_version: 2,
+            template: Template::BigText,
+            snapshot: content(request),
+            ..record.origin
+        },
+        snapshot: content(latest),
+        ..record
+    }
+}
+
+/// The bytes the adapter stores for `records`: Android's JSON writes `/` as `\/`.
+fn adapter_bytes(records: &[DriverRecord]) -> usize {
+    serde_json::to_string(records)
+        .unwrap()
+        .replace('/', "\\/")
+        .len()
+}
+
+/// A live receipt and the tombstones `old`, `t0` and `t1`, the oldest first, which the adapter
+/// stores in exactly `bytes`.
+fn receipts_of(bytes: usize) -> Vec<DriverRecord> {
+    let states = [
+        ActivityState::Active,
+        ActivityState::Ended,
+        ActivityState::Dismissed,
+        ActivityState::Ended,
+    ];
+    receipts_in(bytes, states)
+}
+
+/// The receipts `live`, `old`, `t0` and `t1` in `states`, which the adapter stores in exactly
+/// `bytes`.
+fn receipts_in(bytes: usize, states: [ActivityState; 4]) -> Vec<DriverRecord> {
+    let with = |old: &str| {
+        vec![
+            text_record("live", states[0], "now", "now"),
+            text_record("old", states[1], "then", old),
+            text_record("t0", states[2], "then", "then"),
+            text_record("t1", states[3], "then", "then"),
+        ]
+    };
+    // One character of the second receipt's text is one byte.
+    let records = with(&"o".repeat(1 + bytes - adapter_bytes(&with("o"))));
+    assert_eq!(adapter_bytes(&records), bytes);
+    records
+}
+
 fn observation(record: &DriverRecord) -> Observation {
     Observation {
         id: record.id.clone(),
@@ -136,6 +202,79 @@ fn a_record_that_turns_terminal_becomes_the_newest_tombstone() {
         ..records[0].clone()
     };
     assert_eq!(ids(&retire(&records, &ended)), ["old", "active"]);
+}
+
+/// A limit of the size of a few receipts: the rules are the same at any size, and the tests of the
+/// public API run at the real one.
+const LIMIT: usize = 4_000;
+
+// LU-LIMIT-5
+#[test]
+fn receipts_of_the_limit_are_kept_and_a_byte_more_drops_the_oldest_tombstone() {
+    assert_eq!(STORE_LIMIT, 1_000_000);
+    let exact = receipts_of(LIMIT);
+    assert_eq!(fitting(&exact, LIMIT).unwrap(), exact);
+
+    let over = receipts_of(LIMIT + 1);
+    let kept = fitting(&over, LIMIT).unwrap();
+    assert_eq!(ids(&kept), ["live", "t0", "t1"]);
+
+    // The tombstones alone, as an array of their own, to the byte.
+    let alone = &exact[1..];
+    let bytes = adapter_bytes(alone);
+    assert_eq!(fitting(alone, bytes).unwrap(), alone);
+    assert_eq!(ids(&fitting(alone, bytes - 1).unwrap()), ["t0", "t1"]);
+}
+
+// LU-LIMIT-5
+#[test]
+fn a_slash_takes_two_bytes_of_the_store() {
+    let mut records = receipts_of(LIMIT);
+    let json = serde_json::to_string(&records).unwrap().len();
+    // The same JSON to the byte, and one byte more as the adapter stores it.
+    records[0].snapshot.status = "/reparing".into();
+    assert_eq!(serde_json::to_string(&records).unwrap().len(), json);
+    assert_eq!(adapter_bytes(&records), LIMIT + 1);
+
+    assert_eq!(
+        ids(&fitting(&records, LIMIT).unwrap()),
+        ["live", "t0", "t1"]
+    );
+    assert_eq!(fitting(&records, LIMIT + 1).unwrap(), records);
+}
+
+// LU-LIMIT-5
+#[test]
+fn the_tombstones_that_stay_are_the_newest_run() {
+    let mut records = receipts_of(LIMIT);
+    // Older than the three that fit: a small one that would fit too, and after it a large one that
+    // does not.
+    let small = text_record("small", ActivityState::Ended, "then", "then");
+    let room = adapter_bytes(std::slice::from_ref(&small));
+    let text = "x".repeat(4_000);
+    records.insert(1, small);
+    records.insert(2, text_record("large", ActivityState::Ended, &text, &text));
+    assert_eq!(ids(&records), ["live", "small", "large", "old", "t0", "t1"]);
+
+    let kept = fitting(&records, LIMIT + room).unwrap();
+
+    assert_eq!(ids(&kept), ["live", "old", "t0", "t1"]);
+}
+
+// LU-LIMIT-5
+#[test]
+fn live_receipts_of_the_limit_have_room_and_a_byte_more_has_none() {
+    let live = [ActivityState::Active; 4];
+    let tombstone = text_record("gone", ActivityState::Ended, "then", "then");
+
+    // A tombstone makes room, so it does not count.
+    let exact = receipts_in(LIMIT, live);
+    let with_tombstone: Vec<_> = exact.iter().cloned().chain([tombstone]).collect();
+    assert_eq!(fitting(&with_tombstone, LIMIT).unwrap(), exact);
+
+    let error = fitting(&receipts_in(LIMIT + 1, live), LIMIT).unwrap_err();
+    assert_eq!(error.code, ErrorCode::SystemLimit);
+    assert_eq!(error.message, "The live activities are too large to store.");
 }
 
 // LU-LIMIT-3
