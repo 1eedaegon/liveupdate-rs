@@ -378,8 +378,10 @@ Rust writes the receipt before posting. If the process or framework call fails, 
 operation retries safely. A post that the adapter refuses as invalid, such as a URL no activity
 opens or an icon the app does not have, leaves no receipt: correct the request and send it again. `list` reconciles receipts with Android's active notifications, so a
 notification removed by the user becomes `Dismissed`. At most 32 active records and 128 terminal
-tombstones are retained, the oldest tombstone going first; malformed or oversized adapter data fails
-closed as `NATIVE_ERROR`.
+tombstones are retained, the oldest tombstone going first. A start or an update stores them in at most
+1,000,000 bytes: older tombstones go for the room it needs, sooner than the 128th when the content is
+large, and it fails with `SYSTEM_LIMIT` when the live activities alone leave none. Malformed or
+oversized adapter data fails closed as `NATIVE_ERROR`.
 
 [docs/spec.md](docs/spec.md) lists every requirement with the tests that prove it, and
 [docs/testing.md](docs/testing.md) says how to run them.

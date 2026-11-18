@@ -18,7 +18,8 @@ pub enum ErrorCode {
     PermissionDenied,
     /// The requested behavior is unavailable and no fallback was allowed.
     UnsupportedFeature,
-    /// The bounded number of active activities was exceeded.
+    /// A bound on the live activities was exceeded: their number, the one foreground placement,
+    /// or what their receipts take to store.
     SystemLimit,
     /// The platform adapter or its durable storage failed.
     NativeError,
