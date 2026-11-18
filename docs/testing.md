@@ -127,7 +127,10 @@ successful CI. Run `CI` once by hand on `main` first if that run is missing. If 
 rerun **Auto release** without `major`; its no-change recovery path dispatches `publish.yml` again.
 
 `.github/workflows/publish.yml` requires a successful CI run on main for the tag's exact commit, records
-the matching changelog section as the GitHub release notes, and attaches the AAR. After a validated tag
+the matching changelog section as the GitHub release notes, and attaches the AAR. It asks for that run
+for two minutes: the coordinator starts it the moment the run ended, and GitHub lists a run as successful
+some time after. The release of 0.4.4 asked once, 32 seconds after its CI run had ended, was told of none
+and failed with the tag pushed and nothing published; running that failed run again published it. After a validated tag
 is created, the coordinator dispatches that workflow with `publish=true`; a manual dispatch remains
 available for recovery. Publishing still requires the repository variable `CRATES_IO_PUBLISH` to be
 `true`, runs only after the AAR is attached, and uses the `crates-io` environment. The crates.io Trusted

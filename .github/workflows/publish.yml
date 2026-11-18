@@ -64,8 +64,15 @@ jobs:
           sha=$(git rev-parse "$TAG^{commit}")
           git fetch --quiet origin main
           git merge-base --is-ancestor "$sha" origin/main || { echo "$sha is not on main"; exit 1; }
-          runs=$(gh api "repos/$REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$sha&branch=main&status=success&per_page=100" \
-            --jq '[.workflow_runs[] | select(.event == "push" or .event == "workflow_dispatch")] | length')
+          # The coordinator starts this workflow the moment the version commit's CI run ended, and GitHub
+          # lists a run as successful some time after. So the list is asked for two minutes.
+          runs=0
+          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13; do
+            runs=$(gh api "repos/$REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$sha&branch=main&status=success&per_page=100" \
+              --jq '[.workflow_runs[] | select(.event == "push" or .event == "workflow_dispatch")] | length') || runs=0
+            [ "$runs" -gt 0 ] && break
+            [ "$attempt" = 13 ] || sleep 10
+          done
           [ "$runs" -gt 0 ] || { echo "no successful CI run on main for $sha"; exit 1; }
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
