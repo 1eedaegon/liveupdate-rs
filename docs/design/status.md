@@ -20,6 +20,10 @@
 - A scheduled start ([scheduled-start](scheduled-start/PRD.md)): `start_at` stores an activity that the
   AAR begins at its time through an alarm and a receiver, also while the application does not run.
 
+- A watch ([wear-ongoing-activity](wear-ongoing-activity/PRD.md)): the suite runs on a Galaxy Watch4
+  with Wear OS 5, built for `armeabi-v7a`, and a live activity carries an Ongoing Activity there when the
+  application has `androidx.wear:wear-ongoing`.
+
 ## Not done
 
 - Tauri-side TSX/React projection and JavaScript event routing over the new core event drain.

@@ -49,18 +49,27 @@ kotlin {
 }
 
 dependencies {
+    // What a watch application brings for the Ongoing Activity (WearOngoing.kt). The AAR compiles against it
+    // and does not bring it.
+    compileOnly("androidx.wear:wear-ongoing:1.1.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20260814")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.wear:wear-ongoing:1.1.0")
 }
 
 // The Rust library of the instrumentation tests (android/native-test). Options:
 //   -Pliveupdate.nativeAbis=x86_64        the ABIs to build (default: arm64-v8a,x86_64)
 //   -Pliveupdate.nativeCoverage=true      build it with -C instrument-coverage (tests/android/run.sh)
+// armeabi-v7a is for a device with a 32-bit userspace, as a Wear OS watch has, and is built only when named.
 val nativeAbis = providers.gradleProperty("liveupdate.nativeAbis").orElse("arm64-v8a,x86_64")
 val nativeCoverage = providers.gradleProperty("liveupdate.nativeCoverage").orElse("false")
-val nativeTargets = mapOf("arm64-v8a" to "aarch64-linux-android", "x86_64" to "x86_64-linux-android")
+val nativeTargets = mapOf(
+    "arm64-v8a" to "aarch64-linux-android",
+    "armeabi-v7a" to "armv7-linux-androideabi",
+    "x86_64" to "x86_64-linux-android",
+)
 
 val buildNativeTest by tasks.registering(Exec::class) {
     val nativeOutput = layout.buildDirectory.dir("native-test-libs")

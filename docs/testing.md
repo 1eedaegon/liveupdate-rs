@@ -270,3 +270,23 @@ round-trip tests. The 2026-11-09 final run passed 41 normal tests plus the isola
 test without skips; JaCoCo reported 95.36% Kotlin line coverage (658/690). The emulator remains the
 reproducible coverage gate; OEM promotion prominence still depends on device settings and system
 policy.
+
+On 2026-11-19 the instrumentation tests were run by hand on a watch, a Galaxy Watch4 Classic (`SM-R880`,
+Wear OS 5, Android 14, API 34, One UI Watch 6) over wireless debugging. Its userspace is 32-bit, so the
+test package was built with `-Pliveupdate.nativeAbis=armeabi-v7a`, which builds the tests' Rust library
+for `armv7-linux-androideabi`; the device script takes emulators only.
+
+- **The suite as it was.** 63 of 77 tests passed in the main run, the Rust and JNI ones among them, 6 of
+  7 with the exact alarm allowed, and both without the notification permission. Each of the 15 that
+  failed asserts what a newer Android does: four the refusal of an old clock (API 35), one of them
+  again in the second run; three use `hasPromotableCharacteristics` or the class of the progress style
+  (API 36); six assert API 37, and one expects the Samsung capability of API 37.
+- **The Ongoing Activity** (LU-WEAR-1 to LU-WEAR-4). Four device tests passed there, with the watch's
+  own answer for the capability: true. That was the build before the review, which looked for the
+  library by its name. The build after it, which asks for the library's class in code and has a fifth
+  test, of a library that fails, was not run on the watch: the watch had left the network. On the
+  emulator it is CI's.
+- **The watch face, by hand.** A plain ongoing notification left the watch face as it was. A post
+  through the bridge, with the device's own answer, listed the notification with
+  `android.wearable.ongoingactivities.EXTENSIONS` in its extras and put the activity's icon at the bottom
+  of the watch face. The recent applications were not looked at.
