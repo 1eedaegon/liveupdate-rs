@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.5.0 - 2026-11-18
+
+- feat: a live activity on a watch carries an Ongoing Activity (`8181411`)
+- test: the Ongoing Activity's last build ran on the watch (`91757df`)
+- ci: the release waits for its CI run to be listed (`81ebc21`)
+
 ## 0.4.4 - 2026-11-18
 
 - fix: an action that requires authentication is not taken from a locked device below Android 12 (`9069606`)
