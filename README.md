@@ -367,7 +367,7 @@ In a watch app the same calls put the activity on the watch face, as an icon tha
 
 `capabilities()?.presentation.wear_ongoing_activity` is true where the watch shows it.
 
-Below Wear OS 7 only (seen on Wear OS 5), and a phone's activity does not appear on a paired watch.
+For Wear OS 3 to 6 (seen on 5): Wear OS 7 shows Live Updates itself, and a phone's activity stays on the phone.
 
 ## How it works
 

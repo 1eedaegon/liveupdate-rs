@@ -119,7 +119,7 @@ fn the_docs_state_what_an_app_must_know() {
         "one retained client per process",
         "`EndPolicy::After` keeps the last content until its time",
         "cannot be more than 14 days old",
-        "Below Wear OS 7 only",
+        "For Wear OS 3 to 6",
         "Build your Rust library for `armeabi-v7a` too",
         "A start or an update stores them in at most 1,000,000 bytes",
         "A scheduled start is on the minute only with the exact-alarm permission",
