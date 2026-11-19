@@ -221,7 +221,8 @@ pub struct ProgressStyle {
     /// Whether progress is not currently known.
     #[serde(default, skip_serializing_if = "is_false")]
     pub indeterminate: bool,
-    /// Whether Android styles completed and future elements differently.
+    /// Whether Android shows what is ahead of the progress fainter. Without it every segment is
+    /// shown in full, and only a tracker icon shows where the progress is.
     #[serde(default, skip_serializing_if = "is_false")]
     pub styled_by_progress: bool,
     /// Background track segments.
@@ -241,13 +242,14 @@ pub struct ProgressStyle {
 }
 
 impl ProgressStyle {
-    /// A track of `segments` at `progress`, without points and icons, to build on.
+    /// A track of `segments` at `progress`, styled by its progress as Android's own default is,
+    /// without points and icons, to build on.
     #[must_use]
     pub fn new(progress: u32, segments: Vec<ProgressSegment>) -> Self {
         Self {
             progress,
             indeterminate: false,
-            styled_by_progress: false,
+            styled_by_progress: true,
             segments,
             points: Vec::new(),
             start_icon: None,
