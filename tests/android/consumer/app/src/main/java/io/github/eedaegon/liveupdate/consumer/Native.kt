@@ -13,4 +13,10 @@ object Native {
 
     /** Runs one scenario and answers `{"ok": …}` or `{"error": {"code", "message"}}`. */
     external fun run(scenario: String, input: String): String
+
+    /**
+     * The same with a client built from [context] alone, as a service's own entry does: in a version with action
+     * targets only.
+     */
+    external fun runFrom(context: Context, scenario: String, input: String): String
 }

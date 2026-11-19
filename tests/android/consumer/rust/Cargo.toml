@@ -9,6 +9,10 @@ publish = false
 [lib]
 crate-type = ["cdylib"]
 
+[features]
+# A version with action targets and `LiveUpdate::android_from_raw`: the recorder.
+targets = []
+
 [dependencies]
 jni = { version = "0.22.4", default-features = false }
 ndk-context = "0.1.1"

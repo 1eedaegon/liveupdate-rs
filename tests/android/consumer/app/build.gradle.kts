@@ -10,6 +10,8 @@ plugins {
 val aar = providers.gradleProperty("consumer.aar").get()
 val jniLibs = providers.gradleProperty("consumer.jniLibs").get()
 val wear = providers.gradleProperty("consumer.wear").orNull == "true"
+// A version with action targets: the recorder service, which an earlier AAR could not compile.
+val targets = providers.gradleProperty("consumer.targets").orNull == "true"
 
 android {
     namespace = "io.github.eedaegon.liveupdate.consumer"
@@ -34,6 +36,7 @@ android {
     }
 
     sourceSets["main"].jniLibs.srcDir(jniLibs)
+    if (targets) sourceSets["main"].java.srcDir("src/targets/java")
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

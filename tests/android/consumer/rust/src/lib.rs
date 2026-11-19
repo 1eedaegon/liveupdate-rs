@@ -55,6 +55,34 @@ pub extern "system" fn Java_io_github_eedaegon_liveupdate_consumer_Native_run<'c
         .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// A client built from the context alone, without `ndk-context`, as a service's own entry builds it.
+#[cfg(feature = "targets")]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_io_github_eedaegon_liveupdate_consumer_Native_runFrom<'caller>(
+    mut unowned_env: EnvUnowned<'caller>,
+    _this: JObject<'caller>,
+    context: JObject<'caller>,
+    scenario: JString<'caller>,
+    input: JString<'caller>,
+) -> JString<'caller> {
+    unowned_env
+        .with_env(|env| {
+            let scenario = scenario.mutf8_chars(env)?.to_string();
+            let input = input.mutf8_chars(env)?.to_string();
+            let vm = env.get_java_vm()?;
+            // SAFETY: the process VM, and a context reference that is valid on this thread for the call.
+            let client = unsafe {
+                LiveUpdate::android_from_raw(vm.get_raw().cast(), context.as_raw().cast())
+            };
+            let answer = match client.and_then(|client| recorder::run(&client, &scenario, &input)) {
+                Ok(value) => json!({ "ok": value }),
+                Err(error) => json!({ "error": { "code": error.code, "message": error.message } }),
+            };
+            env.new_string(answer.to_string())
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
 fn initialize(env: &mut Env<'_>, context: JObject<'_>) -> jni::errors::Result<()> {
     let mut current = CONTEXT.lock().unwrap_or_else(PoisonError::into_inner);
     if current.is_some() {
@@ -187,6 +215,8 @@ fn run(scenario: &str, input: &str) -> Result<Value> {
                 .collect::<Vec<_>>()
         )),
         "events" => Ok(json!(client.events()?)),
+        #[cfg(feature = "targets")]
+        "recorder" => Ok(brief(&client.start(recorder::request(0, false))?)),
         "end" => {
             let mut ended = Vec::new();
             for record in client.list()? {
@@ -200,5 +230,78 @@ fn run(scenario: &str, input: &str) -> Result<Value> {
             Ok(json!(ended))
         }
         _ => Ok(json!({ "unknown": scenario })),
+    }
+}
+
+/// Fremen's shape: an activity that a service holds, whose Record action starts or reaches the service.
+#[cfg(feature = "targets")]
+mod recorder {
+    use super::*;
+    use liveupdate::{ActionTarget, Placement, TargetKind};
+
+    const KEY: &str = "consumer:recorder";
+    const SERVICE: &str = "io.github.eedaegon.liveupdate.consumer.RecorderService";
+
+    pub(super) fn request(revision: u64, recording: bool) -> StartRequest {
+        StartRequest {
+            placement: Placement::Foreground,
+            ..StartRequest::new(
+                KEY,
+                Fallback::Notification,
+                Visibility::Public,
+                snapshot(revision, recording),
+            )
+        }
+    }
+
+    fn snapshot(revision: u64, recording: bool) -> Snapshot {
+        let record = NotificationAction {
+            target: Some(ActionTarget {
+                action: Some("io.github.eedaegon.liveupdate.consumer.RECORD".into()),
+                ..ActionTarget::new(TargetKind::ForegroundService, SERVICE)
+            }),
+            ..NotificationAction::new("record", if recording { "Stop" } else { "Record" })
+        };
+        Snapshot {
+            presentation: Some(AndroidPresentation {
+                small_icon: Some(IconSource::Resource(ICON.into())),
+                short_critical_text: Some(if recording { "REC" } else { "LISTEN" }.into()),
+                actions: vec![record],
+                ..AndroidPresentation::new(PresentationStyle::Standard)
+            }),
+            ..Snapshot::new(
+                revision,
+                "Consumer recorder",
+                if recording { "Recording" } else { "Listening" },
+            )
+        }
+    }
+
+    pub(super) fn run(
+        client: &LiveUpdate<AndroidDriver>,
+        scenario: &str,
+        input: &str,
+    ) -> Result<Value> {
+        let input: Value = serde_json::from_str(input).unwrap_or(Value::Null);
+        match scenario {
+            "recording" => {
+                let recording = input["on"].as_bool().unwrap_or(false);
+                let records = client.list()?;
+                let Some(record) = records.iter().find(|record| {
+                    record.activity_key == KEY
+                        && !matches!(
+                            record.state,
+                            liveupdate::ActivityState::Ended | liveupdate::ActivityState::Dismissed
+                        )
+                }) else {
+                    return Ok(Value::Null);
+                };
+                let next = record.snapshot.revision + 1;
+                Ok(brief(
+                    &client.update(&record.id, snapshot(next, recording))?,
+                ))
+            }
+            _ => Ok(json!({ "unknown": scenario })),
+        }
     }
 }

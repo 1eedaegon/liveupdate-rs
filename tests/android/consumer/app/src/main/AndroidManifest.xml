@@ -1,6 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- What a host adds for a scheduled start at its exact time: the AAR does not declare it. -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
     <application android:name=".ConsumerApplication" android:label="LiveUpdate consumer">
         <!-- The launch activity, which a content tap opens, and the screen a link of an action opens. -->
@@ -23,5 +24,7 @@
         <receiver
             android:name=".ScenarioReceiver"
             android:exported="true" />
+
+        <!-- TARGETS: a version that has action targets puts its recorder service here. -->
     </application>
 </manifest>

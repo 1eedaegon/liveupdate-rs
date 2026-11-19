@@ -7,7 +7,8 @@
 #
 #   build              Fetches the published AAR and checks its sha256, or builds this checkout's; builds the
 #                      Rust library for the device's ABI with cargo-ndk, then the release APK. WEAR=1 adds
-#                      androidx.wear:wear-ongoing, as a watch application does.
+#                      androidx.wear:wear-ongoing, as a watch application does. From 0.8.0, and from this checkout,
+#                      the application has a recorder: a foreground service that an action's target reaches.
 #   run                Installs it and checks, failing at the first that does not hold: the capabilities answer;
 #                      a start shows its notification; an update shows its revision; a scheduled start is posted
 #                      by its alarm after the process was ended; an end removes both. A watch build on a watch
@@ -75,10 +76,30 @@ PYTHON
   device_abi=$(property ro.product.cpu.abi)
   wear=false
   [ "${WEAR:-}" = 1 ] && wear=true
+  # Action targets came with 0.8.0.
+  targets=$(python3 -I -c 'import sys; v = sys.argv[1]; print("true" if not v or tuple(map(int, v.split("-")[0].split("."))) >= (0, 8, 0) else "false")' "${LIVEUPDATE_VERSION:-}")
+  features=
+  if [ "$targets" = true ]; then
+    features="--features targets"
+    python3 -I - "$out/app/app/src/main/AndroidManifest.xml" <<'PYTHON'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+marker = "        <!-- TARGETS: a version that has action targets puts its recorder service here. -->\n"
+assert text.count(marker) == 1, "no place for the recorder"
+service = """        <service
+            android:name=".RecorderService"
+            android:exported="false"
+            android:foregroundServiceType="shortService" />
+"""
+open(path, "w").write(text.replace(marker, service, 1))
+PYTHON
+  fi
+  # shellcheck disable=SC2086
   CARGO_TARGET_DIR=$out/rust-target cargo ndk -t "$device_abi" -o "$out/jniLibs" \
-    build --release --manifest-path "$out/rust/Cargo.toml"
+    build --release --manifest-path "$out/rust/Cargo.toml" $features
   gradle -p "$out/app" :app:assembleRelease --no-daemon -q \
-    -Pconsumer.aar="$aar" -Pconsumer.jniLibs="$out/jniLibs" -Pconsumer.wear="$wear"
+    -Pconsumer.aar="$aar" -Pconsumer.jniLibs="$out/jniLibs" -Pconsumer.wear="$wear" -Pconsumer.targets="$targets"
   [ -f "$apk" ] || fail "the build left no $apk"
   echo "$wear" >"$out/wear"
   echo "built $apk for $device_abi with $(sed -n 's/^liveupdate = //p' "$out/rust/Cargo.toml")"
