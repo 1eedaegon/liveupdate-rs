@@ -31,6 +31,9 @@ in a request.
   a live activity carries an Ongoing Activity: the notification's small icon, its content intent, its
   title, its status text and its header clock, if it has one.
 - `capabilities()?.presentation.wear_ongoing_activity` says whether that happens.
+- One activity can do without it: a presentation says `wear_ongoing_activity: false`, and its
+  notification stays in the tray. Added on 2026-11-19, after 0.5.0: until then an application chose for
+  all of its activities at once, by having the library or not.
 - The AAR keeps no dependency of its own: an application for phones adds nothing and gets nothing.
 - A phone, a watch with Wear OS 7, an application without the library: the notification is what it was.
 - The test tooling builds for `armeabi-v7a` when asked, so that the suite runs on a watch.
@@ -41,7 +44,8 @@ in a request.
 | --- | --- |
 | The library as a dependency of the AAR | The AAR is a file without dependencies, and every phone application would carry AndroidX libraries for watches |
 | Writing the data without the library | Its format is `androidx.versionedparcelable`'s, with AndroidX class names inside, and not documented |
-| A member of the request that asks for it | There is nothing to choose: the icon, the intent and the status are the notification's |
+| A member of the request that asks for it | An application that brought the library wants it; what is left to say is the exception, an activity without it |
+| The exception as a member of the start request | Every caller writes a start request out in full, so a new member breaks each of them; a presentation is built on `AndroidPresentation::new`. And a presentation can change it with an update |
 | A second artifact for watches | Two AARs to release for one class |
 | An animated icon and a custom status | Left out until an application needs them |
 

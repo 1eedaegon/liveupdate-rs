@@ -10,5 +10,5 @@ exclude_globs = ["src/android.rs"]
 exclude_re = [
   'src/driver\.rs:126:9: replace Driver::drain_events -> Result<EventBatch> with Ok\(Default::default\(\)\)',
   'src/driver\.rs:141:9: replace Driver::starts -> Result<Vec<StartReport>> with Ok\(vec!\[\]\)',
-  'src/presentation\.rs:671:9: replace \|\| with && in valid_app_file',
+  'src/presentation\.rs:678:9: replace \|\| with && in valid_app_file',
 ]

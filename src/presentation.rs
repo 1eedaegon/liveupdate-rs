@@ -518,11 +518,17 @@ pub struct AndroidPresentation {
     /// Optional third text of the header.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sub_text: Option<String>,
+    /// Whether the activity carries a watch's Ongoing Activity where the adapter offers one
+    /// (`PresentationCapabilities::wear_ongoing_activity`). True unless a presentation says
+    /// otherwise, and then left out of the JSON.
+    #[serde(default = "carried", skip_serializing_if = "is_true")]
+    pub wear_ongoing_activity: bool,
 }
 
 impl AndroidPresentation {
     /// A presentation of `style` with none of the optional members, to build on:
-    /// `AndroidPresentation { large_icon: Some(icon), ..AndroidPresentation::new(style) }`.
+    /// `AndroidPresentation { large_icon: Some(icon), ..AndroidPresentation::new(style) }`. It
+    /// carries a watch's Ongoing Activity, as every presentation that does not turn it off.
     #[must_use]
     pub fn new(style: PresentationStyle) -> Self {
         Self {
@@ -538,6 +544,7 @@ impl AndroidPresentation {
             small_icon: None,
             accent_color: None,
             sub_text: None,
+            wear_ongoing_activity: true,
         }
     }
 
@@ -687,4 +694,13 @@ fn insert_optional_id(ids: &mut BTreeSet<u32>, id: Option<u32>) -> bool {
 
 fn is_false(value: &bool) -> bool {
     !value
+}
+
+fn is_true(value: &bool) -> bool {
+    *value
+}
+
+/// What a presentation without the member says of the Ongoing Activity.
+fn carried() -> bool {
+    true
 }
