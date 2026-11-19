@@ -38,6 +38,11 @@ name = "delivery"
 crate-type = ["lib"]
 required-features = ["android"]
 
+[[example]]
+name = "service"
+crate-type = ["lib"]
+required-features = ["android"]
+
 [features]
 default = []
 android = ["dep:jni", "dep:ndk-context"]

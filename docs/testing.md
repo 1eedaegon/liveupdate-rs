@@ -149,6 +149,22 @@ Run on 2026-11-20 with the published 0.7.1:
 
 The test packages were removed after each run, the emulator was deleted, and the PIN came off it first.
 
+### Action targets, by hand
+
+Built from this checkout, the consumer application has a recorder (`RecorderService`): a foreground service
+that the Record action of a foreground-placed activity names as its target, which calls `attachOr`, takes the
+tap and updates the activity through a client that `LiveUpdate::android_from_raw` built from its context.
+On the Galaxy S23 on 2026-11-20:
+
+- Unlocked, a tap on Record reached the service, which held the activity's notification (`attachOr`
+  answered true), took the tap, and Rust drained it as `handled` and showed Recording.
+- Locked (`deviceLocked=1`), a tap on Stop from the shade over the lock screen reached the service the same
+  way, without an unlock: the action does not require one.
+- With no process of the application, a tap on Record had Android start the process and the service,
+  which attached to the stored activity before the tap was taken, and updated it.
+- At the end of the activity the service stayed in the foreground with its own notification, the
+  activity's gone.
+
 ## CI
 
 `.github/workflows/ci.yml` starts with a `changes` job, so a change to docs alone runs only the light
