@@ -26,6 +26,15 @@ dependencies {
 }
 ```
 
+An icon that a presentation names, `IconSource::Resource("ic_order")`, is found by its name among the
+drawables and then the mipmaps, and nothing in the application's code names it. With resource shrinking
+(`isShrinkResources = true`) the build removes it, and a start that names it fails with `INVALID_INPUT`. Keep
+such icons in `res/raw/keep.xml`:
+
+```xml
+<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@drawable/ic_order,@mipmap/ic_brand" />
+```
+
 The AAR merges `POST_NOTIFICATIONS` and `POST_PROMOTED_NOTIFICATIONS` into the application
 manifest. Your app still has to request the runtime notification permission on Android 13 and
 newer. The Rust Android runtime must initialize
@@ -497,6 +506,8 @@ gradle :android:testDebugUnitTest :android:lintDebug :android:assembleRelease --
 sh tools/spec-coverage.sh
 ```
 
+`tests/android/consumer.sh` builds an application as a host does, from a published version or from this
+checkout, with R8 and resource shrinking, and runs it on one device.
 [docs/testing.md](docs/testing.md) describes the emulator suite with Kotlin and Rust coverage and the
 CI jobs; [CHANGELOG.md](CHANGELOG.md) lists the changes of each version.
 

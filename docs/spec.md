@@ -298,7 +298,8 @@ and the adapter begins it, also while the application does not run.
 ## Wear OS
 
 On a watch below Wear OS 7 the surface of an activity in progress is the Ongoing Activity of
-`androidx.wear:wear-ongoing`: an icon on the watch face and an entry among the recent applications
+`androidx.wear:wear-ongoing`: an icon on the watch face, and in Google's documentation an entry among the
+recent applications, which a Galaxy Watch4 Classic with One UI Watch 6 did not list
 ([wear-ongoing-activity](design/wear-ongoing-activity/PRD.md)).
 
 | ID | Behavior | Input → expected result | Errors | Platform |
@@ -410,9 +411,10 @@ with a capability, and the lifecycle refuses the request where the adapter does 
   by a year. Battery savers of an OEM that hold alarms back are not tested.
 - **The Ongoing Activity on a watch.** The device tests read the Ongoing Activity back from the posted
   notification. That a watch shows it was seen by hand on a Galaxy Watch4 Classic with Wear OS 5
-  (`docs/testing.md`): the icon on the watch face. How the recent applications show its status was not
-  looked at, Wear OS 6 and 7 were not run, and no application without the library was run on a device
-  or built with R8: the test package has the library and is not shrunk. That a watch with Wear OS 7
+  (`docs/testing.md`): the icon on the watch face, seen by hand also from an application built with R8
+  and the library, whose notification `tests/android/consumer.sh` checks to carry the Ongoing Activity;
+  an application without the library, built with R8, ran there and offered none. The watch's recent
+  applications did not list the activity. Wear OS 6 and 7 were not run. That a watch with Wear OS 7
   shows the promoted notification as a Live Update is from Google's documentation; a notification that is
   not promoted there has neither that nor an Ongoing Activity.
 - **Promotion of a start that the alarm posted.** By hand on the API 37 emulator and the Galaxy S23 the

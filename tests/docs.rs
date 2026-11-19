@@ -177,6 +177,8 @@ fn the_docs_state_what_an_app_must_know() {
         "without `samsung_now_bar`",
         "the first metric",
         "the icon on the watch face",
+        "tools:keep",
+        "tests/android/consumer.sh",
     ] {
         assert!(
             readme.contains(feature),
