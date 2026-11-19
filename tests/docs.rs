@@ -164,6 +164,7 @@ fn the_docs_state_what_an_app_must_know() {
         "`AndroidPresentation::new(style)`",
         "androidx.wear:wear-ongoing",
         "`capabilities()?.presentation.wear_ongoing_activity`",
+        "`wear_ongoing_activity: false`",
     ] {
         assert!(
             readme.contains(feature),

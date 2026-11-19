@@ -15,6 +15,21 @@ All of these hold:
 The first three are asked once, when the adapter is made, and are what the capability
 `wearOngoingActivity` reports.
 
+## An activity without it
+
+A presentation has the member `wearOngoingActivity`, true unless it says otherwise, in Rust
+`AndroidPresentation::wear_ongoing_activity`. With `false` the notification carries no Ongoing Activity,
+whatever the device offers, and is otherwise the same.
+
+The member is written only when it is false. So a request, a receipt and a notification of an earlier
+version, which have no such member, carry the Ongoing Activity as before, and an AAR of an earlier
+version takes every record that does not turn it off. One that does, it refuses, as it refuses every
+member it does not know: the AAR is the crate's version's.
+
+It is content, as every member of a presentation: an update with another value is another revision, and
+the next post follows it. Schema version 1 has no presentation and always carries the Ongoing Activity
+where it is offered.
+
 ## What it is made of
 
 The Ongoing Activity is read from the notification that the renderer built, so it shows what the

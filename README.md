@@ -195,6 +195,7 @@ delivered); the record's `template` follows the latest snapshot. Schema v1 keeps
 | Accent color | `accent_color: Some(0xff21_96f3)` | ARGB |
 | Header text | `sub_text: Some("Mochi Express".into())` | At most 64 characters |
 | Samsung Now Bar | `samsung_now_bar: Some(SamsungNowBar { primary, secondary })` | One UI on API 37 and newer |
+| Not on a watch's face | `wear_ongoing_activity: false` | In a watch app, this activity stays in the tray; see [Wear OS](#wear-os) |
 
 ### The request and the lifecycle
 
@@ -365,7 +366,8 @@ In a watch app the same calls put the activity on the watch face, as an icon tha
 3. Start and update as on a phone. The icon, the title, the status and a header clock are the
    notification's, and a tap opens what a tap on the notification opens.
 
-`capabilities()?.presentation.wear_ongoing_activity` is true where the watch shows it.
+`capabilities()?.presentation.wear_ongoing_activity` is true where the watch shows it, and a presentation
+with `wear_ongoing_activity: false` keeps its activity off the watch face.
 
 For Wear OS 3 to 6 (seen on 5): older watches ignore it, Wear OS 7 shows Live Updates itself, and a
 phone's activity stays on the phone.

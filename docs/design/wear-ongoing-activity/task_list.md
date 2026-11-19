@@ -21,3 +21,10 @@
   device suite on API 37 is CI's: the emulator's image is not on this machine.
 - [x] The build after the review on the watch, once it was back on the network: 68 of 82, 6 of 7 and 2
   of 2 pass, the five tests of the Ongoing Activity among them.
+- [x] After 0.5.0, an activity without it (LU-WEAR-6): the spec row; tests seen failing, the Rust one
+  for the missing member and then against a member that is off by default, the device test on the watch
+  against the renderer that refused the member; the member in the model and the renderer; the README.
+  The six device tests of the Ongoing Activity pass on the watch.
+- [x] Review of the member: no finding above medium; taken from it, the design and the spec say that an
+  AAR of an earlier version refuses a record that turns the Ongoing Activity off. The mutants of the
+  changed lines: 3, all caught.

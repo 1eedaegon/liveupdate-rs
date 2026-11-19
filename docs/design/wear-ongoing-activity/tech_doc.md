@@ -11,6 +11,10 @@
   capability; the renderer is told.
 - `NotificationRenderer.build`: calls `WearOngoing.apply` on what it built, for an ongoing notification.
 - `src/contract.rs`: `PresentationCapabilities::wear_ongoing_activity`.
+- `src/presentation.rs`: `AndroidPresentation::wear_ongoing_activity`, true from `AndroidPresentation::new`
+  and from JSON without the member, and left out of the JSON when true.
+- `NotificationRenderer`: reads `wearOngoingActivity` of a presentation, strictly, and leaves the Ongoing
+  Activity out when it is false.
 - `flake.nix`: the Rust target `armv7-linux-androideabi`.
 
 ## Tests
@@ -34,3 +38,7 @@ Written first and seen failing.
    consumer rules have the `-dontwarn` lines.
 5. By hand on the watch (`docs/testing.md`): a start through the adapter with the device's own answer,
    and the watch face.
+6. The member (LU-WEAR-6). Rust (`tests/extensions.rs`): on from `new` and from JSON without it, left
+   out when on, `false` kept both ways, another type refused. Device: with it false a notification
+   carries none where one is offered, an update without the member carries one again, and a value that
+   is no boolean is refused.

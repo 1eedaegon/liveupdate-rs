@@ -720,3 +720,72 @@ fn a_refused_foreground_start_does_not_hold_the_placement() {
     assert_eq!(next.state, ActivityState::Active);
     assert_eq!(driver.records().len(), 1);
 }
+
+// LU-WEAR-6
+#[test]
+fn a_presentation_carries_the_ongoing_activity_unless_it_says_otherwise() {
+    let with = AndroidPresentation::new(PresentationStyle::Standard);
+    assert!(with.wear_ongoing_activity);
+    // The member is written only when it turns the Ongoing Activity off, so an earlier version's
+    // JSON is this version's.
+    let written = serde_json::to_value(&with).unwrap();
+    assert_eq!(written, json!({ "style": { "kind": "standard" } }));
+    assert_eq!(
+        serde_json::from_value::<AndroidPresentation>(written).unwrap(),
+        with
+    );
+
+    let without = AndroidPresentation {
+        wear_ongoing_activity: false,
+        ..AndroidPresentation::new(PresentationStyle::Standard)
+    };
+    let written = serde_json::to_value(&without).unwrap();
+    assert_eq!(written["wearOngoingActivity"], json!(false));
+    assert_eq!(
+        serde_json::from_value::<AndroidPresentation>(written).unwrap(),
+        without
+    );
+    assert!(without.validate().is_ok());
+
+    // Said outright, it is the same presentation as one that says nothing.
+    let said: AndroidPresentation = serde_json::from_value(json!({
+        "style": { "kind": "standard" },
+        "wearOngoingActivity": true
+    }))
+    .unwrap();
+    assert_eq!(said, with);
+    assert!(
+        serde_json::from_value::<AndroidPresentation>(json!({
+            "style": { "kind": "standard" },
+            "wearOngoingActivity": "no"
+        }))
+        .is_err()
+    );
+
+    // It is content: another value is another revision of the activity.
+    let driver = FakeDriver::default();
+    let client = LiveUpdate::new(driver.clone());
+    let content = |revision: u64, presentation: &AndroidPresentation| Snapshot {
+        progress: None,
+        presentation: Some(presentation.clone()),
+        ..snapshot(revision)
+    };
+    let started = client
+        .start(StartRequest {
+            schema_version: 2,
+            template: Template::Standard,
+            snapshot: content(0, &with),
+            ..request("watch")
+        })
+        .unwrap();
+    assert_code(
+        client.update(&started.id, content(0, &without)),
+        ErrorCode::Conflict,
+    );
+    let updated = client.update(&started.id, content(1, &without)).unwrap();
+    assert_eq!(updated.snapshot.presentation, Some(without.clone()));
+    assert_eq!(
+        driver.edit(|state| state.posted.last().unwrap().snapshot.presentation.clone()),
+        Some(without)
+    );
+}

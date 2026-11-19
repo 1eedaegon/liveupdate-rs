@@ -66,9 +66,12 @@ internal class NotificationRenderer(
         }
         // The last content of an ended activity reports nothing when it goes.
         if (!record.isMissingOrNull("dismissAt")) builder.setDeleteIntent(null)
+        // A presentation may turn the Ongoing Activity off; schema version 1 has no presentation to say so.
+        val carried = schema == 1 ||
+            optionalBoolean(requiredObject(snapshot, "presentation"), "wearOngoingActivity") != false
         val notification = builder.build()
         // The last content of an ended activity is not ongoing, and no activity in progress.
-        if (ongoing != null && notification.flags and Notification.FLAG_ONGOING_EVENT != 0) {
+        if (ongoing != null && carried && notification.flags and Notification.FLAG_ONGOING_EVENT != 0) {
             carryOngoing(ongoing, notification)
         }
         return notification
@@ -202,7 +205,7 @@ internal class NotificationRenderer(
             setOf("style"),
             setOf(
                 "shortCriticalText", "largeIcon", "actions", "samsungNowBar", "chronometer", "openUrl", "alert",
-                "publicVersion", "smallIcon", "accentColor", "subText",
+                "publicVersion", "smallIcon", "accentColor", "subText", "wearOngoingActivity",
             ),
         )
         val style = requiredObject(presentation, "style")

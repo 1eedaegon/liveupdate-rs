@@ -127,6 +127,36 @@ class WearOngoingInstrumentationTest {
         }
     }
 
+    // LU-WEAR-6
+    @Test
+    fun aPresentationTurnsTheOngoingActivityOff() {
+        fun record(revision: Long, member: Any?) = v2Record("quiet", "standard", v2Snapshot(standard, revision = revision)
+            .apply { if (member != null) getJSONObject("presentation").put("wearOngoingActivity", member) })
+
+        // Offered, and this activity does without it.
+        offered.post(record(0, false))
+        val quiet = Device.waitForShown("quiet", revision = 0)
+        assertFalse(SerializationHelper.hasOngoingActivity(quiet))
+        assertTrue(quiet.flags and Notification.FLAG_ONGOING_EVENT != 0)
+
+        // An update that says nothing, or says yes, carries it again.
+        Device.paceUpdate()
+        offered.post(record(1, null))
+        assertTrue(SerializationHelper.hasOngoingActivity(Device.waitForShown("quiet", revision = 1)))
+        Device.paceUpdate()
+        offered.post(record(2, true))
+        assertTrue(SerializationHelper.hasOngoingActivity(Device.waitForShown("quiet", revision = 2)))
+        Device.paceUpdate()
+        offered.post(record(3, false))
+        assertFalse(SerializationHelper.hasOngoingActivity(Device.waitForShown("quiet", revision = 3)))
+
+        // The member is a boolean, also where nothing is offered.
+        for (adapter in listOf(offered, withheld)) {
+            val failure = org.junit.Assert.assertThrows(AdapterFailure::class.java) { adapter.post(record(4, "no")) }
+            assertEquals("INVALID_INPUT", failure.code)
+        }
+    }
+
     // LU-WEAR-4
     @Test
     fun theCapabilityFollowsWhatIsOffered() {
