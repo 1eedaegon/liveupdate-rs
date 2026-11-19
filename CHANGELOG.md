@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.7.1 - 2026-11-19
+
+- fix: a watch's icon goes when an update turns the Ongoing Activity off, and with the end (`135ccd7`)
+- fix: a progress style built by its constructor shows its progress (`bc3fc9b`)
+- fix: the metric text below Android 17 rounds a decimal as Android 17 does (`2848906`)
+- docs: what One UI and a watch show of the options (`e9e7e4e`)
+
 ## 0.7.0 - 2026-11-19
 
 - feat: the AAR leaves alone what it does not know, and shows metrics before Android 17 (`e7c7d37`)
