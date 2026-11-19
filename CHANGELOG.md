@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.5.1 - 2026-11-19
+
+- docs: the README says how to use a watch, and names its library where an app installs (`675506e`)
+- docs: the watch's caveat names the versions it is for (`c26dd0c`)
+- docs: the watch's caveat says what older watches do (`cfaafd4`)
+
 ## 0.5.0 - 2026-11-18
 
 - feat: a live activity on a watch carries an Ongoing Activity (`8181411`)
