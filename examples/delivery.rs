@@ -5,38 +5,39 @@
 
 use liveupdate::{
     AndroidPresentation, Driver, EndPolicy, Fallback, IconSource, LiveUpdate, NotificationAction,
-    Placement, PresentationStyle, ProgressPoint, ProgressSegment, ProgressStyle, Result,
-    SamsungNowBar, SemanticStyle, Snapshot, StartRequest, Template, Visibility,
+    PresentationStyle, ProgressPoint, ProgressSegment, ProgressStyle, Result, SamsungNowBar,
+    SemanticStyle, Snapshot, StartRequest, Visibility,
 };
 
+/// Each value is built on its constructor, which takes what is required: a member that a later
+/// version adds is then left as it is by default.
 fn delivery_progress(progress: u32, icon: &IconSource) -> ProgressStyle {
+    let segments = vec![
+        ProgressSegment {
+            id: Some(1),
+            color: Some(0xff21_96f3),
+            semantic_style: Some(SemanticStyle::Info),
+            ..ProgressSegment::new(25)
+        },
+        ProgressSegment {
+            id: Some(2),
+            color: Some(0xff4c_af50),
+            semantic_style: Some(SemanticStyle::Safe),
+            ..ProgressSegment::new(75)
+        },
+    ];
     ProgressStyle {
-        progress,
-        indeterminate: false,
         styled_by_progress: true,
-        segments: vec![
-            ProgressSegment {
-                length: 25,
-                id: Some(1),
-                color: Some(0xff21_96f3),
-                semantic_style: Some(SemanticStyle::Info),
-            },
-            ProgressSegment {
-                length: 75,
-                id: Some(2),
-                color: Some(0xff4c_af50),
-                semantic_style: Some(SemanticStyle::Safe),
-            },
-        ],
         points: vec![ProgressPoint {
-            position: 25,
             id: Some(10),
             color: Some(0xffff_a000),
             semantic_style: Some(SemanticStyle::Caution),
+            ..ProgressPoint::new(25)
         }],
         start_icon: Some(icon.clone()),
         end_icon: Some(icon.clone()),
         tracker_icon: Some(icon.clone()),
+        ..ProgressStyle::new(progress, segments)
     }
 }
 
@@ -45,12 +46,6 @@ fn delivery_snapshot(revision: u64, progress: u32, status: &str) -> Snapshot {
     let icon = IconSource::Resource("liveupdate_status".into());
     let style = PresentationStyle::Progress(delivery_progress(progress, &icon));
     Snapshot {
-        revision,
-        title: "Mochi's snack delivery".into(),
-        status: status.into(),
-        progress: None,
-        timer: None,
-        stale_at: None,
         presentation: Some(AndroidPresentation {
             short_critical_text: Some(format!("{progress}%")),
             large_icon: Some(icon.clone()),
@@ -64,6 +59,7 @@ fn delivery_snapshot(revision: u64, progress: u32, status: &str) -> Snapshot {
             }),
             ..AndroidPresentation::new(style)
         }),
+        ..Snapshot::new(revision, "Mochi's snack delivery", status)
     }
 }
 
@@ -72,16 +68,12 @@ pub fn run_delivery<D: Driver>(updates: &LiveUpdate<D>) -> Result<()> {
     if !updates.capabilities()?.can_post() {
         return Ok(()); // Ask for the notification permission first.
     }
-    let activity = updates.start(StartRequest {
-        placement: Placement::Tagged,
-        start_at: None,
-        activity_key: "delivery:order-123".into(),
-        schema_version: 2,
-        template: Template::Progress,
-        fallback: Fallback::Notification,
-        visibility: Visibility::Private,
-        snapshot: delivery_snapshot(0, 10, "Preparing"),
-    })?;
+    let activity = updates.start(StartRequest::new(
+        "delivery:order-123",
+        Fallback::Notification,
+        Visibility::Private,
+        delivery_snapshot(0, 10, "Preparing"),
+    ))?;
 
     updates.update(&activity.id, delivery_snapshot(1, 65, "On the way"))?;
 
