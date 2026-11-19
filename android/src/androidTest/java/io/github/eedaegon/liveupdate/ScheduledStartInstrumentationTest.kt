@@ -142,6 +142,17 @@ class ScheduledStartInstrumentationTest {
         dispatch("schedule", JSONObject().put("record", far))
         assertTrue(starts().isEmpty())
         assertEquals(0, manager.activeNotifications.size)
+
+        // A metric's stopwatch is no clock that a start is refused for. Below API 37 it runs in the header only
+        // while Android posts it, and at this start's time it would be too old.
+        val stopwatch = JSONObject().put("label", "Elapsed").put("value", JSONObject().put("kind", "stopwatch")
+            .put("value", JSONObject().put("startedAt", now)))
+        val metric = store(scheduled("far-metric", now + 20 * DAY) {
+            put("style", JSONObject().put("kind", "metric")
+                .put("value", JSONObject().put("metrics", JSONArray().put(stopwatch))))
+        })
+        AndroidAdapter(context, sdk = 35).schedule(metric)
+        assertEquals(0, manager.activeNotifications.size)
     }
 
     // LU-SCHED-11

@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import java.util.concurrent.CopyOnWriteArrayList
@@ -131,7 +132,7 @@ class NotificationProbe : NotificationListenerService() {
         /** Lets the listener hear, and forgets what it heard before. It stays connected until [disallow]. */
         internal fun allow() {
             if (!connected) {
-                Device.shell("cmd notification allow_listener ${component()}")
+                permit(true)
                 Device.waitUntil("the notification listener is connected") { connected }
             }
             heard.clear()
@@ -140,9 +141,32 @@ class NotificationProbe : NotificationListenerService() {
         /** The listener no longer hears, so that what one test leaves on its way does not reach the next. */
         internal fun disallow() {
             if (!connected) return
-            Device.shell("cmd notification disallow_listener ${component()}")
+            permit(false)
             Device.waitUntil("the notification listener is disconnected") { !connected }
         }
+
+        /** The device's listeners before this one was allowed, where they are a setting. */
+        private var others: String? = null
+
+        /**
+         * Allows or disallows the listener. Android 8 has no shell command for it: below API 28 the listeners
+         * are one setting, to which this one is added and from which it is taken again.
+         */
+        private fun permit(allowed: Boolean) {
+            if (Build.VERSION.SDK_INT >= 28) {
+                Device.shell("cmd notification ${if (allowed) "allow_listener" else "disallow_listener"} ${component()}")
+                return
+            }
+            if (allowed) {
+                others = Settings.Secure.getString(Device.context.contentResolver, LISTENERS)?.takeIf { it.isNotEmpty() }
+            }
+            val listeners = if (allowed) listOfNotNull(others, component()).joinToString(":") else others
+            Device.shell(
+                if (listeners == null) "settings delete secure $LISTENERS" else "settings put secure $LISTENERS $listeners",
+            )
+        }
+
+        private const val LISTENERS = "enabled_notification_listeners"
 
         /** What was heard of the notification [key], oldest first. */
         internal fun heard(key: String): List<Heard> = heard.filter { it.key == key }

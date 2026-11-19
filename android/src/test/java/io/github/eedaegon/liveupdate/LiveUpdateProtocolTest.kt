@@ -41,17 +41,11 @@ class LiveUpdateProtocolTest {
 
     // LU-BRIDGE-6, LU-SCHED-8
     @Test
-    fun rejectsUnknownCommandsFieldsAndInvalidIdentifiers() {
+    fun rejectsMissingMembersAndInvalidIdentifiers() {
         val adapter = FakeAdapter()
         for ((command, payload) in listOf(
-            "unknown" to "{}",
-            "Read" to "{}",
-            "read" to "{\"extra\":true}",
-            "capabilities" to "{\"records\":[]}",
-            "observe" to "{\"id\":\"one\"}",
-            "events" to "{\"extra\":true}",
             "write" to "{}",
-            "write" to "{\"records\":[],\"extra\":true}",
+            "write" to "{\"extra\":[]}",
             "post" to "{\"record\":{}}",
             "post" to "{\"record\":{\"id\":7}}",
             "post" to "{\"record\":{\"id\":null}}",
@@ -62,13 +56,39 @@ class LiveUpdateProtocolTest {
             "cancel" to "{}",
             "schedule" to "{}",
             "schedule" to "{\"record\":{}}",
-            "schedule" to "{\"record\":{\"id\":\"one\"},\"extra\":true}",
-            "starts" to "{\"extra\":true}",
+            "schedule" to "{\"extra\":{\"id\":\"one\"}}",
         )) {
             assertError("INVALID_INPUT", LiveUpdateProtocol.dispatch(adapter, command, payload))
         }
         assertTrue(adapter.mutations.isEmpty())
         ok(LiveUpdateProtocol.dispatch(adapter, "cancel", "{\"id\":\"${"x".repeat(256)}\"}"))
+    }
+
+    // LU-COMPAT-2, LU-SCHED-8
+    @Test
+    fun ignoresWhatALaterCrateAddsToAPayloadAndNamesACommandItDoesNotKnowUnsupported() {
+        val adapter = FakeAdapter()
+        val later = "\"later\":{\"of\":[1,2]}"
+
+        assertEquals(true, ok(LiveUpdateProtocol.dispatch(adapter, "capabilities", "{$later}"))
+            .getJSONObject("data").getBoolean("supported"))
+        assertEquals(1, ok(LiveUpdateProtocol.dispatch(adapter, "read", "{$later}")).getJSONArray("data").length())
+        assertEquals(1, ok(LiveUpdateProtocol.dispatch(adapter, "observe", "{$later}")).getJSONArray("data").length())
+        assertEquals(1, ok(LiveUpdateProtocol.dispatch(adapter, "events", "{$later}"))
+            .getJSONObject("data").getJSONArray("events").length())
+        assertEquals(1, ok(LiveUpdateProtocol.dispatch(adapter, "starts", "{$later}")).getJSONArray("data").length())
+        ok(LiveUpdateProtocol.dispatch(adapter, "write", "{\"records\":[],$later}"))
+        ok(LiveUpdateProtocol.dispatch(adapter, "post", "{\"record\":{\"id\":\"one\"},$later}"))
+        ok(LiveUpdateProtocol.dispatch(adapter, "schedule", "{$later,\"record\":{\"id\":\"two\"}}"))
+        ok(LiveUpdateProtocol.dispatch(adapter, "cancel", "{\"id\":\"one\",$later}"))
+        assertEquals(listOf("write:0", "post:one", "schedule:two", "cancel:one"), adapter.mutations)
+
+        // A command of a later crate is nothing this adapter offers: the request is not wrong.
+        for (command in listOf("pause", "Read", "")) {
+            val error = assertError("UNSUPPORTED_FEATURE", LiveUpdateProtocol.dispatch(adapter, command, "{}"))
+            assertEquals("The adapter does not know this command.", error.getString("message"))
+        }
+        assertEquals(4, adapter.mutations.size)
     }
 
     // LU-VALID-10, LU-BRIDGE-6

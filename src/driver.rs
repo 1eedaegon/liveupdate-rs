@@ -75,9 +75,21 @@ pub struct StartReport {
     pub outcome: StartOutcome,
 }
 
+impl StartReport {
+    /// The report of one scheduled start.
+    #[must_use]
+    pub fn new(id: impl Into<String>, outcome: StartOutcome) -> Self {
+        Self {
+            id: id.into(),
+            outcome,
+        }
+    }
+}
+
 /// The outcome of a scheduled start that Android does not list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub enum StartOutcome {
     /// Posted a moment ago: Android may not list it yet.
     Posted,
@@ -99,6 +111,26 @@ pub struct Observation {
     pub promotion_requested: bool,
     /// Promotion state derived from Android notification flags.
     pub promotion_state: PromotionState,
+}
+
+impl Observation {
+    /// What a driver read from one notification of its own.
+    #[must_use]
+    pub fn new(
+        id: impl Into<String>,
+        snapshot: Snapshot,
+        state: ActivityState,
+        promotion_requested: bool,
+        promotion_state: PromotionState,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            snapshot,
+            state,
+            promotion_requested,
+            promotion_state,
+        }
+    }
 }
 
 /// Android data-layer boundary used by the Rust lifecycle.

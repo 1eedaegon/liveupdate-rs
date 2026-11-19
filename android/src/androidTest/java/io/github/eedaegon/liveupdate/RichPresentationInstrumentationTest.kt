@@ -83,6 +83,7 @@ class RichPresentationInstrumentationTest {
     // LU-V2-PROGRESS-2
     @Test
     fun progressStyleOnApi36IsPostedWithoutSemanticStyles() {
+        assertTrue(Build.VERSION.SDK_INT >= 36)
         // A device of API 36, or this one as API 36: the semantic style of a segment and of a point is a
         // method of API 37, which API 36 does not have.
         val api36 = AndroidAdapter(context, sdk = 36)
@@ -172,14 +173,14 @@ class RichPresentationInstrumentationTest {
     fun standardBigTextTimerAndLowerApiFallbackUseOnlySystemTemplates() {
         val standard = JSONObject().put("kind", "standard")
         adapter.post(v2Record("standard", "standard", v2Snapshot(standard)))
-        assertNull(Notification.Builder.recoverBuilder(context, Device.waitForShown("standard")).style)
+        assertNull(Device.styleOf(Device.waitForShown("standard")))
 
         val big = JSONObject().put("kind", "bigText").put("value", JSONObject()
             .put("text", "A detailed delivery explanation")
             .put("summary", "Delivery summary"))
         adapter.post(v2Record("big", "bigText", v2Snapshot(big)))
         val bigNotification = Device.waitForShown("big")
-        assertTrue(Notification.Builder.recoverBuilder(context, bigNotification).style is Notification.BigTextStyle)
+        assertEquals(Device.BIG_TEXT_STYLE, Device.styleOf(bigNotification))
         assertEquals("A detailed delivery explanation", bigNotification.extras.getCharSequence(Notification.EXTRA_BIG_TEXT))
         assertEquals("Delivery summary", bigNotification.extras.getCharSequence(Notification.EXTRA_SUMMARY_TEXT))
 
@@ -195,14 +196,97 @@ class RichPresentationInstrumentationTest {
         val older = AndroidAdapter(context, sdk = 35)
         older.post(v2Record("old-progress", "progress", v2Snapshot(progressStyle(25))))
         val oldProgress = Device.waitForShown("old-progress")
-        assertFalse(Notification.Builder.recoverBuilder(context, oldProgress).style is Notification.ProgressStyle)
+        assertNull(Device.styleOf(oldProgress))
         assertEquals(100, oldProgress.extras.getInt(Notification.EXTRA_PROGRESS_MAX))
         assertEquals(25, oldProgress.extras.getInt(Notification.EXTRA_PROGRESS))
 
         older.post(v2Record("old-metric", "metric", v2Snapshot(JSONObject()
             .put("kind", "metric").put("value", JSONObject()
                 .put("metrics", JSONArray().put(metric("Steps", "integer", JSONObject().put("value", 42), null)))))))
-        assertFalse(Notification.Builder.recoverBuilder(context, Device.waitForShown("old-metric")).style is Notification.MetricStyle)
+        val oldMetric = Device.waitForShown("old-metric")
+        assertEquals(Device.BIG_TEXT_STYLE, Device.styleOf(oldMetric))
+        assertEquals("Preparing\nSteps 42", oldMetric.extras.getCharSequence(Notification.EXTRA_BIG_TEXT).toString())
+    }
+
+    // LU-V2-METRIC-4
+    @Test
+    fun belowApi37AMetricStyleShowsItsNumbersAndTextsAsLinesAndItsFirstClockInTheHeader() {
+        val now = System.currentTimeMillis()
+        val mixed = metrics(
+            metric("Steps", "integer", JSONObject().put("value", 42).put("unit", "st"), "safe"),
+            metric("Left", "countdown", JSONObject().put("endsAt", now + 600_000), null),
+            metric("State", "text", "Ready", null),
+        ).apply { getJSONObject("value").put("criticalMetric", 2) }
+        for (sdk in listOf(26, 34, 36)) {
+            AndroidAdapter(context, sdk = sdk).post(v2Record("lines-$sdk", "metric", v2Snapshot(mixed)))
+            val shown = Device.waitForShown("lines-$sdk")
+            assertEquals(Device.BIG_TEXT_STYLE, Device.styleOf(shown))
+            assertEquals(
+                "Preparing\nSteps 42 st\nState Ready",
+                shown.extras.getCharSequence(Notification.EXTRA_BIG_TEXT).toString(),
+            )
+            assertEquals("Preparing", shown.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
+            assertEquals(Notification.CATEGORY_STATUS, shown.category)
+            // The countdown has no line: it runs in the header, down to its end.
+            assertEquals(now + 600_000, shown.`when`)
+            assertTrue(shown.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER))
+            assertTrue(shown.extras.getBoolean(Notification.EXTRA_CHRONOMETER_COUNT_DOWN))
+        }
+
+        // Clocks alone leave no text to expand. The first one runs, a stopwatch up from its start, and the
+        // second has no place.
+        val older = AndroidAdapter(context, sdk = 36)
+        val clocks = metrics(
+            metric("Elapsed", "stopwatch", JSONObject().put("startedAt", now - 60_000), null),
+            metric("Left", "countdown", JSONObject().put("endsAt", now + 600_000), null),
+        )
+        older.post(v2Record("clocks", "metric", v2Snapshot(clocks)))
+        val clock = Device.waitForShown("clocks")
+        assertNull(Device.styleOf(clock))
+        assertEquals(now - 60_000, clock.`when`)
+        assertTrue(clock.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER))
+        assertFalse(clock.extras.getBoolean(Notification.EXTRA_CHRONOMETER_COUNT_DOWN))
+
+        // The presentation's own chronometer is the clock, whatever the metrics have.
+        val own = v2Snapshot(mixed, chronometer = chronometer(now - 5_000, now + 5_000, false))
+        older.post(v2Record("own-clock", "metric", own))
+        val ownClock = Device.waitForShown("own-clock")
+        assertEquals(Device.BIG_TEXT_STYLE, Device.styleOf(ownClock))
+        assertEquals(now - 5_000, ownClock.`when`)
+        assertFalse(ownClock.extras.getBoolean(Notification.EXTRA_CHRONOMETER_COUNT_DOWN))
+
+        // Without a clock among them the header shows none.
+        older.post(v2Record("no-clock", "metric", v2Snapshot(metrics(metric("State", "text", "Ready", null)))))
+        assertFalse(Device.waitForShown("no-clock").extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER))
+    }
+
+    // LU-V2-METRIC-4, LU-ADAPTER-10
+    @Test
+    fun aMetricsClockThatAndroidWouldNotPostIsLeftOutAndTheMetricsArePosted() {
+        val now = System.currentTimeMillis()
+        val day = 24 * 60 * 60 * 1000L
+        fun old(age: Long) = v2Snapshot(metrics(
+            metric("Steps", "integer", JSONObject().put("value", 42), null),
+            metric("Elapsed", "stopwatch", JSONObject().put("startedAt", now - age), null),
+        ))
+        // Built and not posted where the clock is that old: the device's own Android would ignore the post.
+        fun clockOf(sdk: Int, age: Long): Boolean = AndroidAdapter(context, sdk = sdk)
+            .build(v2Record("built", "metric", old(age))).extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER)
+
+        assertTrue(clockOf(34, 15 * day))
+        assertTrue(clockOf(35, 13 * day))
+        assertFalse(clockOf(35, 15 * day))
+        assertFalse(clockOf(36, 14 * day))
+
+        // From API 35 a header clock of that age is refused. A metric's is not: it is left out.
+        val from35 = AndroidAdapter(context, sdk = 35)
+        from35.post(v2Record("old-metric-clock", "metric", old(15 * day)))
+        val shown = Device.waitForShown("old-metric-clock")
+        assertFalse(shown.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER))
+        assertEquals("Preparing\nSteps 42", shown.extras.getCharSequence(Notification.EXTRA_BIG_TEXT).toString())
+        val refused = v2Snapshot(metrics(metric("Steps", "integer", JSONObject().put("value", 42), null)),
+            chronometer = chronometer(now - 15 * day, now + day, false))
+        assertEquals("INVALID_INPUT", failureCode { from35.post(v2Record("old-own-clock", "metric", refused)) })
     }
 
     // LU-V2-CHRONO-2
@@ -246,7 +330,7 @@ class RichPresentationInstrumentationTest {
         val invalid = listOf(
             "timer" to v2Snapshot(timer, chronometer = clock),
             "standard" to v2Snapshot(standard, chronometer = chronometer(now, now, countsDown = true)),
-            "standard" to v2Snapshot(standard, chronometer = JSONObject(clock.toString()).put("paused", true)),
+            "standard" to v2Snapshot(standard, chronometer = JSONObject(clock.toString()).put("countsDown", "yes")),
             "standard" to v2Snapshot(standard, chronometer = JSONObject().put("timer", clock.getJSONObject("timer"))),
         )
         invalid.forEachIndexed { index, (template, snapshot) ->
@@ -273,8 +357,9 @@ class RichPresentationInstrumentationTest {
 
         val notification = Device.waitForShown("events")
         assertEquals(2, notification.actions.size)
-        assertTrue(notification.actions.all { it.actionIntent.isImmutable })
-        assertTrue(notification.actions[1].isAuthenticationRequired)
+        notification.actions.forEach { Device.assertImmutable(it.actionIntent) }
+        // Android asks from API 31; before it the AAR withholds the tap of a locked device.
+        if (Build.VERSION.SDK_INT >= 31) assertTrue(notification.actions[1].isAuthenticationRequired)
         assertNotNull(notification.deleteIntent)
         assertFalse(samePendingIntent(notification.actions[0].actionIntent, notification.actions[1].actionIntent))
 
@@ -525,6 +610,9 @@ class RichPresentationInstrumentationTest {
             if (color != null) put("color", color.toLong() and 0xffffffffL)
             if (semantic != null) put("semanticStyle", semantic)
         }
+
+    private fun metrics(vararg values: JSONObject) = JSONObject().put("kind", "metric")
+        .put("value", JSONObject().put("metrics", JSONArray().apply { values.forEach { put(it) } }))
 
     private fun metric(label: String, kind: String, value: Any, semantic: String?) = JSONObject()
         .put("label", label)

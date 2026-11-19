@@ -152,17 +152,22 @@ class ForegroundServiceInstrumentationTest {
         val record = v2Record("foreground", "standard", v2Snapshot(style, revision = revision))
         val notification = NotificationRenderer(context, Build.VERSION.SDK_INT, Device.CHANNEL_ID, Build.MANUFACTURER)
             .build(record)
-        return Notification.Builder.recoverBuilder(context, notification)
-            .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
-            .build()
+        val builder = Notification.Builder.recoverBuilder(context, notification)
+        // The behavior is of API 31: before it Android shows a service's notification at once.
+        if (Build.VERSION.SDK_INT >= 31) builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
+        return builder.build()
     }
 
     private fun showThroughService(service: Service, notification: Notification) {
-        service.startForeground(
-            FOREGROUND_ID,
-            notification,
-            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE,
-        )
+        // A foreground service has a type from API 29, and the short service is of API 34.
+        when {
+            Build.VERSION.SDK_INT >= 34 -> service.startForeground(
+                FOREGROUND_ID,
+                notification,
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE,
+            )
+            else -> service.startForeground(FOREGROUND_ID, notification)
+        }
     }
 
     /** The notification without a tag under the foreground id, which is how a service holds one. */

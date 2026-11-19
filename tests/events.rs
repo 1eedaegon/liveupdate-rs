@@ -18,9 +18,9 @@ fn event(sequence: u64, occurred_at: u64, activity_id: &str, kind: EventKind) ->
     }
 }
 
-// LU-V2-EVENT-1
+// LU-V2-EVENT-1, LU-COMPAT-3
 #[test]
-fn event_wire_shapes_are_strict_stable_and_javascript_safe() {
+fn event_wire_shapes_are_stable_and_javascript_safe() {
     let action = ActivityEvent {
         sequence: 7,
         activity_id: "activity-id".into(),
@@ -62,9 +62,10 @@ fn event_wire_shapes_are_strict_stable_and_javascript_safe() {
     );
     batch.validate().unwrap();
 
-    let mut unknown = serde_json::to_value(batch).unwrap();
-    unknown["events"][0]["kind"]["payload"] = json!("secret");
-    assert!(serde_json::from_value::<EventBatch>(unknown).is_err());
+    // A member this version does not know is not read: the batch is, without it.
+    let mut later = serde_json::to_value(&batch).unwrap();
+    later["events"][0]["kind"]["payload"] = json!("secret");
+    assert_eq!(serde_json::from_value::<EventBatch>(later).unwrap(), batch);
 }
 
 // LU-V2-EVENT-1

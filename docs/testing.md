@@ -295,3 +295,34 @@ for `armv7-linux-androideabi`; the device script takes emulators only.
 
 The test package was uninstalled after each of the day's runs but one: the watch left the network with it
 installed, and it was removed when the watch was back.
+
+On 2026-11-19 the instrumentation tests were also run by hand on an emulator of Android 8 (API 26, the
+Google APIs image `OSR1.180418.026`, x86_64), the lowest version the AAR runs on
+([compatibility](design/compatibility/system_design.md)).
+
+- **The suite of 0.6.0 as it was.** The main run ended at
+  `anAppWithoutALaunchActivityGetsNoContentIntent`: its context names a package that is not installed,
+  and Android 8 ends the process of an application whose notification has an icon it cannot load.
+  Without that test 83 ran and 57 passed. Of the 26 that failed, 10 assert what a later Android does, 7
+  call a method of a later Android in the test's own code (`PendingIntent.isImmutable`,
+  `Notification.Builder.getStyle`), and 9 need the notification listener, which the tests allowed with
+  a shell command that Android 8 does not have.
+- **With the tests' own code made to run there**, and the tests of the compatibility change: 79 of 91
+  in the main run, and 5 of 7 with the exact alarm allowed. Each of the 12 that fail stops at an
+  assertion of a later Android: one of API 34, two of API 35, two of API 36 and seven of API 37; the
+  two of the second run are among them. None fails for what the adapter does on Android 8.
+- **A run that is not counted.** While another project's build loaded the host, with a load of more
+  than a hundred on twelve processors, the tests of the foreground service timed out waiting for a
+  notification to go, and every test after them for the one that was left. The same package passed
+  as above once the host was quiet. A device run needs a host that is not busy.
+- **Not run:** the run without the notification permission, which is of API 33.
+- Found on the way: on Android 8 a shell command of a test that writes to a pipe the test has closed
+  ends the whole run, so the tests read a command's output to its end.
+
+The emulator was this run's own (`tests/android/avd.sh create liveupdate-api26 26`), and the test
+package was uninstalled after each run.
+
+The same day the watch ran the suite again, with the compatibility change before its review: 79 of 90 in
+the main run and 6 of 7 with the exact alarm allowed. Each of the 11 that fail stops at an assertion of
+a later Android: two of API 35, two of API 36 and seven of API 37. It was not run again after the
+review.

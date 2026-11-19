@@ -57,12 +57,14 @@ fn the_readme_shows_the_compiled_example_whole() {
 #[test]
 fn the_primary_example_uses_the_rich_schema() {
     let example = read("examples/delivery.rs");
+    // `StartRequest::new` gives a snapshot with a presentation schema version 2.
     for required in [
-        "schema_version: 2",
-        "AndroidPresentation",
+        "StartRequest::new(",
+        "Snapshot::new(",
+        "presentation: Some(AndroidPresentation",
         "PresentationStyle::Progress",
-        "ProgressSegment",
-        "NotificationAction",
+        "ProgressSegment::new(",
+        "NotificationAction::new(",
     ] {
         assert!(
             example.contains(required),
@@ -165,6 +167,12 @@ fn the_docs_state_what_an_app_must_know() {
         "androidx.wear:wear-ongoing",
         "`capabilities()?.presentation.wear_ongoing_activity`",
         "`wear_ongoing_activity: false`",
+        "`StartRequest::new(",
+        "`Snapshot::new(",
+        "`EventKind::Unknown`",
+        "a `_` arm",
+        "| Later | Up to 0.6.0 |",
+        "| `MetricStyle` | API 37 |",
     ] {
         assert!(
             readme.contains(feature),

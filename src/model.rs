@@ -20,6 +20,17 @@ pub struct Timer {
     pub ends_at: u64,
 }
 
+impl Timer {
+    /// The interval from `started_at` to `ends_at`, both in Unix milliseconds.
+    #[must_use]
+    pub fn new(started_at: u64, ends_at: u64) -> Self {
+        Self {
+            started_at,
+            ends_at,
+        }
+    }
+}
+
 /// Content shown by a progress or timer live update.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -45,6 +56,22 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
+    /// A snapshot with none of the optional members, to build on:
+    /// `Snapshot { progress: Some(0.5), ..Snapshot::new(0, "Title", "Status") }`. A member that a
+    /// later version adds then has its default, and the code that builds on this still compiles.
+    #[must_use]
+    pub fn new(revision: u64, title: impl Into<String>, status: impl Into<String>) -> Self {
+        Self {
+            revision,
+            title: title.into(),
+            status: status.into(),
+            progress: None,
+            timer: None,
+            stale_at: None,
+            presentation: None,
+        }
+    }
+
     /// Returns the system template implied by this snapshot.
     pub fn template(&self) -> Result<Template> {
         match (&self.progress, &self.timer, &self.presentation) {
@@ -103,6 +130,7 @@ impl Snapshot {
 /// Android system template used to present the live update.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub enum Template {
     /// Standard notification.
     Standard,
@@ -119,6 +147,7 @@ pub enum Template {
 /// How Android keys an activity's notification.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub enum Placement {
     /// Under a tag of its own, beside the application's other notifications.
     #[default]
@@ -161,6 +190,33 @@ pub struct StartRequest {
 }
 
 impl StartRequest {
+    /// A request to show `snapshot`, to build on. It has the schema version and the template that
+    /// the snapshot implies, version 2 with a presentation and version 1 without, the tagged
+    /// placement and no start time.
+    #[must_use]
+    pub fn new(
+        activity_key: impl Into<String>,
+        fallback: Fallback,
+        visibility: Visibility,
+        snapshot: Snapshot,
+    ) -> Self {
+        Self {
+            activity_key: activity_key.into(),
+            schema_version: if snapshot.presentation.is_some() {
+                2
+            } else {
+                1
+            },
+            // A snapshot that implies no template is refused by `validate`, whatever stands here.
+            template: snapshot.template().unwrap_or(Template::Standard),
+            fallback,
+            visibility,
+            snapshot,
+            placement: Placement::Tagged,
+            start_at: None,
+        }
+    }
+
     /// Validates the complete start request.
     pub fn validate(&self) -> Result<()> {
         if !matches!(self.schema_version, 1 | 2)
@@ -195,6 +251,7 @@ impl StartRequest {
 /// Android dismissal policy for ending an activity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
+#[non_exhaustive]
 pub enum EndPolicy {
     /// Remove the notification immediately.
     Immediate,
@@ -218,7 +275,9 @@ impl EndPolicy {
 
 /// When [`crate::LiveUpdate::state_changes`] can next have something that no operation of the
 /// caller brings. The crate has no clock: the caller compares a time with its own and owns the timer.
+/// More answers may come: in a `_` arm, ask again shortly, as for [`NextCheck::Soon`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum NextCheck {
     /// A state that an operation already reconciled has not been answered: ask now.
     Now,

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Notification and promoted-ongoing support observed on the device.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Capabilities {
     /// Whether the Android version can present the requested Live Update shape.
@@ -81,6 +81,7 @@ pub struct PresentationCapabilities {
 /// What to do when the system cannot promote an ongoing notification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub enum Fallback {
     /// Return an unsupported-feature error without posting a notification.
     None,
@@ -91,6 +92,7 @@ pub enum Fallback {
 /// How much notification content the system may reveal on a secure lock screen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub enum Visibility {
     /// The adapter cannot prove what Android revealed to the user.
     Unknown,
@@ -105,6 +107,7 @@ pub enum Visibility {
 /// The promotion state observed after posting an ongoing notification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub enum PromotionState {
     /// The system reports that the notification is promoted.
     Promoted,

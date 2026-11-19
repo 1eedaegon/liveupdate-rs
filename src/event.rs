@@ -7,7 +7,7 @@ pub const MAX_EVENTS: usize = 128;
 /// What happened on an Android Live Activity notification. More kinds may come: match with a `_` arm.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
+#[serde(tag = "kind", rename_all = "camelCase")]
 pub enum EventKind {
     /// The user selected a declared notification action.
     Action {
@@ -23,11 +23,15 @@ pub enum EventKind {
         #[serde(rename = "actionId", default, skip_serializing_if = "Option::is_none")]
         action_id: Option<String>,
     },
+    /// A kind that this version does not know, from a later adapter.
+    #[serde(other)]
+    Unknown,
 }
 
-/// One sequenced event produced by Android.
+/// One sequenced event produced by Android. A later adapter may say more of it: what this version
+/// does not know is not read.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct ActivityEvent {
     /// Monotonic adapter-owned sequence.
     pub sequence: u64,
@@ -40,6 +44,22 @@ pub struct ActivityEvent {
 }
 
 impl ActivityEvent {
+    /// An event, as a driver reports it.
+    #[must_use]
+    pub fn new(
+        sequence: u64,
+        activity_id: impl Into<String>,
+        occurred_at: u64,
+        kind: EventKind,
+    ) -> Self {
+        Self {
+            sequence,
+            activity_id: activity_id.into(),
+            occurred_at,
+            kind,
+        }
+    }
+
     /// Validates all transport bounds.
     pub fn validate(&self) -> Result<()> {
         if self.sequence > MAX_SAFE_INTEGER
@@ -51,7 +71,7 @@ impl ActivityEvent {
         let action_id = match &self.kind {
             EventKind::Action { action_id } => Some(action_id),
             EventKind::Opened { action_id } => action_id.as_ref(),
-            EventKind::Dismissed => None,
+            EventKind::Dismissed | EventKind::Unknown => None,
         };
         if action_id.is_some_and(|id| !valid_action_id(id)) {
             return Err(Error::invalid());
@@ -62,7 +82,7 @@ impl ActivityEvent {
 
 /// Events returned and atomically removed by one drain.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct EventBatch {
     /// Oldest-to-newest events.
     pub events: Vec<ActivityEvent>,

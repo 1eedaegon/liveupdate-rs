@@ -16,6 +16,32 @@ internal fun isValidContractText(value: String, maximum: Int): Boolean {
     return hasContent
 }
 
+/**
+ * Whether [text] takes more than [maximum] bytes as UTF-8, without encoding it. A char takes one to three bytes,
+ * so most texts are decided by their length alone.
+ */
+internal fun exceedsUtf8(text: String, maximum: Int): Boolean {
+    if (text.length > maximum) return true
+    if (text.length.toLong() * 3 <= maximum) return false
+    var bytes = 0L
+    var index = 0
+    while (index < text.length) {
+        val char = text[index]
+        val pair = Character.isHighSurrogate(char) && index + 1 < text.length && Character.isLowSurrogate(text[index + 1])
+        bytes += when {
+            char.code < 0x80 -> 1
+            char.code < 0x800 -> 2
+            // A pair of surrogates is one code point of four bytes; half a pair is written as one `?`.
+            pair -> 4
+            Character.isSurrogate(char) -> 1
+            else -> 3
+        }
+        if (bytes > maximum) return true
+        index += if (pair) 2 else 1
+    }
+    return false
+}
+
 private fun isContractWhitespace(codePoint: Int): Boolean =
     codePoint in 0x0009..0x000d ||
         codePoint == 0x0020 ||

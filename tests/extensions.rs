@@ -194,9 +194,10 @@ fn an_opened_event_names_its_action_only_when_one_opened_the_application() {
         },
     );
     assert_invalid(invalid.validate());
-    let mut unknown_member = wire;
-    unknown_member["events"][0]["kind"]["url"] = Value::String("myapp://x".into());
-    assert!(serde_json::from_value::<EventBatch>(unknown_member).is_err());
+    // An action id is all an opened event says: another member is not read.
+    let mut later = wire;
+    later["events"][0]["kind"]["url"] = Value::String("myapp://x".into());
+    assert_eq!(serde_json::from_value::<EventBatch>(later).unwrap(), batch);
 
     let driver = FakeDriver::default();
     driver.edit(|state| state.events = batch.clone());

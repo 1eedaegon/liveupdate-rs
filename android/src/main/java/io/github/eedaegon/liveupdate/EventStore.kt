@@ -15,7 +15,11 @@ private const val MAX_TIMESTAMP = 8_640_000_000_000_000L
 private const val INVALID_MESSAGE = "Invalid live update request."
 private const val NATIVE_MESSAGE = "The Android live update adapter failed."
 
-/** Durable, process-safe queue for notification action and dismissal events. */
+/**
+ * Durable, process-safe queue for notification action and dismissal events. A stored event keeps what it has:
+ * a later version of the AAR may have stored a kind or a member that this one does not know, and the crate reads
+ * such an event as one of an unknown kind.
+ */
 internal class EventStore(context: Context) {
     private val preferences = context.applicationContext.getSharedPreferences(
         PREFERENCES_NAME,
@@ -53,29 +57,39 @@ internal class EventStore(context: Context) {
         if (previousSequence !in 0 until MAX_SAFE_INTEGER) nativeFailure()
         val sequence = previousSequence + 1
         val previous = readEvents()
-        val dropped = readDropped()
-        val overflow = previous.length() == MAX_EVENTS
-        if (overflow && dropped == MAX_SAFE_INTEGER) nativeFailure()
-        val events = JSONArray()
-        for (index in (if (overflow) 1 else 0) until previous.length()) {
-            events.put(previous.getJSONObject(index))
-        }
-        events.put(JSONObject()
+        val event = JSONObject()
             .put("sequence", sequence)
             .put("activityId", activityId)
             .put("occurredAt", System.currentTimeMillis())
-            .put("kind", kind))
+            .put("kind", kind)
+        // The oldest events go for the newest: one over the number, and as many as it takes for the queue to be
+        // read again. This version's events are small, and what a later version stored may not be.
+        var gone = if (previous.length() == MAX_EVENTS) 1 else 0
+        var raw = queued(previous, gone, event)
+        while (exceedsUtf8(raw, MAX_EVENT_BYTES) && gone < previous.length()) {
+            gone += 1
+            raw = queued(previous, gone, event)
+        }
+        val dropped = readDropped() + gone
+        if (dropped > MAX_SAFE_INTEGER) nativeFailure()
         if (!preferences.edit()
-                .putString(EVENTS_KEY, events.toString())
+                .putString(EVENTS_KEY, raw)
                 .putLong(EVENT_SEQUENCE_KEY, sequence)
-                .putLong(EVENT_DROPPED_KEY, dropped + if (overflow) 1 else 0)
+                .putLong(EVENT_DROPPED_KEY, dropped)
                 .commit()
         ) nativeFailure()
     }
 
+    /** The queue as it is stored: [previous] without its [gone] oldest events, and then [event]. */
+    private fun queued(previous: JSONArray, gone: Int, event: JSONObject): String {
+        val events = JSONArray()
+        for (index in gone until previous.length()) events.put(previous.getJSONObject(index))
+        return events.put(event).toString()
+    }
+
     private fun readEvents(): JSONArray {
         val raw = preferences.getString(EVENTS_KEY, "[]") ?: "[]"
-        if (raw.toByteArray(Charsets.UTF_8).size > MAX_EVENT_BYTES) nativeFailure()
+        if (exceedsUtf8(raw, MAX_EVENT_BYTES)) nativeFailure()
         val events = try {
             JSONArray(raw)
         } catch (_: Exception) {
@@ -90,7 +104,6 @@ internal class EventStore(context: Context) {
         var previous = -1L
         for (index in 0 until events.length()) {
             val event = events.opt(index) as? JSONObject ?: nativeFailure()
-            if (event.keys().asSequence().toSet() != setOf("sequence", "activityId", "occurredAt", "kind")) nativeFailure()
             val sequence = strictLong(event, "sequence", 0, MAX_SAFE_INTEGER)
             if (sequence <= previous || !validId(event.opt("activityId") as? String ?: nativeFailure())) nativeFailure()
             strictLong(event, "occurredAt", 0, MAX_TIMESTAMP)
@@ -100,19 +113,13 @@ internal class EventStore(context: Context) {
     }
 
     private fun validateKind(kind: JSONObject) {
-        when (kind.opt("kind")) {
-            "dismissed" -> if (kind.keys().asSequence().toSet() != setOf("kind")) nativeFailure()
-            "action" -> {
-                if (kind.keys().asSequence().toSet() != setOf("kind", "actionId")) nativeFailure()
-                if (!validActionId(kind.opt("actionId") as? String ?: nativeFailure())) nativeFailure()
+        when (kind.opt("kind") as? String ?: nativeFailure()) {
+            "action" -> if (!validActionId(kind.opt("actionId") as? String ?: nativeFailure())) nativeFailure()
+            "opened" -> if (kind.has("actionId") && !validActionId(kind.opt("actionId") as? String ?: nativeFailure())) {
+                nativeFailure()
             }
-            "opened" -> {
-                if (kind.keys().asSequence().any { it != "kind" && it != "actionId" }) nativeFailure()
-                if (kind.has("actionId") && !validActionId(kind.opt("actionId") as? String ?: nativeFailure())) {
-                    nativeFailure()
-                }
-            }
-            else -> nativeFailure()
+            // A dismissal says nothing more, and a kind of a later version is not this one's to check.
+            else -> Unit
         }
     }
 

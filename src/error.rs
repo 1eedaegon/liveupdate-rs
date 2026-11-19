@@ -25,9 +25,9 @@ pub enum ErrorCode {
     NativeError,
 }
 
-/// A stable error code with a sanitized human-readable message.
+/// A stable error code with a sanitized human-readable message. It is written with these two
+/// members; what a later adapter adds to them is not read.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Error {
     /// Machine-readable failure category.
     pub code: ErrorCode,
@@ -98,7 +98,7 @@ mod tests {
         assert!(serde_json::from_value::<ErrorCode>(json!("invalid_input")).is_err());
     }
 
-    // LU-ERR-1
+    // LU-ERR-1, LU-COMPAT-3
     #[test]
     fn errors_carry_a_code_and_a_message_and_nothing_else() {
         let error = Error::new(ErrorCode::Conflict, "Activity exists.");
@@ -107,13 +107,16 @@ mod tests {
             json!({ "code": "CONFLICT", "message": "Activity exists." })
         );
         assert_eq!(error.to_string(), "Conflict: Activity exists.");
-        assert!(
+        // A later adapter may say more: it is read for the two members, which must be there.
+        assert_eq!(
             serde_json::from_value::<Error>(
-                json!({ "code": "CONFLICT", "message": "m", "cause": "x" })
+                json!({ "code": "CONFLICT", "message": "Activity exists.", "cause": "x" })
             )
-            .is_err()
+            .unwrap(),
+            error
         );
         assert!(serde_json::from_value::<Error>(json!({ "code": "CONFLICT" })).is_err());
+        assert!(serde_json::from_value::<Error>(json!({ "message": "m" })).is_err());
         let boxed: Box<dyn std::error::Error> = Box::new(error);
         assert!(boxed.source().is_none());
     }

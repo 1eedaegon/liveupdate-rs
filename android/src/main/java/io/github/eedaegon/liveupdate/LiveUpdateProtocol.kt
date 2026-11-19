@@ -6,6 +6,7 @@ import org.json.JSONObject
 private const val MAX_BRIDGE_BYTES = 1_048_576
 private const val MAX_RECORDS = 160
 private const val INVALID_MESSAGE = "Invalid live update request."
+private const val UNKNOWN_COMMAND_MESSAGE = "The adapter does not know this command."
 private const val NATIVE_MESSAGE = "The Android live update adapter failed."
 
 internal class AdapterFailure(val code: String, message: String) : Exception(message) {
@@ -39,21 +40,25 @@ internal interface ManagedAdapter {
     fun starts(): JSONArray
 }
 
+/**
+ * The bridge's commands. A payload may have more members than this version knows, which a later crate sends:
+ * they are left alone. A command that this version does not know is one it does not offer.
+ */
 internal object LiveUpdateProtocol {
     fun dispatch(adapter: ManagedAdapter, command: String, rawPayload: String): String = try {
-        if (rawPayload.toByteArray(Charsets.UTF_8).size > MAX_BRIDGE_BYTES) invalid()
+        if (exceedsUtf8(rawPayload, MAX_BRIDGE_BYTES)) invalid()
         val payload = JSONObject(rawPayload)
         val data = when (command) {
-            "capabilities" -> emptyPayload(payload) { adapter.capabilities() }
-            "read" -> emptyPayload(payload) { adapter.read() }
+            "capabilities" -> adapter.capabilities()
+            "read" -> adapter.read()
             "write" -> write(adapter, payload)
-            "observe" -> emptyPayload(payload) { adapter.observe() }
+            "observe" -> adapter.observe()
             "post" -> post(adapter, payload)
             "cancel" -> cancel(adapter, payload)
-            "events" -> emptyPayload(payload) { adapter.drainEvents() }
+            "events" -> adapter.drainEvents()
             "schedule" -> schedule(adapter, payload)
-            "starts" -> emptyPayload(payload) { adapter.starts() }
-            else -> invalid()
+            "starts" -> adapter.starts()
+            else -> throw AdapterFailure("UNSUPPORTED_FEATURE", UNKNOWN_COMMAND_MESSAGE)
         }
         success(data).toString()
     } catch (failure: AdapterFailure) {
@@ -65,13 +70,8 @@ internal object LiveUpdateProtocol {
         error("NATIVE_ERROR", NATIVE_MESSAGE).toString()
     }
 
-    private fun <T> emptyPayload(payload: JSONObject, action: () -> T): T {
-        requireFields(payload, emptySet())
-        return action()
-    }
-
     private fun write(adapter: ManagedAdapter, payload: JSONObject): Any {
-        requireFields(payload, setOf("records"))
+        requireMember(payload, "records")
         val records = payload.getJSONArray("records")
         if (records.length() > MAX_RECORDS) invalid()
         adapter.write(records)
@@ -79,7 +79,7 @@ internal object LiveUpdateProtocol {
     }
 
     private fun post(adapter: ManagedAdapter, payload: JSONObject): Any {
-        requireFields(payload, setOf("record"))
+        requireMember(payload, "record")
         val record = payload.getJSONObject("record")
         validId(record.optionalString("id"))
         adapter.post(record)
@@ -87,7 +87,7 @@ internal object LiveUpdateProtocol {
     }
 
     private fun schedule(adapter: ManagedAdapter, payload: JSONObject): Any {
-        requireFields(payload, setOf("record"))
+        requireMember(payload, "record")
         val record = payload.getJSONObject("record")
         validId(record.optionalString("id"))
         adapter.schedule(record)
@@ -95,15 +95,15 @@ internal object LiveUpdateProtocol {
     }
 
     private fun cancel(adapter: ManagedAdapter, payload: JSONObject): Any {
-        requireFields(payload, setOf("id"))
+        requireMember(payload, "id")
         val id = payload.getString("id")
         validId(id)
         adapter.cancel(id)
         return JSONObject.NULL
     }
 
-    private fun requireFields(payload: JSONObject, expected: Set<String>) {
-        if (payload.keys().asSequence().toSet() != expected) invalid()
+    private fun requireMember(payload: JSONObject, name: String) {
+        if (!payload.has(name)) invalid()
     }
 
     private fun validId(id: String?) {

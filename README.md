@@ -55,38 +55,39 @@ Android:
 
 use liveupdate::{
     AndroidPresentation, Driver, EndPolicy, Fallback, IconSource, LiveUpdate, NotificationAction,
-    Placement, PresentationStyle, ProgressPoint, ProgressSegment, ProgressStyle, Result,
-    SamsungNowBar, SemanticStyle, Snapshot, StartRequest, Template, Visibility,
+    PresentationStyle, ProgressPoint, ProgressSegment, ProgressStyle, Result, SamsungNowBar,
+    SemanticStyle, Snapshot, StartRequest, Visibility,
 };
 
+/// Each value is built on its constructor, which takes what is required: a member that a later
+/// version adds is then left as it is by default.
 fn delivery_progress(progress: u32, icon: &IconSource) -> ProgressStyle {
+    let segments = vec![
+        ProgressSegment {
+            id: Some(1),
+            color: Some(0xff21_96f3),
+            semantic_style: Some(SemanticStyle::Info),
+            ..ProgressSegment::new(25)
+        },
+        ProgressSegment {
+            id: Some(2),
+            color: Some(0xff4c_af50),
+            semantic_style: Some(SemanticStyle::Safe),
+            ..ProgressSegment::new(75)
+        },
+    ];
     ProgressStyle {
-        progress,
-        indeterminate: false,
         styled_by_progress: true,
-        segments: vec![
-            ProgressSegment {
-                length: 25,
-                id: Some(1),
-                color: Some(0xff21_96f3),
-                semantic_style: Some(SemanticStyle::Info),
-            },
-            ProgressSegment {
-                length: 75,
-                id: Some(2),
-                color: Some(0xff4c_af50),
-                semantic_style: Some(SemanticStyle::Safe),
-            },
-        ],
         points: vec![ProgressPoint {
-            position: 25,
             id: Some(10),
             color: Some(0xffff_a000),
             semantic_style: Some(SemanticStyle::Caution),
+            ..ProgressPoint::new(25)
         }],
         start_icon: Some(icon.clone()),
         end_icon: Some(icon.clone()),
         tracker_icon: Some(icon.clone()),
+        ..ProgressStyle::new(progress, segments)
     }
 }
 
@@ -95,12 +96,6 @@ fn delivery_snapshot(revision: u64, progress: u32, status: &str) -> Snapshot {
     let icon = IconSource::Resource("liveupdate_status".into());
     let style = PresentationStyle::Progress(delivery_progress(progress, &icon));
     Snapshot {
-        revision,
-        title: "Mochi's snack delivery".into(),
-        status: status.into(),
-        progress: None,
-        timer: None,
-        stale_at: None,
         presentation: Some(AndroidPresentation {
             short_critical_text: Some(format!("{progress}%")),
             large_icon: Some(icon.clone()),
@@ -114,6 +109,7 @@ fn delivery_snapshot(revision: u64, progress: u32, status: &str) -> Snapshot {
             }),
             ..AndroidPresentation::new(style)
         }),
+        ..Snapshot::new(revision, "Mochi's snack delivery", status)
     }
 }
 
@@ -122,16 +118,12 @@ pub fn run_delivery<D: Driver>(updates: &LiveUpdate<D>) -> Result<()> {
     if !updates.capabilities()?.can_post() {
         return Ok(()); // Ask for the notification permission first.
     }
-    let activity = updates.start(StartRequest {
-        placement: Placement::Tagged,
-        start_at: None,
-        activity_key: "delivery:order-123".into(),
-        schema_version: 2,
-        template: Template::Progress,
-        fallback: Fallback::Notification,
-        visibility: Visibility::Private,
-        snapshot: delivery_snapshot(0, 10, "Preparing"),
-    })?;
+    let activity = updates.start(StartRequest::new(
+        "delivery:order-123",
+        Fallback::Notification,
+        Visibility::Private,
+        delivery_snapshot(0, 10, "Preparing"),
+    ))?;
 
     updates.update(&activity.id, delivery_snapshot(1, 65, "On the way"))?;
 
@@ -154,26 +146,30 @@ presentation actually happened.
 
 Schema v2 keeps `Snapshot::progress` and `Snapshot::timer` empty and puts typed Android UI under
 `presentation`. The example becomes a system `ProgressStyle` on API 36 and newer and a classic
-progress notification on older versions. A start names the `template` of its `presentation.style`.
+progress notification on older versions. `StartRequest::new` takes the schema version and the
+template from the snapshot.
 `Fallback::Notification` keeps a regular ongoing notification when promotion is unavailable;
 `Fallback::None` returns `UNSUPPORTED_FEATURE` instead.
 
 ## Features
 
-Every optional part is a member that is left out when unset. `AndroidPresentation::new(style)` and
-`NotificationAction::new(id, title)` set none of them, so a caller names only what it uses:
+Every optional part is a member that is left out when unset. A constructor takes what is required
+and sets none of them: `AndroidPresentation::new(style)`, `NotificationAction::new(id, title)`,
+`StartRequest::new(key, fallback, visibility, snapshot)`, `Snapshot::new(revision, title, status)`,
+and one for each style and its parts. So a caller names only what it uses, and a member that a later
+version adds does not break the code:
 `AndroidPresentation { open_url: Some(url), ..AndroidPresentation::new(style) }`.
-`capabilities()?.presentation` says which of them the device and the AAR offer.
+`capabilities()?.presentation` says which of the optional parts the device and the AAR offer.
 
 ### Styles
 
 | Style | `presentation.style` | Android shows |
 | --- | --- | --- |
 | Standard | `PresentationStyle::Standard` | The title and the status |
-| Long text | `PresentationStyle::BigText(BigTextStyle { text, summary })` | Up to 4,000 characters when expanded |
-| Progress | `PresentationStyle::Progress(ProgressStyle { progress, segments, points, .. })` | `ProgressStyle` with colored segments, points and start, end and tracker icons from API 36; a plain bar below |
-| Timer | `PresentationStyle::Timer(TimerStyle { timer, counts_down })` | A clock in the header, down to the end or up from the start |
-| Metrics | `PresentationStyle::Metric(MetricStyle { metrics, critical_metric })` | One to three typed values (number, text, stopwatch, countdown) from API 37; the title and the status below |
+| Long text | `PresentationStyle::BigText(BigTextStyle::new(text))` | Up to 4,000 characters when expanded |
+| Progress | `PresentationStyle::Progress(ProgressStyle::new(progress, segments))` | `ProgressStyle` with colored segments, points and start, end and tracker icons from API 36; a plain bar below |
+| Timer | `PresentationStyle::Timer(TimerStyle::new(timer, counts_down))` | A clock in the header, down to the end or up from the start |
+| Metrics | `PresentationStyle::Metric(MetricStyle::new(metrics))` | One to three typed values (number, text, stopwatch, countdown) from API 37; below it the numbers and the texts as lines under the status, and the first stopwatch or countdown as the clock in the header |
 
 An update may carry another style than the start's (`Progress` while under way, `BigText` once
 delivered); the record's `template` follows the latest snapshot. Schema v1 keeps its template.
@@ -188,9 +184,9 @@ delivered); the record's `template` follows the latest snapshot. Schema v1 keeps
 | Button that opens a screen | `NotificationAction { open_url: Some("myapp://orders/42/map".into()), ..NotificationAction::new("track", "Track") }` | No event; see [Links](#links) |
 | Button that asks to unlock first | `NotificationAction { authentication_required: true, ..NotificationAction::new("pay", "Pay") }` | Android asks from version 12. An older Android has no such setting and would send the tap from a locked device at once: there the AAR drops a tap while the device is locked, and the person taps again after unlocking |
 | Tap that opens a screen | `open_url: Some("myapp://orders/42".into())` | The launch activity without it |
-| Clock beside a style | `chronometer: Some(TimerStyle { timer, counts_down: true })` | With any style but `Timer`: a progress bar and a countdown |
+| Clock beside a style | `chronometer: Some(TimerStyle::new(timer, true))` | With any style but `Timer`: a progress bar and a countdown |
 | Revision that alerts | `alert: true` | Posted on a second, high-importance channel; the next revision without it is quiet again |
-| Lock-screen text | `public_version: Some(PublicVersion { title, status })` | What a secure lock screen shows instead; `Visibility::Private` only |
+| Lock-screen text | `public_version: Some(PublicVersion::new(title, status))` | What a secure lock screen shows instead; `Visibility::Private` only |
 | Small icon | `small_icon: Some(IconSource::Resource("ic_brand".into()))` | A resource; the AAR's own icon without it |
 | Accent color | `accent_color: Some(0xff21_96f3)` | ARGB |
 | Header text | `sub_text: Some("Mochi Express".into())` | At most 64 characters |
@@ -371,6 +367,43 @@ with `wear_ongoing_activity: false` keeps its activity off the watch face.
 
 For Wear OS 3 to 6 (seen on 5): older watches ignore it, Wear OS 7 shows Live Updates itself, and a
 phone's activity stays on the phone.
+
+## Versions
+
+The crate and the AAR of a release have one version and are tested as a pair. They also work apart:
+
+| Crate | AAR | Together |
+| --- | --- | --- |
+| Later | 0.7.0 or later | The activity is posted. A member that the AAR does not know is not shown, and its capability reads `false` |
+| Later | Up to 0.6.0 | A request with a member that the AAR does not know fails with `INVALID_INPUT`; one without works |
+| Earlier | Later | It works: the crate reads what it knows of a reply. From 0.7.0 an event of a kind it does not know is `EventKind::Unknown`; before, the batch with it was lost |
+
+A member that an activity depends on, a start time or the foreground placement, is not left out
+silently: the crate refuses the request with `UNSUPPORTED_FEATURE` where the AAR does not report its
+capability.
+
+- A request that the application gives as JSON is read strictly in every version: a member that the
+  crate does not know is a mistake where it was written, and is refused.
+- A crate reads the receipts of every earlier version. Going back to an earlier crate is another
+  matter: it does not read a receipt that has a member of the later one, and fails with
+  `NATIVE_ERROR` until the application's data is cleared.
+- A later version adds members to the structs and variants to the enums. Neither breaks Rust code
+  that builds its values on the constructors, and matches every enum of the crate with a `_` arm.
+
+### Android versions
+
+The AAR runs from Android 8 (API 26). What a later Android adds is shown there, and before it the
+nearest thing that Android has:
+
+| Shown as | From | Before it |
+| --- | --- | --- |
+| A promoted Live Update | API 36 | An ongoing notification (`Fallback::Notification`) |
+| `ProgressStyle`: segments, points, icons | API 36 | A plain progress bar |
+| Status-chip text | API 36 | Not shown |
+| `MetricStyle` | API 37 | Lines of text under the status, and the first stopwatch or countdown as the clock in the header |
+| Semantic colors of a segment, a point and a metric | API 37 | Not shown |
+| Samsung Now Bar | API 37, One UI | Not shown |
+| Unlock before a button's tap | API 31 | The AAR drops a tap while the device is locked |
 
 ## How it works
 
