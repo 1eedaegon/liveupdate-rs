@@ -7,6 +7,11 @@
 //! Platform selection belongs to callers that combine this Android core with
 //! other backends, so the core does not expose a backend discriminator.
 //!
+//! A later version adds members to the structs and variants to the enums. Neither breaks code that
+//! builds its requests on the constructors ([`StartRequest::new`], [`Snapshot::new`],
+//! [`AndroidPresentation::new`] and those of the styles) with the struct update syntax, and matches
+//! the enums with a `_` arm.
+//!
 //! ```compile_fail
 //! use liveupdate::Backend;
 //! ```

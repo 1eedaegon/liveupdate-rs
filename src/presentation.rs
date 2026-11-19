@@ -35,6 +35,7 @@ const REFUSED_SCHEMES: [&str; 6] = [
 /// Android semantic color intent used by API 37 system styles.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub enum SemanticStyle {
     /// No semantic color intent.
     Unspecified,
@@ -56,6 +57,7 @@ pub enum SemanticStyle {
     rename_all = "camelCase",
     deny_unknown_fields
 )]
+#[non_exhaustive]
 pub enum IconSource {
     /// A drawable or mipmap resource name in the host application.
     Resource(String),
@@ -131,6 +133,15 @@ pub struct BigTextStyle {
 }
 
 impl BigTextStyle {
+    /// The expanded text, without a summary.
+    #[must_use]
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            summary: None,
+        }
+    }
+
     fn validate(&self) -> Result<()> {
         if !crate::model::valid_text(&self.text, MAX_BIG_TEXT)
             || !valid_optional_text(self.summary.as_deref(), 240)
@@ -158,6 +169,19 @@ pub struct ProgressSegment {
     pub semantic_style: Option<SemanticStyle>,
 }
 
+impl ProgressSegment {
+    /// A segment of `length`, without an id and in the system's color.
+    #[must_use]
+    pub fn new(length: u32) -> Self {
+        Self {
+            length,
+            id: None,
+            color: None,
+            semantic_style: None,
+        }
+    }
+}
+
 /// A colored marker on a rich progress track.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -173,6 +197,19 @@ pub struct ProgressPoint {
     /// Optional API 37 semantic styling.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub semantic_style: Option<SemanticStyle>,
+}
+
+impl ProgressPoint {
+    /// A point at `position`, without an id and in the system's color.
+    #[must_use]
+    pub fn new(position: u32) -> Self {
+        Self {
+            position,
+            id: None,
+            color: None,
+            semantic_style: None,
+        }
+    }
 }
 
 /// Android's rich progress system style.
@@ -204,6 +241,21 @@ pub struct ProgressStyle {
 }
 
 impl ProgressStyle {
+    /// A track of `segments` at `progress`, without points and icons, to build on.
+    #[must_use]
+    pub fn new(progress: u32, segments: Vec<ProgressSegment>) -> Self {
+        Self {
+            progress,
+            indeterminate: false,
+            styled_by_progress: false,
+            segments,
+            points: Vec::new(),
+            start_icon: None,
+            end_icon: None,
+            tracker_icon: None,
+        }
+    }
+
     /// Validates bounds and relationships required by Android ProgressStyle.
     pub fn validate(&self) -> Result<()> {
         let maximum = self.validate_segments()?;
@@ -273,6 +325,12 @@ pub struct TimerStyle {
 }
 
 impl TimerStyle {
+    /// A clock that counts down to the end of `timer`, or up from its start.
+    #[must_use]
+    pub fn new(timer: Timer, counts_down: bool) -> Self {
+        Self { timer, counts_down }
+    }
+
     fn validate(&self) -> Result<()> {
         if self.timer.ends_at > MAX_TIMESTAMP || self.timer.ends_at <= self.timer.started_at {
             return Err(Error::invalid());
@@ -289,6 +347,7 @@ impl TimerStyle {
     rename_all = "camelCase",
     deny_unknown_fields
 )]
+#[non_exhaustive]
 pub enum MetricValue {
     /// Integer value with an optional short unit.
     Integer {
@@ -356,6 +415,16 @@ pub struct Metric {
 }
 
 impl Metric {
+    /// A labeled value without semantic styling.
+    #[must_use]
+    pub fn new(label: impl Into<String>, value: MetricValue) -> Self {
+        Self {
+            label: label.into(),
+            value,
+            semantic_style: None,
+        }
+    }
+
     /// Validates the label and typed value.
     pub fn validate(&self) -> Result<()> {
         if !crate::model::valid_text(&self.label, MAX_METRIC_LABEL) {
@@ -377,6 +446,15 @@ pub struct MetricStyle {
 }
 
 impl MetricStyle {
+    /// The metrics, none of them critical.
+    #[must_use]
+    pub fn new(metrics: Vec<Metric>) -> Self {
+        Self {
+            metrics,
+            critical_metric: None,
+        }
+    }
+
     /// Validates count, values, and the optional critical index.
     pub fn validate(&self) -> Result<()> {
         if self.metrics.is_empty()
@@ -399,6 +477,7 @@ impl MetricStyle {
     rename_all = "camelCase",
     deny_unknown_fields
 )]
+#[non_exhaustive]
 pub enum PresentationStyle {
     /// Android's standard notification template.
     Standard,
@@ -434,8 +513,8 @@ impl PresentationStyle {
     }
 }
 
-/// Explicit Samsung Now Bar text mapping.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// Explicit Samsung Now Bar text mapping. `SamsungNowBar::default()` takes the title and the status.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SamsungNowBar {
     /// Optional first line; title is used when absent.
@@ -468,6 +547,15 @@ pub struct PublicVersion {
 }
 
 impl PublicVersion {
+    /// What a secure lock screen shows.
+    #[must_use]
+    pub fn new(title: impl Into<String>, status: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            status: status.into(),
+        }
+    }
+
     fn validate(&self) -> Result<()> {
         if !crate::model::valid_text(&self.title, 120)
             || !crate::model::valid_text(&self.status, 240)
