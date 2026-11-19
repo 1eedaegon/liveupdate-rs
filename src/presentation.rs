@@ -22,6 +22,8 @@ const MAX_SAMSUNG_PRIMARY: usize = 120;
 const MAX_SAMSUNG_SECONDARY: usize = 240;
 const MAX_URL: usize = 2_048;
 const MAX_SUB_TEXT: usize = 64;
+const MAX_COMPONENT: usize = 256;
+const MAX_INTENT_ACTION: usize = 256;
 /// Schemes a link may not have: none of them names a screen of the application.
 const REFUSED_SCHEMES: [&str; 6] = [
     "intent",
@@ -95,10 +97,16 @@ pub struct NotificationAction {
     /// URL the action opens in the application, instead of queuing an event.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub open_url: Option<String>,
+    /// A component of the application that Android delivers the tap to, instead of queuing an
+    /// event, where the adapter offers it (`PresentationCapabilities::action_targets`); never
+    /// beside `open_url`. The component takes the tap with `LiveUpdateActions.take`, which records
+    /// it as an [`crate::EventKind::Handled`] event.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<ActionTarget>,
 }
 
 impl NotificationAction {
-    /// An action that queues an event, without an icon and without authentication.
+    /// An action that queues an event, without an icon, a link, a target or authentication.
     #[must_use]
     pub fn new(id: impl Into<String>, title: impl Into<String>) -> Self {
         Self {
@@ -107,6 +115,7 @@ impl NotificationAction {
             icon: None,
             authentication_required: false,
             open_url: None,
+            target: None,
         }
     }
 
@@ -114,11 +123,81 @@ impl NotificationAction {
         if !valid_identifier(&self.id, MAX_ACTION_ID)
             || !crate::model::valid_text(&self.title, MAX_ACTION_TITLE)
             || !valid_optional_url(self.open_url.as_deref())
+            || (self.open_url.is_some() && self.target.is_some())
+            || !self.target.as_ref().is_none_or(ActionTarget::valid)
         {
             return Err(Error::invalid());
         }
         validate_optional_icon(self.icon.as_ref())
     }
+}
+
+/// What kind of component of the application an action's target is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub enum TargetKind {
+    /// A service, which runs already or which Android lets the application start.
+    Service,
+    /// A service that Android starts in the foreground: it must call `startForeground` within a
+    /// few seconds.
+    ForegroundService,
+    /// A broadcast receiver.
+    Broadcast,
+}
+
+/// A component of the application that Android delivers an action's tap to, by its class name in
+/// any Java package; with an intent action, when one component tells its targets apart.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ActionTarget {
+    /// The kind of component.
+    pub kind: TargetKind,
+    /// The component's class name, two or more Java identifiers joined by dots.
+    pub component: String,
+    /// The intent's action, printable ASCII without spaces.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
+}
+
+impl ActionTarget {
+    /// The component of `kind` named `component`, without an intent action.
+    #[must_use]
+    pub fn new(kind: TargetKind, component: impl Into<String>) -> Self {
+        Self {
+            kind,
+            component: component.into(),
+            action: None,
+        }
+    }
+
+    fn valid(&self) -> bool {
+        valid_component(&self.component) && self.action.as_deref().is_none_or(valid_intent_action)
+    }
+}
+
+/// Two or more ASCII Java identifiers joined by dots, at most [`MAX_COMPONENT`] characters. Java
+/// allows other letters too, but Rust and Java do not agree on which: the AAR checks the same.
+fn valid_component(value: &str) -> bool {
+    let mut segments = value.split('.');
+    value.len() <= MAX_COMPONENT
+        && value.contains('.')
+        && segments.all(|segment| {
+            let mut characters = segment.bytes();
+            characters
+                .next()
+                .is_some_and(|first| first.is_ascii_alphabetic() || matches!(first, b'_' | b'$'))
+                && characters.all(|character| {
+                    character.is_ascii_alphanumeric() || matches!(character, b'_' | b'$')
+                })
+        })
+}
+
+/// Printable ASCII without spaces, at most [`MAX_INTENT_ACTION`] characters.
+fn valid_intent_action(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MAX_INTENT_ACTION
+        && value.bytes().all(|byte| (0x21..=0x7e).contains(&byte))
 }
 
 /// Optional BigTextStyle details.

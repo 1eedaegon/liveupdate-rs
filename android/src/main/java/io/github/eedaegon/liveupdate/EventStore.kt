@@ -26,21 +26,31 @@ internal class EventStore(context: Context) {
         Context.MODE_PRIVATE,
     )
 
-    fun appendAction(activityId: String, actionId: String) {
+    /** Each append answers the event it stored. */
+    fun appendAction(activityId: String, actionId: String): JSONObject {
         if (!validId(activityId) || !validActionId(actionId)) invalid()
-        append(activityId, JSONObject().put("kind", "action").put("actionId", actionId))
+        return append(activityId, JSONObject().put("kind", "action").put("actionId", actionId))
     }
 
-    fun appendDismissed(activityId: String) {
+    fun appendDismissed(activityId: String): JSONObject {
         if (!validId(activityId)) invalid()
-        append(activityId, JSONObject().put("kind", "dismissed"))
+        return append(activityId, JSONObject().put("kind", "dismissed"))
     }
 
-    fun appendOpened(activityId: String, actionId: String?) {
+    fun appendOpened(activityId: String, actionId: String?): JSONObject {
         if (!validId(activityId) || (actionId != null && !validActionId(actionId))) invalid()
         val kind = JSONObject().put("kind", "opened")
         if (actionId != null) kind.put("actionId", actionId)
-        append(activityId, kind)
+        return append(activityId, kind)
+    }
+
+    /**
+     * A tap that the application's own component took. It is written without waiting for the disk: the application
+     * acted on it already, and the event only tells Rust and the page.
+     */
+    fun appendHandled(activityId: String, actionId: String): JSONObject {
+        if (!validId(activityId) || !validActionId(actionId)) invalid()
+        return append(activityId, JSONObject().put("kind", "handled").put("actionId", actionId), durable = false)
     }
 
     fun size(): Int = synchronized(EVENT_LOCK) { readEvents().length() }
@@ -52,7 +62,7 @@ internal class EventStore(context: Context) {
         JSONObject().put("events", events).put("dropped", dropped)
     }
 
-    private fun append(activityId: String, kind: JSONObject) = synchronized(EVENT_LOCK) {
+    private fun append(activityId: String, kind: JSONObject, durable: Boolean = true): JSONObject = synchronized(EVENT_LOCK) {
         val previousSequence = preferences.getLong(EVENT_SEQUENCE_KEY, 0)
         if (previousSequence !in 0 until MAX_SAFE_INTEGER) nativeFailure()
         val sequence = previousSequence + 1
@@ -72,12 +82,16 @@ internal class EventStore(context: Context) {
         }
         val dropped = readDropped() + gone
         if (dropped > MAX_SAFE_INTEGER) nativeFailure()
-        if (!preferences.edit()
-                .putString(EVENTS_KEY, raw)
-                .putLong(EVENT_SEQUENCE_KEY, sequence)
-                .putLong(EVENT_DROPPED_KEY, dropped)
-                .commit()
-        ) nativeFailure()
+        val edit = preferences.edit()
+            .putString(EVENTS_KEY, raw)
+            .putLong(EVENT_SEQUENCE_KEY, sequence)
+            .putLong(EVENT_DROPPED_KEY, dropped)
+        if (durable) {
+            if (!edit.commit()) nativeFailure()
+        } else {
+            edit.apply()
+        }
+        event
     }
 
     /** The queue as it is stored: [previous] without its [gone] oldest events, and then [event]. */
@@ -114,7 +128,7 @@ internal class EventStore(context: Context) {
 
     private fun validateKind(kind: JSONObject) {
         when (kind.opt("kind") as? String ?: nativeFailure()) {
-            "action" -> if (!validActionId(kind.opt("actionId") as? String ?: nativeFailure())) nativeFailure()
+            "action", "handled" -> if (!validActionId(kind.opt("actionId") as? String ?: nativeFailure())) nativeFailure()
             "opened" -> if (kind.has("actionId") && !validActionId(kind.opt("actionId") as? String ?: nativeFailure())) {
                 nativeFailure()
             }
@@ -135,12 +149,8 @@ internal class EventStore(context: Context) {
 
     private fun validId(value: String) = isValidContractText(value, 256)
 
-    private fun validActionId(value: String): Boolean = value.length in 1..64 &&
-        value.first().isAsciiLetterOrDigit() &&
-        value.all { it.isAsciiLetterOrDigit() || it in "._:-" }
+    private fun validActionId(value: String): Boolean = isValidActionId(value)
 
-    private fun Char.isAsciiLetterOrDigit(): Boolean =
-        this in 'A'..'Z' || this in 'a'..'z' || this in '0'..'9'
 
     private fun invalid(): Nothing = throw AdapterFailure("INVALID_INPUT", INVALID_MESSAGE)
 
@@ -150,3 +160,11 @@ internal class EventStore(context: Context) {
         val EVENT_LOCK = Any()
     }
 }
+
+/** An action's id: 1 to 64 ASCII letters, digits and `._:-`, beginning with a letter or a digit. */
+internal fun isValidActionId(value: String): Boolean = value.length in 1..64 &&
+    value.first().isAsciiLetterOrDigit() &&
+    value.all { it.isAsciiLetterOrDigit() || it in "._:-" }
+
+private fun Char.isAsciiLetterOrDigit(): Boolean =
+    this in 'A'..'Z' || this in 'a'..'z' || this in '0'..'9'

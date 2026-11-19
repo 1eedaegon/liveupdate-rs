@@ -107,6 +107,7 @@ fn start(driver: &impl Driver, request: StartRequest) -> Result<ActivityRecord> 
     request.validate()?;
     let capabilities = driver.capabilities()?;
     ensure_permission(capabilities)?;
+    ensure_targets(&request.snapshot, capabilities)?;
     let records = reconcile(driver)?;
     if let Some(existing) = records
         .iter()
@@ -195,7 +196,9 @@ fn update(driver: &impl Driver, id: &str, snapshot: Snapshot) -> Result<Activity
             Ok(previous.public())
         };
     }
-    ensure_permission(driver.capabilities()?)?;
+    let capabilities = driver.capabilities()?;
+    ensure_permission(capabilities)?;
+    ensure_targets(&snapshot, capabilities)?;
     let record = DriverRecord {
         snapshot,
         state: ActivityState::Unknown,
@@ -741,6 +744,23 @@ fn ensure_placement(
         return Err(failure(
             ErrorCode::SystemLimit,
             "Another activity has the foreground placement.",
+        ));
+    }
+    Ok(())
+}
+
+/// An action's target needs an adapter that delivers it: an earlier one would queue the tap.
+fn ensure_targets(snapshot: &Snapshot, capabilities: Capabilities) -> Result<()> {
+    let targeted = snapshot.presentation.as_ref().is_some_and(|presentation| {
+        presentation
+            .actions
+            .iter()
+            .any(|action| action.target.is_some())
+    });
+    if targeted && !capabilities.presentation.action_targets {
+        return Err(failure(
+            ErrorCode::UnsupportedFeature,
+            "An action's target is unavailable.",
         ));
     }
     Ok(())

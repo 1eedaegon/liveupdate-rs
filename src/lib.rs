@@ -45,9 +45,10 @@ pub use model::{
     Placement, Snapshot, StartRequest, Template, Timer,
 };
 pub use presentation::{
-    AndroidPresentation, BigTextStyle, IconSource, MAX_ACTIONS, MAX_METRICS, MAX_PROGRESS_ELEMENTS,
-    Metric, MetricStyle, MetricValue, NotificationAction, PresentationStyle, ProgressPoint,
-    ProgressSegment, ProgressStyle, PublicVersion, SamsungNowBar, SemanticStyle, TimerStyle,
+    ActionTarget, AndroidPresentation, BigTextStyle, IconSource, MAX_ACTIONS, MAX_METRICS,
+    MAX_PROGRESS_ELEMENTS, Metric, MetricStyle, MetricValue, NotificationAction, PresentationStyle,
+    ProgressPoint, ProgressSegment, ProgressStyle, PublicVersion, SamsungNowBar, SemanticStyle,
+    TargetKind, TimerStyle,
 };
 
 // LU-DOCS-1

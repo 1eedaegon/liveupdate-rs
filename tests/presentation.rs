@@ -25,11 +25,8 @@ fn presentation(style: PresentationStyle) -> AndroidPresentation {
         short_critical_text: Some("25%".into()),
         large_icon: Some(IconSource::Resource("delivery_large".into())),
         actions: vec![NotificationAction {
-            open_url: None,
-            id: "cancel".into(),
-            title: "Cancel".into(),
             icon: Some(IconSource::Resource("cancel_action".into())),
-            authentication_required: false,
+            ..NotificationAction::new("cancel", "Cancel")
         }],
         samsung_now_bar: Some(SamsungNowBar {
             primary: Some("Order".into()),
@@ -471,13 +468,7 @@ fn action_icon_and_boolean_wire_boundaries_are_exact() {
     model.large_icon = Some(IconSource::AppFile(String::new()));
     assert_invalid(model.validate());
 
-    let mut action = NotificationAction {
-        open_url: None,
-        id: "confirm".into(),
-        title: "Confirm".into(),
-        icon: None,
-        authentication_required: false,
-    };
+    let mut action = NotificationAction::new("confirm", "Confirm");
     let false_value = serde_json::to_value(&action).unwrap();
     assert!(false_value.get("authenticationRequired").is_none());
     action.authentication_required = true;

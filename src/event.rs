@@ -23,6 +23,13 @@ pub enum EventKind {
         #[serde(rename = "actionId", default, skip_serializing_if = "Option::is_none")]
         action_id: Option<String>,
     },
+    /// A tap that the application's own component took, an action's target: the application
+    /// acted on it already.
+    Handled {
+        /// Stable action identifier from the snapshot.
+        #[serde(rename = "actionId")]
+        action_id: String,
+    },
     /// A kind that this version does not know, from a later adapter.
     #[serde(other)]
     Unknown,
@@ -69,7 +76,7 @@ impl ActivityEvent {
             return Err(Error::invalid());
         }
         let action_id = match &self.kind {
-            EventKind::Action { action_id } => Some(action_id),
+            EventKind::Action { action_id } | EventKind::Handled { action_id } => Some(action_id),
             EventKind::Opened { action_id } => action_id.as_ref(),
             EventKind::Dismissed | EventKind::Unknown => None,
         };

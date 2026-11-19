@@ -102,7 +102,8 @@ internal class AndroidAdapter(
                 .put("branding", true)
                 .put("scheduledStart", true)
                 .put("exactStart", scheduled.exact())
-                .put("wearOngoingActivity", wearOngoing))
+                .put("wearOngoingActivity", wearOngoing)
+                .put("actionTargets", true))
     }
 
     override fun read(): JSONArray {

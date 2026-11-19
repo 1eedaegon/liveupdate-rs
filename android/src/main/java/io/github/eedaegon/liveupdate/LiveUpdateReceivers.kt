@@ -40,28 +40,29 @@ internal class ActionTap(private val sdk: Int, private val locked: (Context) -> 
         if (intent.action != LIVE_UPDATE_ACTION) return
         val activityId = intent.getStringExtra(ACTIVITY_ID_EXTRA) ?: return
         val actionId = intent.getStringExtra(ACTION_ID_EXTRA) ?: return
-        val required = { intent.getBooleanExtra(AUTHENTICATION_EXTRA, false) || stored(context, activityId, actionId) }
+        val required = {
+            intent.getBooleanExtra(AUTHENTICATION_EXTRA, false) || requiresAuthentication(context, activityId, actionId)
+        }
         if (withholdsAction(sdk, required) { locked(context) }) {
             Log.i(LOG_TAG, "A live update action that requires authentication was not taken: the device is locked.")
             return
         }
         try {
-            EventStore(context).appendAction(activityId, actionId)
-            LiveUpdateEvents.stored()
+            LiveUpdateEvents.stored(EventStore(context).appendAction(activityId, actionId))
         } catch (_: Exception) {
             Log.e(LOG_TAG, "Could not persist a live update action.")
         }
     }
+}
 
-    /**
-     * What the stored receipt says of the action: an intent of an earlier version does not say it. Receipts that
-     * cannot be read protect the action.
-     */
-    private fun stored(context: Context, activityId: String, actionId: String): Boolean = try {
-        AndroidAdapter(context).requiresAuthentication(activityId, actionId)
-    } catch (_: Exception) {
-        true
-    }
+/**
+ * What the stored receipt says of an action: an intent of an earlier version does not say it. Receipts that cannot
+ * be read protect the action.
+ */
+internal fun requiresAuthentication(context: Context, activityId: String, actionId: String): Boolean = try {
+    AndroidAdapter(context).requiresAuthentication(activityId, actionId)
+} catch (_: Exception) {
+    true
 }
 
 /** Receives explicit immutable delete PendingIntents from system dismissal. */
@@ -70,8 +71,7 @@ class LiveUpdateDismissReceiver : BroadcastReceiver() {
         if (intent.action != LIVE_UPDATE_DISMISSED) return
         val activityId = intent.getStringExtra(ACTIVITY_ID_EXTRA) ?: return
         try {
-            EventStore(context).appendDismissed(activityId)
-            LiveUpdateEvents.stored()
+            LiveUpdateEvents.stored(EventStore(context).appendDismissed(activityId))
         } catch (_: Exception) {
             Log.e(LOG_TAG, "Could not persist a live update dismissal.")
         }
