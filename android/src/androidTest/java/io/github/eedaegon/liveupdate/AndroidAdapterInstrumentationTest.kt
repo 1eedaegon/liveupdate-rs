@@ -79,7 +79,7 @@ class AndroidAdapterInstrumentationTest {
         assertFalse(extras.getBoolean(Notification.EXTRA_SHOW_WHEN))
         assertFalse(extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER))
         val intent = notification.contentIntent!!
-        assertTrue(intent.isImmutable)
+        Device.assertImmutable(intent)
         assertEquals(context.packageName, intent.creatorPackage)
         val stored = JSONObject(extras.getString("io.github.1eedaegon.liveupdate.record")!!)
         assertEquals("progress", stored.getString("id"))
@@ -121,9 +121,10 @@ class AndroidAdapterInstrumentationTest {
             override fun getApplicationContext(): Context = this
             override fun getPackageName(): String = "io.github.eedaegon.liveupdate.absent"
         }
-        AndroidAdapter(withoutLauncher).post(record("plain"))
-
-        assertNull(Device.waitForShown("plain").contentIntent)
+        // Built and not posted: Android 8 ends the process of a notification whose icon names a package that
+        // is not installed, which this context's notification does.
+        assertNull(AndroidAdapter(withoutLauncher).build(record("plain")).contentIntent)
+        assertNotNull(adapter.build(record("plain")).contentIntent)
     }
 
     // LU-ADAPTER-5, LU-API-2

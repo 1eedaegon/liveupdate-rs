@@ -15,7 +15,6 @@ private const val INVALID_MESSAGE = "Invalid live update request."
 /** Resolves only packaged resources and files below the app-private files directory. */
 internal class IconResolver(private val context: Context) {
     fun resolve(source: JSONObject): Icon {
-        requireFields(source, setOf("kind", "value"))
         val value = source.optionalString("value") ?: invalid()
         return when (source.optionalString("kind")) {
             "resource" -> resource(value)
@@ -60,10 +59,6 @@ internal class IconResolver(private val context: Context) {
 
     private fun Char.isAsciiLetterOrDigit(): Boolean =
         this in 'A'..'Z' || this in 'a'..'z' || this in '0'..'9'
-
-    private fun requireFields(value: JSONObject, expected: Set<String>) {
-        if (value.keys().asSequence().toSet() != expected) invalid()
-    }
 
     private fun invalid(): Nothing = throw AdapterFailure("INVALID_INPUT", INVALID_MESSAGE)
 }

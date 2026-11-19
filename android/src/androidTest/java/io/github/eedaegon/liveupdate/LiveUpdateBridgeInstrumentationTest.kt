@@ -101,11 +101,11 @@ class LiveUpdateBridgeInstrumentationTest {
         assertEquals(160, dispatch("read").getJSONArray("data").length())
     }
 
-    // LU-BRIDGE-6
+    // LU-BRIDGE-6, LU-COMPAT-2
     @Test
     fun theBridgeRejectsMalformedCommandsBeforeTheFramework() {
-        failure("unknown", JSONObject(), "INVALID_INPUT")
-        failure("read", JSONObject().put("extra", 1), "INVALID_INPUT")
+        failure("unknown", JSONObject(), "UNSUPPORTED_FEATURE")
+        assertEquals(0, dispatch("read", JSONObject().put("extra", 1)).getJSONArray("data").length())
         failure("post", JSONObject().put("record", JSONObject()), "INVALID_INPUT")
         failure("cancel", JSONObject().put("id", " "), "INVALID_INPUT")
         val response = JSONObject(LiveUpdateBridge.invoke(context, "read", "not json"))

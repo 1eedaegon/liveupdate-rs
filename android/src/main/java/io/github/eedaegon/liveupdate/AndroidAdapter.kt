@@ -27,10 +27,19 @@ private const val LISTING_GRACE = 10_000L
 private const val OLD_TIME_API = 35
 private const val MAX_TIME_AGE = 14 * 24 * 60 * 60 * 1000L
 /** What a post may take from the adapter's check to Android's. */
-private const val POST_MARGIN = 60_000L
+internal const val POST_MARGIN = 60_000L
+/** The margin for a clock that the renderer adds on its own: the adapter's check of the post comes after it. */
+internal const val FALLBACK_CLOCK_MARGIN = 2 * POST_MARGIN
 private const val INVALID_MESSAGE = "Invalid live update request."
 private const val OLD_CLOCK_MESSAGE = "The clock is more than 14 days old: Android would not post it."
 private const val NATIVE_MESSAGE = "The Android live update adapter failed."
+
+/**
+ * Whether Android posts a notification whose header clock is [age] milliseconds old when it is posted. From API
+ * 35 it ignores one of more than 14 days, without an error; [margin] is what the post may take to reach it.
+ */
+internal fun postsClock(sdk: Int, age: Long, margin: Long): Boolean =
+    sdk < OLD_TIME_API || age <= MAX_TIME_AGE - margin
 
 /**
  * Android framework calls for the Rust lifecycle.
@@ -182,11 +191,13 @@ internal class AndroidAdapter(
         }
         val id = record.optionalString("id") ?: invalid()
         if (!validId(id)) invalid()
-        // What a post would refuse at the time is refused now, also a clock that is too old by then.
-        val notification = build(record)
+        // What a post would refuse at the time is refused now, also a clock that is too old by then: the
+        // notification is built as it will be at its time.
+        val startAt = record.optJSONObject("origin")?.optLong("startAt") ?: 0
+        val postedAt = maxOf(System.currentTimeMillis(), startAt)
+        val notification = build(record, postedAt)
         if (record.optionalString("state") != "scheduled") invalid()
-        val startAt = record.getJSONObject("origin").getLong("startAt")
-        refuseOldTime(notification, maxOf(System.currentTimeMillis(), startAt))
+        refuseOldTime(notification, postedAt)
         // The alarm is set for the stored receipts, which the lifecycle writes before it schedules.
         if (stored(id)?.optionalString("state") != "scheduled") invalid()
         scheduled.take(id)
@@ -214,9 +225,12 @@ internal class AndroidAdapter(
         if (ours) manager.cancel(LiveUpdateForeground.NOTIFICATION_ID)
     }
 
-    /** The notification of a stored receipt, on the alerting channel when its revision alerts and the user allows. */
-    internal fun build(record: JSONObject): Notification =
-        renderer().build(record, alertChannel(record))
+    /**
+     * The notification of a stored receipt as it is posted at [postedAt], on the alerting channel when its
+     * revision alerts and the user allows.
+     */
+    internal fun build(record: JSONObject, postedAt: Long = System.currentTimeMillis()): Notification =
+        renderer().build(record, alertChannel(record), postedAt)
 
     private fun renderer(): NotificationRenderer {
         val ongoing: ((Context, Notification) -> Unit)? = if (wearOngoing) WearOngoing::apply else null
@@ -255,8 +269,7 @@ internal class AndroidAdapter(
      */
     private fun refuseOldTime(notification: Notification, postedAt: Long = System.currentTimeMillis()) {
         if (!notification.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER)) return
-        val age = postedAt - notification.`when`
-        if (sdk >= OLD_TIME_API && age > MAX_TIME_AGE - POST_MARGIN) {
+        if (!postsClock(sdk, postedAt - notification.`when`, POST_MARGIN)) {
             throw AdapterFailure("INVALID_INPUT", OLD_CLOCK_MESSAGE)
         }
     }

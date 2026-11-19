@@ -65,7 +65,7 @@ class ExtensionsInstrumentationTest {
     fun theContentTapOpensItsUrlInThePackageAndNamesTheActivity() {
         adapter.post(v2Record("link", "standard", snapshot { put("openUrl", "liveupdate-test://orders/42") }))
         val content = Device.waitForShown("link").contentIntent
-        assertTrue(content.isImmutable)
+        Device.assertImmutable(content)
         assertTrue(content.isActivity)
         assertEquals(context.packageName, content.creatorPackage)
         send(content)
@@ -96,10 +96,13 @@ class ExtensionsInstrumentationTest {
             .put(action("cancel", "Cancel"))
         adapter.post(v2Record("actions", "standard", v2Snapshot(standard, actions = actions)))
         val posted = Device.waitForShown("actions").actions
-        assertTrue(posted[0].actionIntent.isActivity)
-        assertTrue(posted[0].actionIntent.isImmutable)
+        // What kind of intent it is, Android tells from API 31.
+        if (Build.VERSION.SDK_INT >= 31) {
+            assertTrue(posted[0].actionIntent.isActivity)
+            assertTrue(posted[1].actionIntent.isBroadcast)
+        }
+        Device.assertImmutable(posted[0].actionIntent)
         assertEquals(context.packageName, posted[0].actionIntent.creatorPackage)
-        assertTrue(posted[1].actionIntent.isBroadcast)
 
         send(posted[0].actionIntent)
         val opened = waitForStarted()
@@ -181,13 +184,13 @@ class ExtensionsInstrumentationTest {
     fun anUpdateWithAnotherStyleIsBuiltAsThatStyle() {
         val started = v2Record("styles", "progress", snapshot())
         adapter.post(started)
-        assertNull(Notification.Builder.recoverBuilder(context, Device.waitForShown("styles")).style)
+        assertNull(Device.styleOf(Device.waitForShown("styles")))
 
         val big = JSONObject().put("kind", "bigText").put("value", JSONObject().put("text", "Left at the door"))
         Device.paceUpdate()
         adapter.post(JSONObject(started.toString()).put("snapshot", v2Snapshot(big, revision = 1)))
         val updated = Device.waitForShown("styles", revision = 1)
-        assertTrue(Notification.Builder.recoverBuilder(context, updated).style is Notification.BigTextStyle)
+        assertEquals(Device.BIG_TEXT_STYLE, Device.styleOf(updated))
 
         val unknown = v2Record("unknown-origin", "carousel", snapshot())
         assertEquals("INVALID_INPUT", failureCode { adapter.post(unknown) })
@@ -284,7 +287,7 @@ class ExtensionsInstrumentationTest {
         val attached = waitForHeld { it.isForeground() }
         assertEquals(posted.key, attached.key)
         assertEquals("ride", idOf(attached))
-        assertTrue(attached.notification.hasPromotableCharacteristics())
+        if (Build.VERSION.SDK_INT >= 36) assertTrue(attached.notification.hasPromotableCharacteristics())
 
         Device.paceUpdate()
         adapter.post(JSONObject(ride.toString()).put("snapshot", snapshot(revision = 1)))
@@ -368,9 +371,12 @@ class ExtensionsInstrumentationTest {
             val timer = Device.timer(startedAt, startedAt + 30 * day)
             put("chronometer", JSONObject().put("timer", timer).put("countsDown", false))
         })
-        store(clocked(System.currentTimeMillis() - 15 * day))
-        assertFalse(LiveUpdateForeground.attach(service, type))
-        assertNull(held())
+        // Android ignores such a clock from API 35, and posts one of any age before.
+        if (Build.VERSION.SDK_INT >= 35) {
+            store(clocked(System.currentTimeMillis() - 15 * day))
+            assertFalse(LiveUpdateForeground.attach(service, type))
+            assertNull(held())
+        }
         store(clocked(System.currentTimeMillis() - 13 * day))
         assertTrue(LiveUpdateForeground.attach(service, type))
         waitForHeld { it.isForeground() && idOf(it) == "clocked" }
@@ -485,8 +491,8 @@ class ExtensionsInstrumentationTest {
         val invalid = listOf(
             "public" to snapshot { put("publicVersion", public) },
             "secret" to snapshot { put("publicVersion", public) },
-            "private" to snapshot { put("publicVersion", JSONObject(public.toString()).put("icon", "x")) },
             "private" to snapshot { put("publicVersion", JSONObject().put("title", "Delivery")) },
+            "private" to snapshot { put("publicVersion", JSONObject(public.toString()).put("status", 7)) },
         )
         invalid.forEachIndexed { index, (visibility, content) ->
             val record = v2Record("public-$index", "standard", content, visibility = visibility)

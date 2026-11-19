@@ -13,6 +13,7 @@ import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
+import java.util.Locale
 import kotlin.math.roundToInt
 
 internal const val RECORD_EXTRA = "io.github.1eedaegon.liveupdate.record"
@@ -30,10 +31,12 @@ private val VALID_STATES = setOf("unknown", "scheduled", "active", "stale", "end
 private val VALID_PROMOTION_STATES = setOf("promoted", "notPromoted", "notApplicable", "unknown")
 private val VALID_STYLES = setOf("standard", "bigText", "progress", "timer", "metric")
 private val VALID_PLACEMENTS = setOf("tagged", "foreground")
+private val VALID_FALLBACKS = setOf("none", "notification")
 
 /**
- * Strict schema-v1/v2 parser and Android system-template renderer. [ongoing] puts a watch's Ongoing Activity
- * into a notification of a live activity, where the adapter offers one.
+ * Schema-v1/v2 parser and Android system-template renderer. It checks every member it knows, and leaves alone
+ * a member it does not know: a later crate may send one, and the lifecycle has checked the request. [ongoing]
+ * puts a watch's Ongoing Activity into a notification of a live activity, where the adapter offers one.
  */
 internal class NotificationRenderer(
     context: Context,
@@ -48,9 +51,13 @@ internal class NotificationRenderer(
 
     /**
      * The notification of [record]. A revision that alerts is built for [alertChannelId] when the adapter gives
-     * one, and may then alert again.
+     * one, and may then alert again. [postedAt] is when it is posted, which is later for a scheduled start.
      */
-    fun build(record: JSONObject, alertChannelId: String? = null): Notification {
+    fun build(
+        record: JSONObject,
+        alertChannelId: String? = null,
+        postedAt: Long = System.currentTimeMillis(),
+    ): Notification {
         validateRecordShape(record)
         val id = requiredText(record, "id", 256)
         val origin = requiredObject(record, "origin")
@@ -62,7 +69,7 @@ internal class NotificationRenderer(
         if (alertChannelId != null) builder.setOnlyAlertOnce(false)
         when (schema) {
             1 -> applyLegacy(builder, snapshot, requiredText(origin, "template", 16))
-            2 -> applyRich(builder, id, snapshot, origin)
+            2 -> applyRich(builder, id, snapshot, origin, title, status, postedAt)
         }
         // The last content of an ended activity reports nothing when it goes.
         if (!record.isMissingOrNull("dismissAt")) builder.setDeleteIntent(null)
@@ -92,16 +99,11 @@ internal class NotificationRenderer(
     }
 
     private fun validateRecordShape(record: JSONObject) {
-        requireFields(
-            record,
-            setOf(
-                "id", "origin", "snapshot", "state", "promotionRequested", "promotionState",
-                "awaitingObservation", "postFailed",
-            ),
-            setOf("dismissAt"),
-        )
+        // The state last answered is the stored receipt's alone: a record that is posted has none.
+        if (record.has("reportedState")) invalid()
         val state = requiredText(record, "state", 16)
         if (state !in VALID_STATES) invalid()
+        requiredBoolean(record, "promotionRequested")
         if (requiredText(record, "promotionState", 24) !in VALID_PROMOTION_STATES) invalid()
         requiredBoolean(record, "awaitingObservation")
         requiredBoolean(record, "postFailed")
@@ -111,13 +113,8 @@ internal class NotificationRenderer(
             if (state != "ended") invalid()
         }
         val origin = requiredObject(record, "origin")
-        requireFields(
-            origin,
-            setOf("activityKey", "schemaVersion", "template", "fallback", "visibility", "snapshot"),
-            setOf("placement", "startAt"),
-        )
         requiredText(origin, "activityKey", 128)
-        if (requiredText(origin, "fallback", 16) !in setOf("none", "notification")) invalid()
+        if (requiredText(origin, "fallback", 16) !in VALID_FALLBACKS) invalid()
         requiredObject(origin, "snapshot")
         val placement = optionalText(origin, "placement", 16)
         if (placement != null && placement !in VALID_PLACEMENTS) invalid()
@@ -168,8 +165,9 @@ internal class NotificationRenderer(
     }
 
     private fun applyLegacy(builder: Notification.Builder, snapshot: JSONObject, template: String) {
-        requireFields(snapshot, setOf("revision", "title", "status"), setOf("progress", "timer", "staleAt"))
-        validateCommonSnapshot(snapshot)
+        // A presentation is of schema version 2.
+        if (!snapshot.isMissingOrNull("presentation")) invalid()
+        validateRevision(snapshot)
         when (template) {
             "progress" -> {
                 if (snapshot.isMissingOrNull("progress") || !snapshot.isMissingOrNull("timer")) invalid()
@@ -196,35 +194,25 @@ internal class NotificationRenderer(
         activityId: String,
         snapshot: JSONObject,
         origin: JSONObject,
+        title: String,
+        status: String,
+        postedAt: Long,
     ) {
-        requireFields(snapshot, setOf("revision", "title", "status", "presentation"), setOf("staleAt"))
-        validateCommonSnapshot(snapshot)
+        // A progress and a timer beside the presentation are of schema version 1.
+        if (!snapshot.isMissingOrNull("progress") || !snapshot.isMissingOrNull("timer")) invalid()
+        validateRevision(snapshot)
         val presentation = requiredObject(snapshot, "presentation")
-        requireFields(
-            presentation,
-            setOf("style"),
-            setOf(
-                "shortCriticalText", "largeIcon", "actions", "samsungNowBar", "chronometer", "openUrl", "alert",
-                "publicVersion", "smallIcon", "accentColor", "subText", "wearOngoingActivity",
-            ),
-        )
         val style = requiredObject(presentation, "style")
         val kind = requiredText(style, "kind", 16)
         // The start named a system style; an update may carry another one.
         if (requiredText(origin, "template", 16) !in VALID_STYLES) invalid()
-        applyStyle(builder, style, kind)
+        applyStyle(builder, style, kind, status, postedAt)
         optionalObject(presentation, "chronometer")?.let { chronometer ->
             // The timer style is that clock alone.
             if (kind == "timer") invalid()
             applyClock(builder, chronometer)
         }
-        applyPresentationOptions(
-            builder,
-            activityId,
-            presentation,
-            requiredText(snapshot, "title", 120),
-            requiredText(snapshot, "status", 240),
-        )
+        applyPresentationOptions(builder, activityId, presentation, title, status)
         applyExtensions(builder, activityId, presentation, origin)
     }
 
@@ -249,7 +237,6 @@ internal class NotificationRenderer(
         }
         optionalText(presentation, "subText", MAX_SUB_TEXT)?.let(builder::setSubText)
         optionalObject(presentation, "publicVersion")?.let { public ->
-            requireFields(public, setOf("title", "status"))
             // Only a private activity has content that a lock screen hides.
             if (requiredText(origin, "visibility", 16) != "private") invalid()
             val shown = Notification.Builder(application, channelId)
@@ -266,38 +253,32 @@ internal class NotificationRenderer(
         return links.open(activityId, actionId, url) ?: invalid()
     }
 
-    private fun applyStyle(builder: Notification.Builder, style: JSONObject, kind: String) {
+    private fun applyStyle(
+        builder: Notification.Builder,
+        style: JSONObject,
+        kind: String,
+        status: String,
+        postedAt: Long,
+    ) {
         when (kind) {
-            "standard" -> {
-                requireFields(style, setOf("kind"))
-                builder.setCategory(Notification.CATEGORY_STATUS)
-            }
+            "standard" -> builder.setCategory(Notification.CATEGORY_STATUS)
             "bigText" -> applyBigText(builder, style)
             "progress" -> applyProgress(builder, style)
             "timer" -> applyTimer(builder, style)
-            "metric" -> applyMetric(builder, style)
+            "metric" -> applyMetric(builder, style, status, postedAt)
             else -> invalid()
         }
     }
 
     private fun applyBigText(builder: Notification.Builder, style: JSONObject) {
-        requireFields(style, setOf("kind", "value"))
         val value = requiredObject(style, "value")
-        requireFields(value, setOf("text"), setOf("summary"))
         val systemStyle = Notification.BigTextStyle().bigText(requiredText(value, "text", 4_000))
         optionalText(value, "summary", 240)?.let(systemStyle::setSummaryText)
         builder.setCategory(Notification.CATEGORY_STATUS).setStyle(systemStyle)
     }
 
     private fun applyProgress(builder: Notification.Builder, style: JSONObject) {
-        requireFields(style, setOf("kind", "value"))
-        val value = requiredObject(style, "value")
-        requireFields(
-            value,
-            setOf("progress", "segments"),
-            setOf("indeterminate", "styledByProgress", "points", "startIcon", "endIcon", "trackerIcon"),
-        )
-        val parsed = parseProgress(value)
+        val parsed = parseProgress(requiredObject(style, "value"))
         builder.setCategory(Notification.CATEGORY_PROGRESS)
         if (sdk >= 36 && Build.VERSION.SDK_INT >= 36) {
             applySystemProgress(builder, parsed)
@@ -332,7 +313,6 @@ internal class NotificationRenderer(
     }
 
     private fun parseSegment(value: JSONObject, ids: MutableSet<Int>): ParsedSegment {
-        requireFields(value, setOf("length"), setOf("id", "color", "semanticStyle"))
         val length = requiredInt(value, "length", 1, Int.MAX_VALUE)
         val id = optionalInt(value, "id", 0, Int.MAX_VALUE)
         if (id != null && !ids.add(id)) invalid()
@@ -345,7 +325,6 @@ internal class NotificationRenderer(
         var previous = 0
         return (0 until points.length()).map { index ->
             val value = points.getJSONObject(index)
-            requireFields(value, setOf("position"), setOf("id", "color", "semanticStyle"))
             val position = requiredInt(value, "position", 1, maximum)
             val id = optionalInt(value, "id", 0, Int.MAX_VALUE)
             if (position <= previous || id != null && !ids.add(id)) invalid()
@@ -383,14 +362,12 @@ internal class NotificationRenderer(
     }
 
     private fun applyTimer(builder: Notification.Builder, style: JSONObject) {
-        requireFields(style, setOf("kind", "value"))
         builder.setCategory(Notification.CATEGORY_STATUS)
         applyClock(builder, requiredObject(style, "value"))
     }
 
     /** The header clock of a timer style or of a chronometer: down to its end, or up from its start. */
     private fun applyClock(builder: Notification.Builder, value: JSONObject) {
-        requireFields(value, setOf("timer", "countsDown"))
         val (startedAt, endsAt) = timer(requiredObject(value, "timer"))
         val countsDown = requiredBoolean(value, "countsDown")
         builder.setWhen(if (countsDown) endsAt else startedAt)
@@ -399,27 +376,51 @@ internal class NotificationRenderer(
             .setChronometerCountDown(countsDown)
     }
 
-    private fun applyMetric(builder: Notification.Builder, style: JSONObject) {
-        requireFields(style, setOf("kind", "value"))
+    private fun applyMetric(builder: Notification.Builder, style: JSONObject, status: String, postedAt: Long) {
         val value = requiredObject(style, "value")
-        requireFields(value, setOf("metrics"), setOf("criticalMetric"))
         val metrics = requiredArray(value, "metrics")
         if (metrics.length() !in 1..MAX_METRICS) invalid()
         val parsed = (0 until metrics.length()).map { parseMetric(metrics.getJSONObject(it)) }
         val critical = optionalInt(value, "criticalMetric", 0, metrics.length() - 1)
         builder.setCategory(Notification.CATEGORY_STATUS)
-        if (sdk >= 37 && Build.VERSION.SDK_INT >= 37) applySystemMetric(builder, parsed, critical)
+        if (sdk >= 37 && Build.VERSION.SDK_INT >= 37) {
+            applySystemMetric(builder, parsed, critical)
+        } else {
+            applyMetricText(builder, parsed, status, postedAt)
+        }
+    }
+
+    /**
+     * A metric style where Android has no `MetricStyle`: the numbers and the texts as lines under the status,
+     * and the first stopwatch or countdown in the header. A chronometer of the presentation, which is applied
+     * after the style, replaces that clock.
+     */
+    private fun applyMetricText(
+        builder: Notification.Builder,
+        metrics: List<ParsedMetric>,
+        status: String,
+        postedAt: Long,
+    ) {
+        val lines = metricLines(metrics, application.resources.configuration.locales[0] ?: Locale.getDefault())
+        if (lines.isNotEmpty()) {
+            builder.setStyle(Notification.BigTextStyle().bigText((listOf(status) + lines).joinToString("\n")))
+        }
+        val clock = metricClock(metrics) ?: return
+        // A clock that Android would not post is left out: a metric is not refused for its time (LU-ADAPTER-10).
+        if (!postsClock(sdk, postedAt - clock.time, FALLBACK_CLOCK_MARGIN)) return
+        builder.setWhen(clock.time)
+            .setShowWhen(true)
+            .setUsesChronometer(true)
+            .setChronometerCountDown(clock.countsDown)
     }
 
     private fun parseMetric(value: JSONObject): ParsedMetric {
-        requireFields(value, setOf("label", "value"), setOf("semanticStyle"))
         val label = requiredText(value, "label", 10)
         val metricValue = requiredObject(value, "value")
-        requireFields(metricValue, setOf("kind", "value"))
         val parsedValue = when (requiredText(metricValue, "kind", 16)) {
-            "integer" -> parseIntegerMetric(metricValue.get("value"))
-            "decimal" -> parseDecimalMetric(metricValue.get("value"))
-            "text" -> ParsedMetricValue.Text(requiredTextValue(metricValue.get("value"), 64))
+            "integer" -> parseIntegerMetric(requiredObject(metricValue, "value"))
+            "decimal" -> parseDecimalMetric(requiredObject(metricValue, "value"))
+            "text" -> ParsedMetricValue.Text(requiredText(metricValue, "value", 64))
             "stopwatch" -> ParsedMetricValue.Stopwatch(metricTime(metricValue, "startedAt"))
             "countdown" -> ParsedMetricValue.Countdown(metricTime(metricValue, "endsAt"))
             else -> invalid()
@@ -427,25 +428,19 @@ internal class NotificationRenderer(
         return ParsedMetric(label, parsedValue, optionalSemantic(value))
     }
 
-    private fun parseIntegerMetric(raw: Any): ParsedMetricValue.Integer {
-        val value = raw as? JSONObject ?: invalid()
-        requireFields(value, setOf("value"), setOf("unit"))
-        return ParsedMetricValue.Integer(requiredInt(value, "value", Int.MIN_VALUE, Int.MAX_VALUE), optionalText(value, "unit", 8))
-    }
+    private fun parseIntegerMetric(value: JSONObject): ParsedMetricValue.Integer = ParsedMetricValue.Integer(
+        requiredInt(value, "value", Int.MIN_VALUE, Int.MAX_VALUE),
+        optionalText(value, "unit", 8),
+    )
 
-    private fun parseDecimalMetric(raw: Any): ParsedMetricValue.Decimal {
-        val value = raw as? JSONObject ?: invalid()
-        requireFields(value, setOf("value"), setOf("unit"))
+    private fun parseDecimalMetric(value: JSONObject): ParsedMetricValue.Decimal {
         val number = requiredDouble(value, "value")
         if (!number.toFloat().isFinite()) invalid()
         return ParsedMetricValue.Decimal(number.toFloat(), optionalText(value, "unit", 8))
     }
 
-    private fun metricTime(value: JSONObject, field: String): Long {
-        val nested = value.get("value") as? JSONObject ?: invalid()
-        requireFields(nested, setOf(field))
-        return requiredLong(nested, field, 0, MAX_TIMESTAMP)
-    }
+    private fun metricTime(value: JSONObject, field: String): Long =
+        requiredLong(requiredObject(value, "value"), field, 0, MAX_TIMESTAMP)
 
     @SuppressLint("NewApi")
     private fun applySystemMetric(
@@ -496,7 +491,6 @@ internal class NotificationRenderer(
         val ids = mutableSetOf<String>()
         for (index in 0 until actions.length()) {
             val value = actions.getJSONObject(index)
-            requireFields(value, setOf("id", "title"), setOf("icon", "authenticationRequired", "openUrl"))
             val id = requiredText(value, "id", 64)
             if (!ACTION_ID.matches(id) || !ids.add(id)) invalid()
             val title = requiredText(value, "title", 64)
@@ -548,7 +542,6 @@ internal class NotificationRenderer(
         defaultPrimary: String,
         defaultSecondary: String,
     ) {
-        requireFields(value, emptySet(), setOf("primary", "secondary"))
         val title = optionalText(value, "primary", 120) ?: defaultPrimary
         val secondary = optionalText(value, "secondary", 240) ?: defaultSecondary
         if (!manufacturer.equals("samsung", ignoreCase = true)) return
@@ -563,15 +556,13 @@ internal class NotificationRenderer(
         builder.addExtras(extras)
     }
 
-    private fun validateCommonSnapshot(snapshot: JSONObject) {
+    /** The revision and the stale time of a snapshot. Its title and its status are read once, by [build]. */
+    private fun validateRevision(snapshot: JSONObject) {
         requiredLong(snapshot, "revision", 0, MAX_SAFE_INTEGER)
-        requiredText(snapshot, "title", 120)
-        requiredText(snapshot, "status", 240)
         if (!snapshot.isMissingOrNull("staleAt")) requiredLong(snapshot, "staleAt", 0, MAX_TIMESTAMP)
     }
 
     private fun timer(value: JSONObject): Pair<Long, Long> {
-        requireFields(value, setOf("startedAt", "endsAt"))
         val startedAt = requiredLong(value, "startedAt", 0, MAX_TIMESTAMP)
         val endsAt = requiredLong(value, "endsAt", 0, MAX_TIMESTAMP)
         if (endsAt <= startedAt) invalid()
@@ -664,11 +655,6 @@ internal class NotificationRenderer(
         return number.toDouble().also { if (!it.isFinite()) invalid() }
     }
 
-    private fun requireFields(value: JSONObject, required: Set<String>, optional: Set<String> = emptySet()) {
-        val fields = value.keys().asSequence().toSet()
-        if (!fields.containsAll(required) || fields.any { it !in required && it !in optional }) invalid()
-    }
-
     private fun JSONObject.isMissingOrNull(field: String) = !has(field) || isNull(field)
 
     private fun invalid(): Nothing = throw AdapterFailure("INVALID_INPUT", INVALID_MESSAGE)
@@ -688,12 +674,3 @@ private data class ParsedProgress(
 
 private data class ParsedSegment(val length: Int, val id: Int?, val color: Int?, val semantic: Int)
 private data class ParsedPoint(val position: Int, val id: Int?, val color: Int?, val semantic: Int)
-private data class ParsedMetric(val label: String, val value: ParsedMetricValue, val semantic: Int)
-
-private sealed interface ParsedMetricValue {
-    data class Integer(val value: Int, val unit: String?) : ParsedMetricValue
-    data class Decimal(val value: Float, val unit: String?) : ParsedMetricValue
-    data class Text(val value: String) : ParsedMetricValue
-    data class Stopwatch(val startedAt: Long) : ParsedMetricValue
-    data class Countdown(val endsAt: Long) : ParsedMetricValue
-}

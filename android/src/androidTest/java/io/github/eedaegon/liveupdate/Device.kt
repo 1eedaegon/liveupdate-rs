@@ -3,14 +3,17 @@ package io.github.eedaegon.liveupdate
 import android.Manifest
 import android.app.Notification
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.service.notification.StatusBarNotification
 import androidx.test.platform.app.InstrumentationRegistry
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 
 /** What the instrumentation tests share: the device's state, the bridge and the record JSON. */
 internal object Device {
@@ -18,6 +21,7 @@ internal object Device {
     const val NOTIFICATION_ID = 1
     const val CHANNEL_ID = "liveupdate-rs.v1"
     const val PREFERENCES = "io.github.1eedaegon.liveupdate"
+    const val BIG_TEXT_STYLE = "android.app.Notification\$BigTextStyle"
 
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context: Context = instrumentation.targetContext
@@ -46,8 +50,13 @@ internal object Device {
         }
     }
 
+    /**
+     * Runs [command] and waits for its end. Its output is read to the end before the pipe is closed: Android 8
+     * ends the whole test run when a command writes to a pipe that is closed already.
+     */
     fun shell(command: String) {
-        instrumentation.uiAutomation.executeShellCommand(command).close()
+        val output = instrumentation.uiAutomation.executeShellCommand(command)
+        ParcelFileDescriptor.AutoCloseInputStream(output).use { it.readBytes() }
     }
 
     /**
@@ -95,6 +104,17 @@ internal object Device {
     }
 
     fun waitForGone(id: String) = waitUntil("$id is gone") { shown(id) == null }
+
+    /**
+     * The class name of the notification's system style, null without one. Every Android version tells it;
+     * `Notification.Builder.getStyle` is of API 28.
+     */
+    fun styleOf(notification: Notification): String? = notification.extras.getString(Notification.EXTRA_TEMPLATE)
+
+    /** [intent] is immutable, where Android tells: `PendingIntent.isImmutable` is of API 31. */
+    fun assertImmutable(intent: PendingIntent) {
+        if (Build.VERSION.SDK_INT >= 31) assertTrue(intent.isImmutable)
+    }
 
     fun observed(): JSONArray = dispatch("observe").getJSONArray("data")
 
