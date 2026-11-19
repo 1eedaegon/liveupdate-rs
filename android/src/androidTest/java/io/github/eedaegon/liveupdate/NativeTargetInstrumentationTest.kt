@@ -58,10 +58,14 @@ class NativeTargetInstrumentationTest {
     private fun record(id: String, vararg actions: JSONObject) =
         v2Record(id, "standard", v2Snapshot(JSONObject().put("kind", "standard"), actions = JSONArray(actions.toList())))
 
-    /** Stores [record] as the lifecycle does before it posts, and posts it. */
+    /**
+     * Stores [record] as the lifecycle does before it posts, and posts it, paced: Android drops the post of a package
+     * that the previous test's burst of posts and cancels has pulled over its rate.
+     */
     private fun show(record: JSONObject): JSONObject {
         val receipt = JSONObject(record.toString()).put("reportedState", "unknown")
         dispatch("write", JSONObject().put("records", JSONArray().put(receipt)))
+        Device.paceUpdate()
         adapter.post(record)
         return record
     }

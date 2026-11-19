@@ -82,8 +82,9 @@ pub extern "system" fn Java_io_github_eedaegon_liveupdate_NativeRust_lifecycleFr
         .with_env(|env| {
             let vm = env.get_java_vm()?;
             // SAFETY: the process VM, and a context reference that is valid on this thread for the call.
-            let client =
-                unsafe { LiveUpdate::android_from_raw(vm.get_raw().cast(), context.as_raw().cast()) };
+            let client = unsafe {
+                LiveUpdate::android_from_raw(vm.get_raw().cast(), context.as_raw().cast())
+            };
             let outcome = match client.and_then(|client| scenarios::lifecycle(&client)) {
                 Ok(value) => json!({ "ok": value }),
                 Err(error) => json!({ "error": { "code": error.code, "message": error.message } }),
