@@ -84,6 +84,8 @@ fn the_readme_installs_this_version_and_its_aar() {
         format!(r#"liveupdate = {{ version = "{version}", features = ["android"] }}"#),
         format!("liveupdate-android-{version}.aar"),
         "https://github.com/1eedaegon/liveupdate-rs/releases".into(),
+        // What a watch app adds is in the install snippet, at the top.
+        r#"implementation("androidx.wear:wear-ongoing:1.1.0") // a watch app only"#.into(),
     ] {
         assert!(
             readme.contains(&phrase),
@@ -117,7 +119,8 @@ fn the_docs_state_what_an_app_must_know() {
         "one retained client per process",
         "`EndPolicy::After` keeps the last content until its time",
         "cannot be more than 14 days old",
-        "Live Updates come to watches with Wear OS 7",
+        "Below Wear OS 7 only",
+        "Build your Rust library for `armeabi-v7a` too",
         "A start or an update stores them in at most 1,000,000 bytes",
         "A scheduled start is on the minute only with the exact-alarm permission",
         "Android 12 does not know `USE_EXACT_ALARM`",
@@ -188,6 +191,8 @@ fn no_doc_says_what_is_no_longer_true() {
             "git = \"https://github.com/1eedaegon/liveupdate-rs\"",
             "connectedDebugAndroidTest",
             "That package was not run on the Note10",
+            // The README says how to use a watch, and docs/testing.md what was run on one.
+            "the instrumentation tests pass but for those",
         ] {
             assert!(!text.contains(stale), "{file} still says {stale:?}");
         }

@@ -16,12 +16,13 @@ liveupdate = { version = "0.5.0", features = ["android"] }
 
 Put `liveupdate-android-0.5.0.aar` from the [GitHub release](https://github.com/1eedaegon/liveupdate-rs/releases)
 into `app/libs/`. The AAR is written in Kotlin and a file dependency brings no dependencies of its own, so
-add the Kotlin standard library too:
+add the Kotlin standard library too, and in a watch app the library of its [Ongoing Activity](#wear-os):
 
 ```kotlin
 dependencies {
     implementation(files("libs/liveupdate-android-0.5.0.aar"))
     implementation("org.jetbrains.kotlin:kotlin-stdlib:2.2.10") // or newer
+    implementation("androidx.wear:wear-ongoing:1.1.0") // a watch app only
 }
 ```
 
@@ -355,30 +356,18 @@ restarted service that calls `attach` before the first lifecycle call shows the 
 
 ### Wear OS
 
-The same calls run in an application on a watch. On a Galaxy Watch4 with Wear OS 5 the instrumentation
-tests pass but for those that assert what Android 15 to 17 do ([docs/testing.md](docs/testing.md)). Its
-userspace is 32-bit, so build your Rust library for `armeabi-v7a` too (`armv7-linux-androideabi`).
+In a watch app the same calls put the activity on the watch face, as an icon that opens the app:
 
-A watch shows an ongoing notification in its tray only. By Google's documentation, Live Updates come to
-watches with Wear OS 7 (Android 17), and below, what puts an activity on the watch face, as an icon that
-opens the application, and among the recent applications is the Ongoing Activity of AndroidX. The AAR
-adds one to every notification of a live activity when your watch application has that library; it does
-not bring it:
+1. Add `androidx.wear:wear-ongoing` to the watch app, as in [Install](#install). The AAR uses it when
+   it is there and does not bring it.
+2. Build your Rust library for `armeabi-v7a` too (`armv7-linux-androideabi`): a watch such as the Galaxy
+   Watch4 runs 32-bit code only.
+3. Start and update as on a phone. The icon, the title, the status and a header clock are the
+   notification's, and a tap opens what a tap on the notification opens.
 
-```kotlin
-dependencies {
-    implementation("androidx.wear:wear-ongoing:1.1.0")
-}
-```
+`capabilities()?.presentation.wear_ongoing_activity` is true where the watch shows it.
 
-`capabilities()?.presentation.wear_ongoing_activity` says whether it is offered: on a watch below
-Wear OS 7 with the library. The Ongoing Activity shows what the notification shows, the small icon, the
-title, the status and a header clock, and opens what a tap on the notification opens. Nothing changes in
-a request, and nothing on a phone.
-
-A live activity of the phone does not appear on a paired watch: by Google's documentation Android does
-not bridge ongoing notifications, and bridges Live Updates from Wear OS 7 where the manufacturer allows
-it.
+Below Wear OS 7 only (seen on Wear OS 5), and a phone's activity does not appear on a paired watch.
 
 ## How it works
 
@@ -441,8 +430,6 @@ oversized adapter data fails closed as `NATIVE_ERROR`.
   which from Android 14 the person has to allow, or `USE_EXACT_ALARM`. Without it Android chooses the
   moment, up to ten minutes late while the device is awake and up to an hour while it dozes. It cannot
   be updated before it begins, and it does not take the foreground placement.
-- On a watch the Ongoing Activity was seen on a Galaxy Watch4 with Wear OS 5: its icon on the watch
-  face. Wear OS 6 and 7 were not run.
 - Visibility is reported as `Unknown`: requesting private notification content does not prove what
   an OEM system UI actually revealed.
 - Use one retained client per process so operations share the same serialization boundary. Every
