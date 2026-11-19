@@ -39,17 +39,23 @@ class MetricFallbackTest {
 
     // LU-V2-METRIC-4
     @Test
-    fun aDecimalHasTheDigitsOfItsFloatAndIsNotRounded() {
+    fun aDecimalHasAtMostTwoFractionDigitsAsTheSystemsStyleWritesIt() {
         fun line(value: Float) = metricLines(listOf(metric("V", ParsedMetricValue.Decimal(value, null))), Locale.US).single()
 
-        // The double nearest to this float is 3.140000104904175: the float's own shortest form is written.
-        assertEquals("V 3.14", line(3.14f))
-        assertEquals("V 3.14159", line(3.14159f))
-        assertEquals("V 0.0004", line(0.0004f))
+        // What `Notification.MetricStyle` showed on Android 17 for the same values: 3.14, 0 and 0.33.
+        assertEquals("V 3.14", line(3.14159f))
+        assertEquals("V 0", line(0.0004f))
+        assertEquals("V 0.33", line(0.33333334f))
+        assertEquals("V 12.5", line(12.5f))
         assertEquals("V 42", line(42f))
-        assertEquals("V 0.33333334", line(1f / 3f))
         assertEquals("V -0.5", line(-0.5f))
-        assertEquals("V 12,345,678", line(1.2345678E7f))
+        // The float nearest to 2.675 is a little below it.
+        assertEquals("V 2.67", line(2.675f))
+        assertEquals("V 0.13", line(0.126f))
+        // What rounds to nothing is nothing, without a sign.
+        assertEquals("V 0", line(-0.0004f))
+        assertEquals("V -0.01", line(-0.006f))
+        assertEquals("V 1,234,567.5", line(1234567.5f))
         assertEquals("V 10,000,000,000", line(1.0E10f))
     }
 

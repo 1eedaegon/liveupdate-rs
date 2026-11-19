@@ -326,3 +326,41 @@ The same day the watch ran the suite again, with the compatibility change before
 the main run and 6 of 7 with the exact alarm allowed. Each of the 11 that fail stops at an assertion of
 a later Android: two of API 35, two of API 36 and seven of API 37. It was not run again after the
 review.
+
+On 2026-11-19 the notifications of 0.7.0 were also looked at by hand, option by option, on the Galaxy
+S23 (Android 17, One UI 9) and the watch ([device-look](design/device-look/PRD.md)). A throwaway
+instrumentation class posted scenes through the bridge on command, and the screen was captured over
+adb; it is not in the repository.
+
+- **Looked at on the S23:** a progress style at 0, 1, 25, 75, 99 and 100 of 100 with segments, points
+  and icons, and without them; the longest title, status, text and button titles; zero to three
+  buttons; every option of a presentation at once; a timer, a chronometer beside a style, and metrics
+  of every kind; the status chip; the banner of a revision that alerts; an activity that is not
+  promoted, folded and unfolded; five activities at once; landscape; the lock screen with each
+  visibility and a public version; the Now Bar with and without `samsungNowBar`.
+- **Right as it is:** the tracker is at the track's left end at 0 and at its right end at 100 and never
+  leaves it; long texts end in an ellipsis inside the card; the banner and the card keep their shape
+  in landscape; a locked screen shows a public activity in full, a private one by the application's
+  name, a public version in its place, and a secret one not at all.
+- **Found and fixed** (LU-WEAR-7, LU-V2-PROGRESS-3, LU-V2-METRIC-4): the watch kept the icon of an
+  Ongoing Activity that an update had turned off; `ProgressStyle::new` built a bar that looked the same
+  at 0 and at 100; a decimal metric showed every digit below API 37 and two on it.
+- **What One UI does**, now in the README: with `samsungNowBar` the Now Bar and the card show two
+  lines, the application's icon and no progress bar, while a promoted activity without it is in the
+  Now Bar with its bar; a point at the track's full length is not drawn; the chip shows the first
+  metric and not the critical one; long values of three metrics are cut; the header clock stands
+  against the title without a space; a summary is not shown beside a sub text.
+- **A right-to-left layout** follows the system and no per-application language. It was forced as the
+  developer option does, with the language left Korean: the property `debug.force_rtl`, and then the
+  configuration update that the system's language picker makes, from the instrumentation. The card is
+  mirrored when it is first shown and when its style changes. After an update of the same style One
+  UI shifts the status and the progress bar onto the icon, and the banner is not mirrored. A language
+  that is written from the right was not tried.
+- **On the watch:** an activity is the icon on the watch face. An ongoing notification is not among
+  the watch's notifications, and a revision that alerts does not pop up. With the fix the icon goes
+  when an update turns the Ongoing Activity off and when the activity ends with a last content. The
+  watch then ran the whole suite with the fix: 81 of 92 in the main run and 6 of 7 with the exact
+  alarm allowed, the 11 that fail each at an assertion of API 35, 36 or 37 as before.
+
+The phone's rotation and layout direction were put back, and the test package was removed from both
+devices. The phone was locked for the lock screen and unlocked again by its owner's word.

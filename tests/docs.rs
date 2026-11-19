@@ -173,6 +173,10 @@ fn the_docs_state_what_an_app_must_know() {
         "a `_` arm",
         "| Later | Up to 0.6.0 |",
         "| `MetricStyle` | API 37 |",
+        "`styled_by_progress: false`",
+        "without `samsung_now_bar`",
+        "the first metric",
+        "the icon on the watch face",
     ] {
         assert!(
             readme.contains(feature),

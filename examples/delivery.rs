@@ -27,7 +27,6 @@ fn delivery_progress(progress: u32, icon: &IconSource) -> ProgressStyle {
         },
     ];
     ProgressStyle {
-        styled_by_progress: true,
         points: vec![ProgressPoint {
             id: Some(10),
             color: Some(0xffff_a000),

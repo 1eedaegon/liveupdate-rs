@@ -222,7 +222,12 @@ class ExtensionsInstrumentationTest {
         // It reports nothing when it goes.
         assertNull(last.deleteIntent)
         assertEquals("Mochi's snack delivery", last.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
-        assertTrue(NotificationProbe.heard(shown.key).none { it.removed })
+        // It replaces the notification in place. On a watch whose notification carried an Ongoing Activity the
+        // adapter cancels that one first, so that its icon goes with the end.
+        val removals = if (shown.notification.extras.containsKey(WEAR_ONGOING_EXTRA)) 1 else 0
+        Device.waitUntil("the listener heard $removals removals") {
+            NotificationProbe.heard(shown.key).count { it.removed } == removals
+        }
         assertEquals(0, Device.observed().length())
 
         // Android removes it at its time, and a time that has passed removes it at once.

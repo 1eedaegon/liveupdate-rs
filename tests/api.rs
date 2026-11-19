@@ -248,7 +248,7 @@ fn a_constructor_takes_what_is_required_and_sets_nothing_else() {
         ProgressStyle {
             progress: 6,
             indeterminate: false,
-            styled_by_progress: false,
+            styled_by_progress: true,
             segments: vec![ProgressSegment::new(7)],
             points: Vec::new(),
             start_icon: None,
@@ -303,6 +303,40 @@ fn a_constructor_takes_what_is_required_and_sets_nothing_else() {
             promotion_enabled: false,
             presentation: PresentationCapabilities::default(),
         }
+    );
+}
+
+// LU-V2-PROGRESS-3
+#[test]
+fn a_progress_style_from_its_constructor_is_styled_by_its_progress() {
+    // As Android's own default: without it every segment is shown in full, and a bar without a
+    // tracker icon does not show where its progress is.
+    let style = ProgressStyle::new(40, vec![ProgressSegment::new(100)]);
+    assert!(style.styled_by_progress);
+    let written = serde_json::to_value(&style).unwrap();
+    assert_eq!(
+        written,
+        json!({ "progress": 40, "styledByProgress": true, "segments": [{ "length": 100 }] })
+    );
+    assert_eq!(
+        serde_json::from_value::<ProgressStyle>(written).unwrap(),
+        style
+    );
+
+    // The member's JSON is what it was: left out when false, and false when left out, so a request and
+    // a receipt of an earlier version read as before.
+    let plain = ProgressStyle {
+        styled_by_progress: false,
+        ..style
+    };
+    let written = serde_json::to_value(&plain).unwrap();
+    assert_eq!(
+        written,
+        json!({ "progress": 40, "segments": [{ "length": 100 }] })
+    );
+    assert_eq!(
+        serde_json::from_value::<ProgressStyle>(written).unwrap(),
+        plain
     );
 }
 
@@ -478,6 +512,7 @@ fn what_the_constructors_build_is_written_as_the_smallest_json() {
                         "kind": "progress",
                         "value": {
                             "progress": 1,
+                            "styledByProgress": true,
                             "segments": [{ "length": 2 }],
                             "points": [{ "position": 1 }]
                         }

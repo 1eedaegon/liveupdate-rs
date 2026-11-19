@@ -42,4 +42,26 @@ class WearOngoingTest {
         assertEquals(-55_000L, elapsedAt(time = 940_000, wallNow = 1_000_000, elapsedNow = 5_000))
         assertEquals(5_000L, elapsedAt(time = 1_000_000, wallNow = 1_000_000, elapsedNow = 5_000))
     }
+
+    // LU-WEAR-7
+    @Test
+    fun aShownOngoingActivityIsWithdrawnBeforeAPostWithoutOneByWhatThisProcessPostedLast() {
+        var asked = 0
+        fun listed(answer: Boolean): () -> Boolean = {
+            asked += 1
+            answer
+        }
+        // A post that carries one replaces whatever is shown, and nothing is asked.
+        for (remembered in listOf(true, false, null)) {
+            assertFalse(withdrawsOngoing(remembered, carries = true, listed = listed(true)))
+        }
+        // What this process posted last decides: Android lists a post only some time after it.
+        assertTrue(withdrawsOngoing(remembered = true, carries = false, listed = listed(false)))
+        assertFalse(withdrawsOngoing(remembered = false, carries = false, listed = listed(true)))
+        assertEquals(0, asked)
+        // Without a memory of it, in a process that started since, Android's list is asked once.
+        assertTrue(withdrawsOngoing(remembered = null, carries = false, listed = listed(true)))
+        assertFalse(withdrawsOngoing(remembered = null, carries = false, listed = listed(false)))
+        assertEquals(2, asked)
+    }
 }

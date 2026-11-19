@@ -157,6 +157,65 @@ class WearOngoingInstrumentationTest {
         }
     }
 
+    // LU-WEAR-7
+    @Test
+    fun aPostWithoutTheOngoingActivityFirstCancelsTheNotificationThatCarriesOne() {
+        fun record(revision: Long, carried: Boolean) = v2Record("icon", "standard", v2Snapshot(standard, revision = revision)
+            .apply { if (!carried) getJSONObject("presentation").put("wearOngoingActivity", false) })
+        // The key of the first post: between a cancel and the post after it nothing is shown to ask for it.
+        var key = ""
+        fun heard() = NotificationProbe.heard(key)
+        fun post(adapter: AndroidAdapter, record: JSONObject, posts: Int) {
+            Device.paceUpdate()
+            adapter.post(record)
+            Device.waitUntil("the listener heard $posts posts") { heard().count { !it.removed } == posts }
+        }
+        NotificationProbe.allow()
+        try {
+            offered.post(record(0, true))
+            assertTrue(SerializationHelper.hasOngoingActivity(Device.waitForShown("icon", revision = 0)))
+            assertTrue(Device.waitForShown("icon").extras.containsKey(WEAR_ONGOING_EXTRA))
+            key = checkNotNull(Device.shown("icon")).key
+            Device.waitUntil("the listener heard the first post") { heard().size == 1 }
+
+            // One that carries it replaces one that carries it, in place.
+            post(offered, record(1, true), posts = 2)
+            assertTrue(heard().toString(), heard().none { it.removed })
+
+            // One that does not is posted after the one that carries it was cancelled: a watch keeps the icon
+            // of an Ongoing Activity until its notification is cancelled.
+            post(offered, record(2, false), posts = 3)
+            assertFalse(SerializationHelper.hasOngoingActivity(Device.waitForShown("icon", revision = 2)))
+            assertEquals(heard().toString(), listOf(false, false, true, false), heard().map { it.removed })
+
+            // Nothing is cancelled for a notification that carries none, and nothing to carry one again.
+            post(offered, record(3, false), posts = 4)
+            post(offered, record(4, true), posts = 5)
+            assertTrue(SerializationHelper.hasOngoingActivity(Device.waitForShown("icon", revision = 4)))
+            assertEquals(heard().toString(), 1, heard().count { it.removed })
+
+            // The last content of an ended activity carries none either: the icon goes with the end.
+            val ended = record(4, true).put("state", "ended").put("awaitingObservation", false)
+                .put("dismissAt", System.currentTimeMillis() + 60_000)
+            post(offered, ended, posts = 6)
+            assertEquals(heard().toString(), 2, heard().count { it.removed })
+            assertEquals(heard().toString(), false, heard().last().removed)
+
+            // An adapter that offers none has put none there, and cancels nothing.
+            withheld.post(record(0, true).put("id", "plain"))
+            val plain = checkNotNull(Device.waitForShown("plain").let { Device.shown("plain") }).key
+            Device.paceUpdate()
+            withheld.post(record(1, false).put("id", "plain"))
+            Device.waitForShown("plain", revision = 1)
+            Device.waitUntil("the listener heard both posts") { NotificationProbe.heard(plain).size == 2 }
+            assertTrue(NotificationProbe.heard(plain).none { it.removed })
+            // The adapter's own cancel is no dismissal: nothing was queued for the application.
+            assertEquals(0, EventStore(context).size())
+        } finally {
+            NotificationProbe.disallow()
+        }
+    }
+
     // LU-WEAR-4
     @Test
     fun theCapabilityFollowsWhatIsOffered() {
