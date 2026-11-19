@@ -1,0 +1,27 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- What a host adds for a scheduled start at its exact time: the AAR does not declare it. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <application android:name=".ConsumerApplication" android:label="LiveUpdate consumer">
+        <!-- The launch activity, which a content tap opens, and the screen a link of an action opens. -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="liveupdate-consumer" />
+            </intent-filter>
+        </activity>
+
+        <!-- The script's way in, by an explicit broadcast from adb. A test application only. -->
+        <receiver
+            android:name=".ScenarioReceiver"
+            android:exported="true" />
+    </application>
+</manifest>

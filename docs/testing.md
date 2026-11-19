@@ -94,6 +94,61 @@ The instrumentation tests:
   without being removed, that a post keeps it and a cancel does nothing, how leaving the foreground
   removes or keeps it, and that a killed process takes it along.
 
+## As a host builds it
+
+The suite runs in a test package that has every library, is not shrunk, and calls the adapter from inside.
+`tests/android/consumer.sh` builds an application the way the README says a host does, and runs it on one
+device:
+
+```sh
+ANDROID_SERIAL=<serial> LIVEUPDATE_VERSION=0.7.1 tests/android/consumer.sh build
+ANDROID_SERIAL=<serial> tests/android/consumer.sh run
+ANDROID_SERIAL=<serial> tests/android/consumer.sh uninstall
+```
+
+`run` changes the device as its header says: an install with every runtime permission, the exact alarm
+allowed, the application's process ended, and on Android 8.x every background process ended. Its receiver
+answers any caller while it is installed: uninstall it afterwards.
+
+- With `LIVEUPDATE_VERSION` the crate comes from crates.io and the AAR from the GitHub release, whose
+  sha256 is checked; without it, from this checkout.
+- The application (`tests/android/consumer`) adds the AAR as a file with the Kotlin standard library, and
+  with `WEAR=1` the library of a watch's Ongoing Activity. It is built with R8 and resource shrinking,
+  and its Rust code keeps one client, as the README asks. Its icon is named only in Rust and kept by
+  `res/raw/keep.xml`.
+- `run` checks the capabilities, a start, an update, a scheduled start that its alarm posts in a process
+  that it started after the application's was ended, and an end. A watch build on a watch must offer the
+  Ongoing Activity, and then `run` checks that a start's notification carries one and that an update and an
+  end at once leave the last content without it (LU-WEAR-7). A check that something is gone fails when adb
+  does not answer.
+- A scenario at a time: `consumer.sh scenario start`, `update`, `quick-end`, `schedule '{"delayMs":20000}'`,
+  `list`, `changes`, `events`, `end`. The application logs every event as soon as it is stored, and every
+  opening of its activity, under the tag `LiveUpdateConsumer`.
+
+Run on 2026-11-20 with the published 0.7.1:
+
+- **Galaxy S23** (Android 17, One UI 9): `run` passed. By hand: the card showed the application's own
+  icon, as small and as large icon, and the bar filled to its progress; a tap on a button queued an
+  `action` event, a button with a link opened the activity with its URL and queued an `opened` event with
+  the action, and a tap on the content an `opened` event, each drained by the listener. Built once without
+  `keep.xml`, resource shrinking removed the icon and a start failed with `INVALID_INPUT`: the README says
+  to keep such icons.
+- **Galaxy Watch4 Classic** (Wear OS 5): `run` passed without the watch's library, which the adapter then
+  did not offer, and with it, under R8. By hand, the watch face showed the activity's icon and lost it when
+  an update and an end came at once. The watch's recent applications listed five applications and not the
+  activity.
+- **An Android 8 emulator** (API 26): `run` passed. With a PIN and the device locked, a tap on the button
+  that asks to unlock first, from the lock screen, reached the adapter and queued nothing ("A live update
+  action that requires authentication was not taken: the device is locked."); unlocked, the same tap queued
+  the event. Android 8 keeps a cached process from `am kill`: the script then ends the background
+  processes with `am kill-all`.
+- The S23 also showed, with a throwaway instrumentation test that is not in the repository, a metric style
+  as the adapter builds it below API 37: the
+  status, a line of the number and the countdown as the header clock, promoted. As the adapter builds it
+  on API 37, the system's metric style, promoted as well.
+
+The test packages were removed after each run, the emulator was deleted, and the PIN came off it first.
+
 ## CI
 
 `.github/workflows/ci.yml` starts with a `changes` job, so a change to docs alone runs only the light

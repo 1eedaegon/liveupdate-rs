@@ -1,0 +1,18 @@
+# The application's Rust code. tests/android/consumer.sh copies this folder and writes the dependency on
+# `liveupdate` in place of the line below: the published crate, or this checkout.
+[package]
+name = "liveupdate-consumer"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+jni = { version = "0.22.4", default-features = false }
+ndk-context = "0.1.1"
+serde_json = "1"
+liveupdate = { path = "../../../..", features = ["android"] } # LIVEUPDATE
+
+[workspace]

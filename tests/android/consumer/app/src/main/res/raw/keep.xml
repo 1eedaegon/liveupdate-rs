@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- An icon that only a presentation names is found by its name: resource shrinking would remove it. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/consumer_status" />
