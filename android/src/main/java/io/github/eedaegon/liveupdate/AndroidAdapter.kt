@@ -10,6 +10,7 @@ import android.os.Build
 import android.service.notification.StatusBarNotification
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.ConcurrentHashMap
 
 private const val CHANNEL_ID = "liveupdate-rs.v1"
 private const val CHANNEL_NAME = "Live updates"
@@ -33,6 +34,12 @@ internal const val FALLBACK_CLOCK_MARGIN = 2 * POST_MARGIN
 private const val INVALID_MESSAGE = "Invalid live update request."
 private const val OLD_CLOCK_MESSAGE = "The clock is more than 14 days old: Android would not post it."
 private const val NATIVE_MESSAGE = "The Android live update adapter failed."
+
+/**
+ * Whether the notification this process posted last under a tag and an id carried an Ongoing Activity, where the
+ * adapter offers one. It is forgotten when the notification is cancelled.
+ */
+private val postedOngoing = ConcurrentHashMap<String, Boolean>()
 
 /**
  * Whether Android posts a notification whose header clock is [age] milliseconds old when it is posted. From API
@@ -164,23 +171,52 @@ internal class AndroidAdapter(
             if (foreground) cancelForeground(id)
             if (removes) {
                 manager.cancel(TAG_PREFIX + id, NOTIFICATION_ID)
+                postedOngoing.remove(place(TAG_PREFIX + id, NOTIFICATION_ID))
             } else {
-                manager.notify(TAG_PREFIX + id, NOTIFICATION_ID, notification)
+                show(TAG_PREFIX + id, NOTIFICATION_ID, notification)
             }
             return
         }
         when {
-            !foreground -> manager.notify(TAG_PREFIX + id, NOTIFICATION_ID, notification)
+            !foreground -> show(TAG_PREFIX + id, NOTIFICATION_ID, notification)
             // A held activity is updated through its service, never past it.
             LiveUpdateForeground.update(id, notification) -> Unit
-            else -> manager.notify(LiveUpdateForeground.NOTIFICATION_ID, notification)
+            else -> show(null, LiveUpdateForeground.NOTIFICATION_ID, notification)
         }
+    }
+
+    /**
+     * Posts [notification] under [tag] and [id]. A watch shows the icon of an Ongoing Activity until its
+     * notification is cancelled, also after an update that carries none. So where the adapter offers the
+     * Ongoing Activity and [notification] has none, a shown notification that has one is cancelled first: a
+     * presentation turned it off, or the activity ended. What a service holds cannot be cancelled and is not
+     * posted here.
+     */
+    private fun show(tag: String?, id: Int, notification: Notification) {
+        if (wearOngoing) {
+            val carries = notification.extras.containsKey(WEAR_ONGOING_EXTRA)
+            val remembered = postedOngoing.put(place(tag, id), carries)
+            if (withdrawsOngoing(remembered, carries) { listsOngoing(tag, id) }) manager.cancel(tag, id)
+        }
+        manager.notify(tag, id, notification)
+    }
+
+    private fun place(tag: String?, id: Int) = "$tag|$id"
+
+    /** Whether the notification that Android lists under [tag] and [id] carries an Ongoing Activity. */
+    private fun listsOngoing(tag: String?, id: Int): Boolean = try {
+        manager.activeNotifications.firstOrNull { it.tag == tag && it.id == id }
+            ?.notification?.extras?.containsKey(WEAR_ONGOING_EXTRA) == true
+    } catch (_: Exception) {
+        // A list that cannot be read keeps no post back.
+        false
     }
 
     override fun cancel(id: String) {
         if (!validId(id)) invalid()
         // An activity that ended before its time has no alarm left.
         scheduled.rearm { manager.cancel(TAG_PREFIX + id, NOTIFICATION_ID) }
+        postedOngoing.remove(place(TAG_PREFIX + id, NOTIFICATION_ID))
         cancelForeground(id)
     }
 
@@ -223,7 +259,9 @@ internal class AndroidAdapter(
         // The foreground id is this activity's when its notification is shown there, or when nothing is shown
         // yet and its receipt has the placement: Android posts asynchronously.
         val ours = if (shown != null) recordIdOf(shown) == id else stored(id)?.let(::isForegroundPlaced) == true
-        if (ours) manager.cancel(LiveUpdateForeground.NOTIFICATION_ID)
+        if (!ours) return
+        manager.cancel(LiveUpdateForeground.NOTIFICATION_ID)
+        postedOngoing.remove(place(null, LiveUpdateForeground.NOTIFICATION_ID))
     }
 
     /**

@@ -12,6 +12,8 @@ import androidx.wear.ongoing.Status
 private const val ONGOING_ACTIVITY_API = 30
 /** From this API level, Wear OS 7, a watch shows the promoted notification as a Live Update instead. */
 private const val WEAR_LIVE_UPDATE_API = 37
+/** Where the library keeps an Ongoing Activity among a notification's extras. */
+internal const val WEAR_ONGOING_EXTRA = "android.wearable.ongoingactivities.EXTENSIONS"
 private const val STATUS_PART = "status"
 private const val TIME_PART = "time"
 
@@ -31,6 +33,15 @@ internal fun hasWearOngoingLibrary(): Boolean = try {
 } catch (_: LinkageError) {
     false
 }
+
+/**
+ * Whether a shown notification has to be cancelled before another is posted in its place: when the new one
+ * [carries] no Ongoing Activity and the shown one has one. A watch keeps the icon of an Ongoing Activity until
+ * its notification is cancelled. [remembered] is what this process posted last in that place, null when it
+ * posted nothing there; only then is Android's list asked, by [listed]: it knows a post some time after it.
+ */
+internal fun withdrawsOngoing(remembered: Boolean?, carries: Boolean, listed: () -> Boolean): Boolean =
+    !carries && (remembered ?: listed())
 
 /** [time] of the wall clock as the time since the device started, by the difference of the two now. */
 internal fun elapsedAt(time: Long, wallNow: Long, elapsedNow: Long): Long = elapsedNow + (time - wallNow)
