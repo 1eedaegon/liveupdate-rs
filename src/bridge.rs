@@ -117,8 +117,9 @@ struct CancelRequest<'id> {
     id: &'id str,
 }
 
+/// The adapter's reply. A later adapter may add members beside these: they are not read.
 #[derive(Deserialize)]
-#[serde(tag = "status", rename_all = "camelCase", deny_unknown_fields)]
+#[serde(tag = "status", rename_all = "camelCase")]
 enum Response<T> {
     Ok { data: T },
     Error { error: Error },
