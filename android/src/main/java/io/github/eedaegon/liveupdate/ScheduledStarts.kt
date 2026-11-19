@@ -75,11 +75,13 @@ internal class ScheduledStarts(
         val notes = sweep(begin = true)
         val now = System.currentTimeMillis()
         val reports = JSONArray()
+        // Android is asked once for all the notes, and not at all when none needs the answer.
+        val listed by lazy(LazyThreadSafetyMode.NONE) { adapter.listed() }
         for (id in notes.keys()) {
             val note = notes.getJSONObject(id)
             val outcome = when {
                 note.optBoolean(FAILED) -> "gone"
-                adapter.lists(id) -> continue
+                id in listed -> continue
                 // A clock that was set back does not keep a post awaited.
                 now - note.optLong(POSTED_AT) in 0 until listingGrace -> "posted"
                 else -> "gone"

@@ -100,14 +100,14 @@ internal class AndroidAdapter(
 
     override fun read(): JSONArray {
         val raw = preferences.getString(RECORDS_KEY, "[]") ?: "[]"
-        if (raw.toByteArray(Charsets.UTF_8).size > MAX_RECORD_BYTES) nativeFailure()
+        if (exceedsUtf8(raw, MAX_RECORD_BYTES)) nativeFailure()
         return JSONArray(raw).also { if (it.length() > MAX_RECORDS) nativeFailure() }
     }
 
     override fun write(records: JSONArray) {
         if (records.length() > MAX_RECORDS) invalid()
         val raw = records.toString()
-        if (raw.toByteArray(Charsets.UTF_8).size > MAX_RECORD_BYTES) invalid()
+        if (exceedsUtf8(raw, MAX_RECORD_BYTES)) invalid()
         if (!preferences.edit().putString(RECORDS_KEY, raw).commit()) nativeFailure()
     }
 
@@ -208,9 +208,10 @@ internal class AndroidAdapter(
     /** Begins the scheduled receipts whose time has come: for the alarm, and for a restart of the device. */
     internal fun startDue() = scheduled.run()
 
-    /** Whether Android lists the tagged notification of [id]. */
-    internal fun lists(id: String): Boolean =
-        manager.activeNotifications.any { it.tag == TAG_PREFIX + id && it.id == NOTIFICATION_ID }
+    /** The ids of the activities whose tagged notification Android lists, from one question to Android. */
+    internal fun listed(): Set<String> = manager.activeNotifications.mapNotNullTo(mutableSetOf()) { entry ->
+        entry.tag?.takeIf { entry.id == NOTIFICATION_ID && it.startsWith(TAG_PREFIX) }?.removePrefix(TAG_PREFIX)
+    }
 
     /** Removes the notification of [id] under the foreground id, if it is this activity's. */
     private fun cancelForeground(id: String) {

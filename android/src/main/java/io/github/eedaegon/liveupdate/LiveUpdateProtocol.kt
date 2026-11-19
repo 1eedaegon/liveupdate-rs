@@ -46,7 +46,7 @@ internal interface ManagedAdapter {
  */
 internal object LiveUpdateProtocol {
     fun dispatch(adapter: ManagedAdapter, command: String, rawPayload: String): String = try {
-        if (rawPayload.toByteArray(Charsets.UTF_8).size > MAX_BRIDGE_BYTES) invalid()
+        if (exceedsUtf8(rawPayload, MAX_BRIDGE_BYTES)) invalid()
         val payload = JSONObject(rawPayload)
         val data = when (command) {
             "capabilities" -> adapter.capabilities()
