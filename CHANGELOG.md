@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.7.0 - 2026-11-19
+
+- feat: the AAR leaves alone what it does not know, and shows metrics before Android 17 (`e7c7d37`)
+- feat: the crate reads what it knows of a later AAR's reply, and an event of an unknown kind (`959520c`)
+- feat: every public enum may gain a variant, and what a caller builds has a constructor (`33b8095`)
+- docs: which versions work together, and what each Android version shows (`d5fc373`)
+- perf: a bridge call no longer copies its payload to measure it (`4507504`)
+- test: the last commit ran on the Android 8 emulator (`603acb5`)
+
 ## 0.6.0 - 2026-11-19
 
 - feat: a presentation can do without the watch's Ongoing Activity (`3c05ca4`)
