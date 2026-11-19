@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.6.0 - 2026-11-19
+
+- feat: a presentation can do without the watch's Ongoing Activity (`3c05ca4`)
+
 ## 0.5.1 - 2026-11-19
 
 - docs: the README says how to use a watch, and names its library where an app installs (`675506e`)
