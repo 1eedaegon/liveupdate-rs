@@ -138,9 +138,8 @@ APIs, x86_64):
 | --- | --- | --- | --- |
 | The suite of 0.6.0, as it was | One test ended the run | | |
 | The same without that test | 83 | 57 | 26: 10 assert a later Android, 7 call a method of a later Android in the test itself, 9 need the notification listener |
-| With this change, before its review | 90 | 78 | 12, each at an assertion of a later Android: one of API 34, two of API 35, two of API 36, seven of API 37 |
+| With this change | 91 | 79 | 12, each at an assertion of a later Android: one of API 34, two of API 35, two of API 36, seven of API 37 |
 | The same with the exact alarm allowed | 7 | 5 | 2 of the 12 again |
-| After the review, the five classes it touched | 46 | 39 | 7 of the 12 again |
 
 The test that ended the first run builds a notification with a context that names a package which is
 not installed. Android 8 ends the process of an application whose notification has an icon it cannot

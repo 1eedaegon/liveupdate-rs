@@ -307,15 +307,14 @@ Google APIs image `OSR1.180418.026`, x86_64), the lowest version the AAR runs on
   call a method of a later Android in the test's own code (`PendingIntent.isImmutable`,
   `Notification.Builder.getStyle`), and 9 need the notification listener, which the tests allowed with
   a shell command that Android 8 does not have.
-- **With the tests' own code made to run there**, and the tests of the compatibility change: 78 of 90
+- **With the tests' own code made to run there**, and the tests of the compatibility change: 79 of 91
   in the main run, and 5 of 7 with the exact alarm allowed. Each of the 12 that fail stops at an
   assertion of a later Android: one of API 34, two of API 35, two of API 36 and seven of API 37; the
   two of the second run are among them. None fails for what the adapter does on Android 8.
-- **After the review of that change** the five classes it touched ran again, 46 tests with one more
-  of the event queue: 39 pass, and the 7 that fail are among the 12. The whole suite did not run again
-  there: another project's build loaded the host, a run under it timed out in the tests of the
-  foreground service, and it is not counted. What came after it, how the adapter measures a text and
-  asks Android for a report, is covered on the JVM and by CI's run on API 37.
+- **A run that is not counted.** While another project's build loaded the host, with a load of more
+  than a hundred on twelve processors, the tests of the foreground service timed out waiting for a
+  notification to go, and every test after them for the one that was left. The same package passed
+  as above once the host was quiet. A device run needs a host that is not busy.
 - **Not run:** the run without the notification permission, which is of API 33.
 - Found on the way: on Android 8 a shell command of a test that writes to a pipe the test has closed
   ends the whole run, so the tests read a command's output to its end.
