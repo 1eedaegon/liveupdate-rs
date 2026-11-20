@@ -154,6 +154,14 @@ for name, condition_ in expected_jobs.items():
         fail(f"the {name} job runs if {jobs.get(name)!r}, not {condition_!r}")
 if "changes" in jobs:
     fail("the changes job must always run")
+# An application built as a host builds one, run on the same emulator after the suite and before it stops.
+consumer = steps.get("Consumer application", {})
+consumer_block = next((b for b in re.split(r"\n      - ", job) if b.startswith("name: Consumer application")), "")
+if consumer.get("if") != "steps.passed.outputs.found != 'true'" or "sh tests/android/consumer.sh run" not in consumer_block:
+    fail("the emulator job must run tests/android/consumer.sh when it runs the suite")
+elif not order.index("Emulator suite") < order.index("Consumer application") < order.index("Stop the emulator"):
+    fail("the consumer application must run after the suite and before the emulator stops")
+
 # A pull request's commit subjects are read as the release reads them, before a merge can stick a release.
 changes_job = text[text.index("\n  changes:\n"):text.index("\n  spec:\n")]
 if "bash tools/release.sh plan" not in changes_job or "github.event_name == 'pull_request'" not in changes_job:

@@ -13,7 +13,10 @@
 #                      a start shows its notification; an update shows its revision; a scheduled start is posted
 #                      by its alarm after the process was ended; an end removes both. A watch build on a watch
 #                      must offer the Ongoing Activity: a start carries one, and an update and an end at once
-#                      leave the last content without it.
+#                      leave the last content without it. A build with the recorder (0.8.0 and later, or this
+#                      checkout) on a device that is not a watch: its activity's Record button, tapped in the
+#                      shade, reaches the recorder service, which takes it as handled and updates the activity
+#                      through its own client; at the end the service keeps its own notification.
 #   scenario NAME [JSON]  Runs one scenario of the application's Rust code and prints its answer.
 #   tap TITLE          Opens the notification shade and taps the button titled TITLE (any case), then prints what
 #                      the application logged within five seconds: the recorder's taps, events, openings. On a
@@ -33,6 +36,9 @@ out=${OUT:-$root/build/consumer}
 mkdir -p "$out"
 out=$(CDPATH= cd -- "$out" && pwd)
 package=io.github.eedaegon.liveupdate.consumer
+# LiveUpdateForeground.NOTIFICATION_ID, and the recorder's FALLBACK_ID.
+ACTIVITY_ID=1280638977
+FALLBACK_ID=786433
 tag=LiveUpdateConsumer
 sdk=${ANDROID_SDK_ROOT:-${ANDROID_HOME:?ANDROID_HOME or ANDROID_SDK_ROOT names the Android SDK}}
 adb=$sdk/platform-tools/adb
@@ -208,6 +214,8 @@ EOF
   wait_for "both are gone" 'now=$(dump) && ! shown "$now" "$ride" && ! shown "$now" "$later"'
   echo "end: both removed"
 
+  recorder_check
+
   if [ "$offered" = True ]; then
     again=$(scenario start)
     ride=$(field "$again" "a['ok']['id']")
@@ -222,6 +230,32 @@ EOF
     echo "watch: not checked, the device offers no Ongoing Activity"
   fi
   echo "consumer run passed on $serial"
+}
+
+# The notification of the foreground placement, without a tag, under LiveUpdateForeground.NOTIFICATION_ID; and
+# the recorder's own, under its FALLBACK_ID. Each answers whether it is shown and held by the service.
+held_by_service() {
+  printf '%s\n' "$1" | grep -A 40 "NotificationRecord(.* id=$2 tag=null " | sed '/^ *NotificationRecord(/{1!q;}' |
+    grep -q "FOREGROUND_SERVICE"
+}
+
+recorder_check() {
+  [ "$watch" = 1 ] && { echo "recorder: not checked, a watch does not list an ongoing notification"; return 0; }
+  started=$(scenario recorder)
+  case $started in *'"unknown"'*) echo "recorder: not in this build"; return 0 ;; esac
+  [ "$(field "$started" "a['ok']['state']")" = active ] || fail "recorder: $started"
+  recorder=$(field "$started" "a['ok']['id']")
+  # The service is not running: the activity's notification is an ordinary one until the tap starts it.
+  wait_for "the recorder's activity is shown" 'dump | grep -q "NotificationRecord(.* id=$ACTIVITY_ID tag=null "'
+  tapped=$(tap Record)
+  case $tapped in *"actionId=record, withheld=false"*) ;; *) fail "recorder: the tap did not reach the service: $tapped" ;; esac
+  case $tapped in *'"kind":"handled"'*) ;; *) fail "recorder: Rust did not drain the tap as handled: $tapped" ;; esac
+  wait_for "the service holds the activity at revision 1" \
+    'now=$(dump) && held_by_service "$now" "$ACTIVITY_ID" && printf "%s\n" "$now" | grep -A 60 "id=$ACTIVITY_ID tag=null " | grep -q "\"revision\":1"'
+  ended=$(scenario end)
+  [ "$(field "$ended" "len(a['ok'])")" = 1 ] || fail "recorder end: $ended"
+  wait_for "the service keeps its own notification" 'now=$(dump) && held_by_service "$now" "$FALLBACK_ID"'
+  echo "recorder: a tap reached the service, Rust drained it as handled, and at the end the service kept its own"
 }
 
 tap() {
