@@ -108,7 +108,7 @@ The instrumentation tests:
 
 The suite runs in a test package that has every library, is not shrunk, and calls the adapter from inside.
 `tests/android/consumer.sh` builds an application the way the README says a host does, and runs it on one
-device:
+device. CI's emulator job builds it from the checkout and runs it after the suite, on the same emulator:
 
 ```sh
 ANDROID_SERIAL=<serial> LIVEUPDATE_VERSION=0.7.1 tests/android/consumer.sh build
@@ -129,8 +129,10 @@ answers any caller while it is installed: uninstall it afterwards.
 - `run` checks the capabilities, a start, an update, a scheduled start that its alarm posts in a process
   that it started after the application's was ended, and an end. A watch build on a watch must offer the
   Ongoing Activity, and then `run` checks that a start's notification carries one and that an update and an
-  end at once leave the last content without it (LU-WEAR-7). A check that something is gone fails when adb
-  does not answer.
+  end at once leave the last content without it (LU-WEAR-7). With the recorder, on a device that is not a
+  watch, it taps the activity's Record button in the shade: the service takes the tap, Rust drains it as
+  `handled`, and the service keeps its own notification at the end. A check that something is gone fails
+  when adb does not answer.
 - A scenario at a time: `consumer.sh scenario start`, `update`, `quick-end`, `schedule '{"delayMs":20000}'`,
   `list`, `changes`, `events`, `end`. The application logs every event as soon as it is stored, and every
   opening of its activity, under the tag `LiveUpdateConsumer`.

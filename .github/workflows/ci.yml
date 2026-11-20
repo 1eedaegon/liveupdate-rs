@@ -269,7 +269,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     permissions:
       contents: read
       actions: read
@@ -370,6 +370,18 @@ jobs:
           ANDROID_SERIAL: emulator-5554
           EXPECTED_SDK: "37"
           OUT: ${{ runner.temp }}/device-suite
+      # The README's installation as a host builds it, from this checkout: the AAR as a file, R8 and resource
+      # shrinking, its own Rust client; its checks, and the recorder's button tapped in the shade.
+      - name: Consumer application
+        if: steps.passed.outputs.found != 'true'
+        timeout-minutes: 15
+        env:
+          ANDROID_SERIAL: emulator-5554
+          OUT: ${{ runner.temp }}/consumer
+        run: |
+          sh tests/android/consumer.sh build
+          sh tests/android/consumer.sh run
+          sh tests/android/consumer.sh uninstall
       - name: Stop the emulator
         if: ${{ always() && steps.passed.outputs.found != 'true' }}
         run: sh tests/android/avd.sh stop emulator-5554
