@@ -436,8 +436,10 @@ adb; it is not in the repository.
   developer option does, with the language left Korean: the property `debug.force_rtl`, and then the
   configuration update that the system's language picker makes, from the instrumentation. The card is
   mirrored when it is first shown and when its style changes. After an update of the same style One
-  UI shifts the status and the progress bar onto the icon, and the banner is not mirrored. A language
-  that is written from the right was not tried.
+  UI shifts the status and the progress bar onto the icon, and the banner is not mirrored. On
+  2026-11-20 the system's language was Arabic (`ar-EG`, set as the language picker sets it, then set
+  back to Korean) with the published 0.8.0's consumer: the same, the card mirrored when first shown and
+  the status and the bar over the icon after an update of the same style.
 - **On the watch:** an activity is the icon on the watch face. An ongoing notification is not among
   the watch's notifications, and a revision that alerts does not pop up. With the fix the icon goes
   when an update turns the Ongoing Activity off and when the activity ends with a last content. The
