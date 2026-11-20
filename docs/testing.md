@@ -34,6 +34,16 @@ value replaced) and runs the tests; every mutant must fail one. `.cargo/mutants.
 `src/android.rs`, which compiles for Android only and which the emulator suite covers instead. In CI a
 pull request tests the mutants of the lines it changes, and a run by hand tests all of them.
 
+It also leaves out three mutants that change nothing, by `file:line:column`. A change above one of them
+moves it, and the exclusion then leaves out a neighbour or nothing, which only the full run of a release
+commit found, twice: the release stopped without a tag. `tools/mutant-exclusions.sh` runs first in the
+mutation job: each exclusion must match exactly one mutant of the list read without the configuration, at
+the line that holds the code its reason is about. Move the numbers in the same commit, after the last
+`cargo fmt`.
+
+The release reads every commit subject after the merge, and stops at one it refuses. The changes job
+of a pull request runs `bash tools/release.sh plan`, which refuses the same subjects first.
+
 ## On an emulator
 
 `tests/android/run.sh` runs every instrumentation test on an emulator, with coverage:

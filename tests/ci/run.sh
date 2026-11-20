@@ -154,6 +154,18 @@ for name, condition_ in expected_jobs.items():
         fail(f"the {name} job runs if {jobs.get(name)!r}, not {condition_!r}")
 if "changes" in jobs:
     fail("the changes job must always run")
+# A pull request's commit subjects are read as the release reads them, before a merge can stick a release.
+changes_job = text[text.index("\n  changes:\n"):text.index("\n  spec:\n")]
+if "bash tools/release.sh plan" not in changes_job or "github.event_name == 'pull_request'" not in changes_job:
+    fail("the changes job must run tools/release.sh plan on a pull request")
+
+# The mutants left out by their line are where the exclusions say, before any mutant runs.
+mutants_job = text[text.index("\n  mutants:\n"):]
+mutants_job = mutants_job[:mutants_job.index("\n  ", 1) if re.search(r"\n  [a-z-]+:\n", mutants_job[1:]) is None else re.search(r"\n  [a-z-]+:\n", mutants_job[1:]).start() + 1]
+check = mutants_job.find("sh tools/mutant-exclusions.sh")
+if check < 0 or check > mutants_job.find("cargo mutants --in-diff") or check > mutants_job.find("cargo mutants --output"):
+    fail("the mutants job must run tools/mutant-exclusions.sh before any mutant")
+
 for swallow in ("|| true", "|| :", "continue-on-error", "set +e"):
     if swallow in text:
         fail(f"ci.yml contains {swallow!r}, which can hide a failed suite")
