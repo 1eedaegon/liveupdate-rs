@@ -165,6 +165,17 @@ On the Galaxy S23 on 2026-11-20:
 - At the end of the activity the service stayed in the foreground with its own notification, the
   activity's gone.
 
+With the published 0.8.0 on 2026-11-20 (`consumer.sh tap TITLE` taps a button of the shade):
+
+- **Galaxy S23**: `run` passed; Record and Discard (which requires the unlock) reached the recorder,
+  unlocked, and Rust drained each as `handled`.
+- **An Android 8 emulator** with a PIN: `run` passed. Locked, a tap on Discard reached the recorder as
+  `withheld=true` and recorded nothing; a tap on Record was taken and recorded; unlocked, Discard was taken.
+- **An update of the application without the recorder service**, over its running activity: Android 8
+  removed the application's notifications with the update; an update of the activity that still named the
+  service failed with `INVALID_INPUT` and left revision 1 stored, and `list` answered it as `unknown`.
+- A watch does not list an ongoing notification, so a target's button cannot be tapped there.
+
 ## CI
 
 `.github/workflows/ci.yml` starts with a `changes` job, so a change to docs alone runs only the light
