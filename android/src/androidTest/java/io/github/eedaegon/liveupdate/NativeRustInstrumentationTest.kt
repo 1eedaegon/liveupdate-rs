@@ -315,6 +315,18 @@ class NativeRustInstrumentationTest {
         ok(NativeRust.run("new", ""))
     }
 
+    // LU-JNI-9
+    @Test
+    fun aClientBuiltFromAContextNeedsNoNdkContext() {
+        NativeRust.release()
+
+        val lifecycle = ok(NativeRust.lifecycleFrom(context))
+        assertEquals(1, lifecycle.getInt("updatedRevision"))
+        assertEquals("ended", lifecycle.getString("endedState"))
+        // ndk-context was not set on the way.
+        assertEquals("NATIVE_ERROR", errorCode(NativeRust.run("new", "")))
+    }
+
     // LU-JNI-5, LU-JNI-7
     @Test
     fun aContextWithoutAnApplicationIsUsedAndItsJavaExceptionsAreErrors() {

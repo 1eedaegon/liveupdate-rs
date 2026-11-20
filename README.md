@@ -26,6 +26,15 @@ dependencies {
 }
 ```
 
+An icon that a presentation names, `IconSource::Resource("ic_order")`, is found by its name among the
+drawables and then the mipmaps, and nothing in the application's code names it. With resource shrinking
+(`isShrinkResources = true`) the build removes it, and a start that names it fails with `INVALID_INPUT`. Keep
+such icons in `res/raw/keep.xml`:
+
+```xml
+<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@drawable/ic_order,@mipmap/ic_brand" />
+```
+
 The AAR merges `POST_NOTIFICATIONS` and `POST_PROMOTED_NOTIFICATIONS` into the application
 manifest. Your app still has to request the runtime notification permission on Android 13 and
 newer. The Rust Android runtime must initialize
@@ -181,6 +190,7 @@ delivered); the record's `template` follows the latest snapshot. Schema v1 keeps
 | Large icon | `large_icon: Some(IconSource::Resource("ic_order".into()))` | Or `IconSource::AppFile("icons/order.png".into())` under the app's files: at most 1 MiB and 1,024 pixels a side |
 | Button that reports a tap | `actions: vec![NotificationAction::new("cancel", "Cancel")]` | Up to three; an `Action` event |
 | Button that opens a screen | `NotificationAction { open_url: Some("myapp://orders/42/map".into()), ..NotificationAction::new("track", "Track") }` | No event; see [Links](#links) |
+| Button that runs your service or receiver | `NotificationAction { target: Some(ActionTarget::new(TargetKind::ForegroundService, "com.example.RecorderService")), ..NotificationAction::new("record", "Record") }` | At once, with no screen; a `Handled` event; see [Action targets](#action-targets) |
 | Button that asks to unlock first | `NotificationAction { authentication_required: true, ..NotificationAction::new("pay", "Pay") }` | Android asks from version 12. An older Android has no such setting and would send the tap from a locked device at once: there the AAR drops a tap while the device is locked, and the person taps again after unlocking |
 | Tap that opens a screen | `open_url: Some("myapp://orders/42".into())` | The launch activity without it |
 | Clock beside a style | `chronometer: Some(TimerStyle::new(timer, true))` | With any style but `Timer`: a progress bar and a countdown |
@@ -350,6 +360,166 @@ which a service calls before it stops for another reason, leaves it as an ordina
 not end the activity in the same instant as a detach: Android may post the notification once more. A process that Android killed loses the notification; a
 restarted service that calls `attach` before the first lifecycle call shows the activity again.
 
+### Action targets
+
+A button can run your own code at once, without a screen: a recorder's Record, a player's Pause. Its
+tap goes to a service or a receiver of your application, which Android starts or reaches directly,
+also with the screen off, from the lock screen and while no process of the app runs. It is the way
+an iPhone's Live Activity runs an App Intent. `examples/service.rs`, which compiles for Android:
+
+```rust
+//! A recorder whose button runs the application's own service at once, and the service's own entry
+//! into Rust, which needs no activity and no `ndk-context`.
+
+#![deny(clippy::unwrap_used, clippy::expect_used)]
+
+use liveupdate::{
+    ActionTarget, ActivityRecord, ActivityState, AndroidPresentation, Driver, Fallback, LiveUpdate,
+    NotificationAction, Placement, PresentationStyle, Result, Snapshot, StartRequest, TargetKind,
+    Visibility,
+};
+
+const RECORDER: &str = "recorder";
+
+/// The Record button: its tap starts or reaches `RecorderService`, which takes it first with
+/// `LiveUpdateActions.take`.
+fn record_button(recording: bool) -> NotificationAction {
+    NotificationAction {
+        target: Some(ActionTarget {
+            action: Some("com.example.RECORD".into()),
+            ..ActionTarget::new(TargetKind::ForegroundService, "com.example.RecorderService")
+        }),
+        ..NotificationAction::new("record", if recording { "Stop" } else { "Record" })
+    }
+}
+
+fn recorder(revision: u64, recording: bool) -> Snapshot {
+    Snapshot {
+        presentation: Some(AndroidPresentation {
+            short_critical_text: Some(if recording { "REC" } else { "LISTEN" }.into()),
+            actions: vec![record_button(recording)],
+            ..AndroidPresentation::new(PresentationStyle::Standard)
+        }),
+        ..Snapshot::new(
+            revision,
+            "Recorder",
+            if recording { "Recording" } else { "Listening" },
+        )
+    }
+}
+
+/// Shows whether the recorder records: starts its activity, which the service holds, or updates it.
+pub fn show_recording<D: Driver>(
+    client: &LiveUpdate<D>,
+    recording: bool,
+) -> Result<ActivityRecord> {
+    let running = client.list()?.into_iter().find(|record| {
+        record.activity_key == RECORDER
+            && !matches!(
+                record.state,
+                ActivityState::Ended | ActivityState::Dismissed
+            )
+    });
+    match running {
+        Some(record) => client.update(
+            &record.id,
+            recorder(record.snapshot.revision + 1, recording),
+        ),
+        None => client.start(StartRequest {
+            placement: Placement::Foreground,
+            ..StartRequest::new(
+                RECORDER,
+                Fallback::Notification,
+                Visibility::Public,
+                recorder(0, recording),
+            )
+        }),
+    }
+}
+
+/// `Native.showRecording(context, recording)`, which the service calls off its main thread: the
+/// client is built from the context it is given.
+#[cfg(target_os = "android")]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_example_Native_showRecording<'a>(
+    mut env: jni::EnvUnowned<'a>,
+    _this: jni::objects::JObject<'a>,
+    context: jni::objects::JObject<'a>,
+    recording: bool,
+) -> bool {
+    env.with_env(|env| -> jni::errors::Result<bool> {
+        let vm = env.get_java_vm()?;
+        // SAFETY: the process's VM, and a context that is valid on this thread for the call.
+        let client =
+            unsafe { LiveUpdate::android_from_raw(vm.get_raw().cast(), context.as_raw().cast()) };
+        let shown = client.and_then(|client| show_recording(&client, recording));
+        // A start that fails, as SYSTEM_LIMIT does, leaves the service's own notification.
+        Ok(shown.is_ok())
+    })
+    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+}
+```
+
+- `kind` is `Service`, `ForegroundService` (a service that may not run yet; it must call
+  `startForeground` within seconds) or `Broadcast`.
+- `component` is the class name, ASCII, in any Java package of your application: the component is
+  always in your own package, so a Tauri app whose classes are in another Java package than its
+  application id names them as they are. `action`, the intent's action, is optional.
+- The component must not be exported, since any app could then send it what looks like a tap, and
+  must run in the application's main process, whose event store `take` writes. A post that names a
+  component your application does not have as the kind says, an exported one or one in another
+  process fails with `INVALID_INPUT`. A target beside `open_url` is refused.
+- The capability `presentation.action_targets` says the AAR delivers targets; without it, an earlier
+  AAR, a start or an update that names one is `UNSUPPORTED_FEATURE`.
+- `LiveUpdate::android_from_raw(vm, context)` builds a client in the service's own JNI entry, with no
+  activity of the app and without `ndk-context`. The call blocks: make it off the main thread.
+
+The service takes the tap first, with `LiveUpdateActions.take`, and is in the foreground at once,
+with one notification, through `LiveUpdateForeground.attachOr`:
+
+```kotlin
+class RecorderService : Service() {
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Within Android's few seconds: the activity's notification, or this service's own.
+        LiveUpdateForeground.attachOr(this, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE, OWN_ID) { own() }
+        val tap = LiveUpdateActions.take(this, intent)
+        if (tap != null && !tap.withheld) {
+            recording = !recording
+            thread {
+                // Rust starts or updates the activity; `attach` then puts it in place of this service's own.
+                if (Native.showRecording(applicationContext, recording)) {
+                    LiveUpdateForeground.attach(this, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+                }
+            }
+        }
+        return START_STICKY
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+}
+```
+
+- `take` answers the activity's and the action's ids, or null for an intent that is no such tap. It
+  records the tap as a `Handled` event, which your Rust drains with the others and must not act on
+  again: the application acted already. It never throws, and it removes the marks of the intent, so
+  an intent delivered twice is one tap.
+- `withheld` is true only below Android 12, for an action with `authentication_required` while the
+  device is locked: Android sent that tap without asking for the unlock. From Android 12 it asks.
+- `take` reads the stored receipts and the event queue on the calling thread and writes the event
+  without waiting for the disk: about 150 bytes, in the queue of at most 128 events that `events()`
+  drains. With many large receipts, call it off the main thread.
+- With `attachOr` the service is never without a notification. A start that fails, `SYSTEM_LIMIT` or
+  `UNSUPPORTED_FEATURE`, leaves its own in place. When the activity ends, its own comes back and the
+  service stays in the foreground, as a recording service must; the listener of `setListener` is
+  told. A service whose activity another service took shows its own again too. `detach` forgets it.
+- The builder runs on each `attachOr` and when the activity ends, outside the library's lock, so it
+  can say what the service does then. Its id may not be `LiveUpdateForeground.NOTIFICATION_ID`.
+
+Native code can watch every event without taking it from the queue that Rust drains:
+`LiveUpdateEvents.addNativeListener { event -> }` is told of each stored event with its content
+(`kind`, `activityId`, `actionId`), on the thread that stored it, beside the one listener of
+`setListener`.
+
 ### Wear OS
 
 In a watch app the same calls put the activity on the watch face, as an icon that opens the app:
@@ -497,6 +667,8 @@ gradle :android:testDebugUnitTest :android:lintDebug :android:assembleRelease --
 sh tools/spec-coverage.sh
 ```
 
+`tests/android/consumer.sh` builds an application as a host does, from a published version or from this
+checkout, with R8 and resource shrinking, and runs it on one device.
 [docs/testing.md](docs/testing.md) describes the emulator suite with Kotlin and Rust coverage and the
 CI jobs; [CHANGELOG.md](CHANGELOG.md) lists the changes of each version.
 

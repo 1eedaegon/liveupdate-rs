@@ -3,10 +3,42 @@ package io.github.eedaegon.liveupdate
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import org.json.JSONObject
+import java.util.concurrent.CopyOnWriteArraySet
 
 /** Called once an action or a dismissal has been stored, so the app can drain the events at once. */
 fun interface LiveUpdateEventListener {
     fun onEventStored()
+}
+
+/** Told of each event that is stored, with its content. */
+fun interface LiveUpdateNativeListener {
+    fun onEvent(event: LiveUpdateEvent)
+}
+
+/**
+ * An event as it was stored. [kind] is `action`, `dismissed`, `opened` or `handled`, or a kind of a later version;
+ * [actionId] names the action of an `action`, a `handled`, and an `opened` that an action opened.
+ */
+data class LiveUpdateEvent(
+    val sequence: Long,
+    val activityId: String,
+    val occurredAt: Long,
+    val kind: String,
+    val actionId: String?,
+) {
+    internal companion object {
+        fun of(event: JSONObject): LiveUpdateEvent {
+            val kind = event.getJSONObject("kind")
+            return LiveUpdateEvent(
+                event.getLong("sequence"),
+                event.getString("activityId"),
+                event.getLong("occurredAt"),
+                kind.getString("kind"),
+                kind.optionalString("actionId"),
+            )
+        }
+    }
 }
 
 /**
@@ -17,11 +49,30 @@ fun interface LiveUpdateEventListener {
 object LiveUpdateEvents {
     @Volatile
     private var listener: LiveUpdateEventListener? = null
+    private val natives = CopyOnWriteArraySet<LiveUpdateNativeListener>()
 
     /** Sets the listener, replacing the previous one; `null` clears it. */
     @JvmStatic
     fun setListener(listener: LiveUpdateEventListener?) {
         this.listener = listener
+    }
+
+    /**
+     * Adds a listener that is told of every stored event with its content, on the thread that stored it, after the
+     * one listener of [setListener]. It takes nothing from the queue, which Rust drains as before: native code of
+     * the application, such as a service, may watch the taps, dismissals and openings beside it. A listener that
+     * throws is logged, and the others are told. Listeners live in memory: a process that a tap started has those
+     * that the application registered as it started.
+     */
+    @JvmStatic
+    fun addNativeListener(listener: LiveUpdateNativeListener) {
+        natives.add(listener)
+    }
+
+    /** Removes a listener that [addNativeListener] added. */
+    @JvmStatic
+    fun removeNativeListener(listener: LiveUpdateNativeListener) {
+        natives.remove(listener)
     }
 
     /**
@@ -41,10 +92,7 @@ object LiveUpdateEvents {
             intent.removeExtra(EXTRA_ACTIVITY_ID)
             intent.removeExtra(EXTRA_ACTION_ID)
             val known = AndroidAdapter(context).knows(activityId)
-            if (known) {
-                EventStore(context).appendOpened(activityId, actionId)
-                stored()
-            }
+            if (known) stored(EventStore(context).appendOpened(activityId, actionId))
             known
         }
     } catch (_: Exception) {
@@ -52,11 +100,26 @@ object LiveUpdateEvents {
         false
     }
 
-    internal fun stored() {
+    /** Tells the one listener, and the native listeners with [event]'s content. */
+    internal fun stored(event: JSONObject) {
         try {
             listener?.onEventStored()
         } catch (_: Exception) {
             Log.e(LOG_TAG, "The live update event listener failed.")
+        }
+        if (natives.isEmpty()) return
+        val content = try {
+            LiveUpdateEvent.of(event)
+        } catch (_: Exception) {
+            Log.e(LOG_TAG, "A stored live update event could not be read for its listeners.")
+            return
+        }
+        for (native in natives) {
+            try {
+                native.onEvent(content)
+            } catch (_: Exception) {
+                Log.e(LOG_TAG, "A live update native listener failed.")
+            }
         }
     }
 

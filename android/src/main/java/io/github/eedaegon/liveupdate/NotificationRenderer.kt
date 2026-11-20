@@ -48,6 +48,7 @@ internal class NotificationRenderer(
     private val application = context.applicationContext
     private val icons = IconResolver(application)
     private val links = LinkResolver(application)
+    private val targets = TargetResolver(application)
 
     /**
      * The notification of [record]. A revision that alerts is built for [alertChannelId] when the adapter gives
@@ -496,15 +497,33 @@ internal class NotificationRenderer(
             val title = requiredText(value, "title", 64)
             val icon = optionalIcon(value, "icon")
             val authentication = optionalBoolean(value, "authenticationRequired") ?: false
-            // An action with a URL opens it; Android lets no receiver of a notification start an activity.
-            val pending = optionalText(value, "openUrl", MAX_URL)?.let { url -> link(activityId, id, url) }
-                ?: actionBroadcast(activityId, id, authentication)
+            val url = optionalText(value, "openUrl", MAX_URL)
+            val target = optionalObject(value, "target")
+            // One destination: a link opens a screen, a target runs the application's component, and the AAR's
+            // receiver queues an event otherwise. Android lets no receiver of a notification start an activity.
+            if (url != null && target != null) invalid()
+            val pending = when {
+                url != null -> link(activityId, id, url)
+                target != null -> target(activityId, id, target, authentication)
+                else -> actionBroadcast(activityId, id, authentication)
+            }
             builder.addAction(
                 Notification.Action.Builder(icon, title, pending).apply {
                     if (Build.VERSION.SDK_INT >= 31) setAuthenticationRequired(authentication)
                 }.build(),
             )
         }
+    }
+
+    /** The PendingIntent to the target of an action; one the contract refuses or the application lacks is invalid. */
+    private fun target(activityId: String, actionId: String, target: JSONObject, authentication: Boolean): PendingIntent {
+        val kind = requiredText(target, "kind", 32)
+        val component = requiredText(target, "component", 256)
+        val action = optionalText(target, "action", 256)
+        if (kind !in TARGET_KINDS || !isValidComponent(component) || (action != null && !isValidIntentAction(action))) {
+            invalid()
+        }
+        return targets.open(activityId, actionId, kind, component, action, authentication) ?: invalid()
     }
 
     /** The broadcast of an action's tap, which says whether the action requires [authentication]. */

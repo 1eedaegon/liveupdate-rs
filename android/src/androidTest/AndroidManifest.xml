@@ -47,6 +47,27 @@
             android:foregroundServiceType="shortService"
             android:process=":probe" />
 
+        <!-- What an action's target names: a service, one started in the foreground, and a receiver. None is
+             exported, as none needs to be. -->
+        <service
+            android:name="io.github.eedaegon.liveupdate.TargetProbeService"
+            android:exported="false" />
+        <service
+            android:name="io.github.eedaegon.liveupdate.TargetProbeForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="shortService" />
+        <receiver
+            android:name="io.github.eedaegon.liveupdate.TargetProbeReceiver"
+            android:exported="false" />
+        <!-- What a target may not name: an exported service, and one in another process. -->
+        <service
+            android:name="io.github.eedaegon.liveupdate.TargetProbeExportedService"
+            android:exported="true" />
+        <service
+            android:name="io.github.eedaegon.liveupdate.TargetProbeRemoteService"
+            android:exported="false"
+            android:process=":target" />
+
         <!-- Hears each post and removal of the test package's notifications, once a test allows it. -->
         <service
             android:name="io.github.eedaegon.liveupdate.NotificationProbe"

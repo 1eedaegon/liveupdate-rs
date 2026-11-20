@@ -4,6 +4,7 @@ use jni::{
     objects::{Global, JClass, JObject, JString, JValue},
 };
 use std::{
+    ffi::c_void,
     panic::catch_unwind,
     sync::{Mutex, PoisonError},
 };
@@ -41,6 +42,32 @@ impl AndroidBridge {
             .map_err(|_| Error::native())?;
         Ok(Self { vm, context, class })
     }
+
+    /// Captures the application context of `context` and loads the AAR bridge class without
+    /// [`ndk_context`]: for a host's own JNI entry, such as that of a service that runs with no
+    /// activity and no Rust runtime. The bridge keeps a global reference; it may then be used on
+    /// any thread.
+    ///
+    /// # Safety
+    ///
+    /// `vm` must be the process's `JavaVM` (`JNIEnv::GetJavaVM`, or `jni::JavaVM::get_raw`), and
+    /// `context` a JNI reference to an `android.content.Context`, local or global, that is valid
+    /// on the calling thread for the whole call. Null is answered with
+    /// [`crate::ErrorCode::NativeError`].
+    pub unsafe fn from_raw(vm: *mut c_void, context: *mut c_void) -> Result<Self> {
+        if vm.is_null() || context.is_null() {
+            return Err(Error::native());
+        }
+        let _initialization = CONTEXT_INITIALIZATION
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        // SAFETY: the caller guarantees the process's JavaVM.
+        let vm = unsafe { JavaVM::from_raw(vm.cast()) };
+        let (context, class) = vm
+            .attach_current_thread(|env| capture_android(env, context.cast()))
+            .map_err(|_| Error::native())?;
+        Ok(Self { vm, context, class })
+    }
 }
 
 impl Bridge for AndroidBridge {
@@ -59,14 +86,27 @@ impl LiveUpdate<AndroidDriver> {
     pub fn android() -> Result<Self> {
         Ok(Self::new(JsonDriver::new(AndroidBridge::new()?)))
     }
+
+    /// Creates a live update client from the process's `JavaVM` and a context, without
+    /// [`ndk_context`]: for a service's own JNI entry, in a process that the service started.
+    ///
+    /// # Safety
+    ///
+    /// As [`AndroidBridge::from_raw`]: `vm` is the process's `JavaVM`, and `context` a reference
+    /// to an `android.content.Context` that is valid on the calling thread for the whole call.
+    pub unsafe fn android_from_raw(vm: *mut c_void, context: *mut c_void) -> Result<Self> {
+        // SAFETY: the caller's guarantee, passed on.
+        let bridge = unsafe { AndroidBridge::from_raw(vm, context)? };
+        Ok(Self::new(JsonDriver::new(bridge)))
+    }
 }
 
 fn capture_android(
     env: &mut Env<'_>,
     raw_context: jni::sys::jobject,
 ) -> jni::errors::Result<(Global<JObject<'static>>, Global<JClass<'static>>)> {
-    // SAFETY: ndk-context guarantees this non-null Context reference. The
-    // initialization mutex ensures this temporary wrapper is unique here.
+    // SAFETY: ndk-context, or the caller of `AndroidBridge::from_raw`, guarantees this non-null
+    // Context reference. The initialization mutex ensures this temporary wrapper is unique here.
     let context = unsafe { JObject::from_raw(env, raw_context) };
     let application = env
         .call_method(

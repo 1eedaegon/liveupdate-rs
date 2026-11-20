@@ -42,7 +42,8 @@ fn capabilities_use_the_stable_camel_case_contract() {
                 "branding": false,
                 "scheduledStart": false,
                 "exactStart": false,
-                "wearOngoingActivity": false
+                "wearOngoingActivity": false,
+                "actionTargets": false
             }
         })
     );

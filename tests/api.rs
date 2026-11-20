@@ -6,11 +6,12 @@
 #![deny(unreachable_patterns)]
 
 use liveupdate::{
-    ActivityEvent, ActivityState, AndroidPresentation, BigTextStyle, Capabilities, EndPolicy,
-    ErrorCode, EventBatch, EventKind, Fallback, IconSource, Metric, MetricStyle, MetricValue,
-    NextCheck, Observation, Placement, PresentationCapabilities, PresentationStyle, ProgressPoint,
-    ProgressSegment, ProgressStyle, PromotionState, PublicVersion, SamsungNowBar, SemanticStyle,
-    Snapshot, StartOutcome, StartReport, StartRequest, Template, Timer, TimerStyle, Visibility,
+    ActionTarget, ActivityEvent, ActivityState, AndroidPresentation, BigTextStyle, Capabilities,
+    EndPolicy, ErrorCode, EventBatch, EventKind, Fallback, IconSource, Metric, MetricStyle,
+    MetricValue, NextCheck, Observation, Placement, PresentationCapabilities, PresentationStyle,
+    ProgressPoint, ProgressSegment, ProgressStyle, PromotionState, PublicVersion, SamsungNowBar,
+    SemanticStyle, Snapshot, StartOutcome, StartReport, StartRequest, TargetKind, Template, Timer,
+    TimerStyle, Visibility,
 };
 use serde_json::json;
 
@@ -35,6 +36,7 @@ fn every_public_enum_may_gain_a_variant() {
             EventKind::Action { .. }
             | EventKind::Dismissed
             | EventKind::Opened { .. }
+            | EventKind::Handled { .. }
             | EventKind::Unknown => 1,
             _ => 0,
         }
@@ -137,6 +139,12 @@ fn every_public_enum_may_gain_a_variant() {
             _ => 0,
         }
     }
+    fn target_kind(value: TargetKind) -> u8 {
+        match value {
+            TargetKind::Service | TargetKind::ForegroundService | TargetKind::Broadcast => 1,
+            _ => 0,
+        }
+    }
     fn next_check(value: NextCheck) -> u8 {
         match value {
             NextCheck::Now | NextCheck::Soon | NextCheck::At(_) | NextCheck::Never => 1,
@@ -159,6 +167,7 @@ fn every_public_enum_may_gain_a_variant() {
     assert_eq!(placement(Placement::Foreground), 1);
     assert_eq!(end_policy(EndPolicy::After { at: 1 }), 1);
     assert_eq!(next_check(NextCheck::At(1)), 1);
+    assert_eq!(target_kind(TargetKind::ForegroundService), 1);
 }
 
 // LU-COMPAT-4
@@ -192,8 +201,8 @@ fn no_public_enum_of_the_crate_is_closed() {
             assert!(open, "{}: {line} is not #[non_exhaustive]", path.display());
         }
     }
-    // The fifteen that `every_public_enum_may_gain_a_variant` matches.
-    assert_eq!(enums, 15);
+    // The sixteen that `every_public_enum_may_gain_a_variant` matches.
+    assert_eq!(enums, 16);
 }
 
 // LU-COMPAT-5
@@ -279,6 +288,14 @@ fn a_constructor_takes_what_is_required_and_sets_nothing_else() {
         MetricStyle {
             metrics: vec![Metric::new("Label", value)],
             critical_metric: None
+        }
+    );
+    assert_eq!(
+        ActionTarget::new(TargetKind::Broadcast, "a.B"),
+        ActionTarget {
+            kind: TargetKind::Broadcast,
+            component: "a.B".into(),
+            action: None
         }
     );
     assert_eq!(

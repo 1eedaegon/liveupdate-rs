@@ -1,6 +1,6 @@
 //! What the README and the other docs must say, and what they may no longer say. The README's Rust
-//! code is examples/delivery.rs, which compiles for the host and for Android, and also compiles as a
-//! doctest (`ReadmeDoctests` in src/lib.rs).
+//! code is examples/delivery.rs and examples/service.rs, which compile for the host and for Android,
+//! and also compile as doctests (`ReadmeDoctests` in src/lib.rs).
 
 use std::path::Path;
 
@@ -42,14 +42,17 @@ fn rust_blocks(markdown: &str) -> Vec<String> {
 // LU-DOCS-1
 #[test]
 fn the_readme_shows_the_compiled_example_whole() {
-    // examples/delivery.rs compiles for Android (`cargo ndk check --all-targets --features
-    // android`) and for the host (`cargo clippy --all-targets --all-features`).
+    // examples/delivery.rs and examples/service.rs compile for Android (`cargo ndk check
+    // --all-targets --features android`) and for the host (`cargo clippy --all-targets
+    // --all-features`).
     let example = read("examples/delivery.rs");
+    let service = read("examples/service.rs");
     assert!(example.contains("LiveUpdate::android()"));
+    assert!(service.contains("LiveUpdate::android_from_raw"));
     assert_eq!(
         rust_blocks(&read("README.md")),
-        [example],
-        "the README's Rust code is not examples/delivery.rs verbatim"
+        [example, service],
+        "the README's Rust code is not examples/delivery.rs and examples/service.rs verbatim"
     );
 }
 
@@ -177,6 +180,8 @@ fn the_docs_state_what_an_app_must_know() {
         "without `samsung_now_bar`",
         "the first metric",
         "the icon on the watch face",
+        "tools:keep",
+        "tests/android/consumer.sh",
     ] {
         assert!(
             readme.contains(feature),

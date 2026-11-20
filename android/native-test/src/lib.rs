@@ -70,6 +70,30 @@ pub extern "system" fn Java_io_github_eedaegon_liveupdate_NativeRust_run<'caller
         .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// Runs the lifecycle with a client that `LiveUpdate::android_from_raw` builds from [context], on the calling
+/// thread, as a host's service does from its own JNI entry: `ndk-context` is not read.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_io_github_eedaegon_liveupdate_NativeRust_lifecycleFrom<'caller>(
+    mut unowned_env: EnvUnowned<'caller>,
+    _this: JObject<'caller>,
+    context: JObject<'caller>,
+) -> JString<'caller> {
+    unowned_env
+        .with_env(|env| {
+            let vm = env.get_java_vm()?;
+            // SAFETY: the process VM, and a context reference that is valid on this thread for the call.
+            let client = unsafe {
+                LiveUpdate::android_from_raw(vm.get_raw().cast(), context.as_raw().cast())
+            };
+            let outcome = match client.and_then(|client| scenarios::lifecycle(&client)) {
+                Ok(value) => json!({ "ok": value }),
+                Err(error) => json!({ "error": { "code": error.code, "message": error.message } }),
+            };
+            env.new_string(outcome.to_string())
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_io_github_eedaegon_liveupdate_NativeRust_writeCoverage<'caller>(
     mut unowned_env: EnvUnowned<'caller>,
@@ -178,7 +202,7 @@ mod scenarios {
         Ok(json!(record))
     }
 
-    fn lifecycle(updates: &Client) -> liveupdate::Result<Value> {
+    pub(super) fn lifecycle(updates: &Client) -> liveupdate::Result<Value> {
         let capabilities = updates.capabilities()?;
         let started = updates.start(request("native:lifecycle", 0, 0.25))?;
         let updated = updates.update(&started.id, snapshot(1, 0.75))?;

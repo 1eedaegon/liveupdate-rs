@@ -76,6 +76,9 @@ pub struct PresentationCapabilities {
     /// Whether a notification carries a watch's Ongoing Activity, its icon on the watch face: on
     /// a watch below Wear OS 7 whose application has `androidx.wear:wear-ongoing`.
     pub wear_ongoing_activity: bool,
+    /// `NotificationAction::target`: a tap that Android delivers to a component of the
+    /// application.
+    pub action_targets: bool,
 }
 
 /// What to do when the system cannot promote an ongoing notification.

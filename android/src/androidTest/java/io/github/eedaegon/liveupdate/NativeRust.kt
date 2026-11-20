@@ -17,6 +17,9 @@ internal object NativeRust {
     /** Runs one scenario of the native library and returns its JSON outcome. */
     external fun run(scenario: String, input: String): String
 
+    /** Runs the lifecycle with a client built from [context] alone, without ndk-context. */
+    external fun lifecycleFrom(context: Context): String
+
     /** Writes the Rust coverage counters to [path]; false when built without coverage. */
     external fun writeCoverage(path: String): Boolean
 }

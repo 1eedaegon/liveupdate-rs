@@ -26,6 +26,10 @@ open class ForegroundProbeService : Service() {
         val type = if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE else 0
         val notification = intent?.let(::notificationOf)
         when {
+            // As a recording service does: never out of the foreground, with its own notification when no
+            // activity holds the placement.
+            intent?.getBooleanExtra(EXTRA_FALLBACK, false) == true ->
+                attachedOr = LiveUpdateForeground.attachOr(this, type, FALLBACK_ID) { fallback(this) }
             // As a host's service does: the library builds the notification of the stored activity.
             intent?.getBooleanExtra(EXTRA_ATTACH, false) == true ->
                 if (!LiveUpdateForeground.attach(this, type)) stopSelf()
@@ -53,6 +57,21 @@ open class ForegroundProbeService : Service() {
         private const val EXTRA_ID = "id"
         private const val EXTRA_NOTIFICATION = "notification"
         private const val EXTRA_ATTACH = "attach"
+        private const val EXTRA_FALLBACK = "fallback"
+
+        /** The id of the service's own notification, which it shows while no activity holds the placement. */
+        const val FALLBACK_ID = 0x5E_0001
+
+        /** What `attachOr` last answered, null before it was called. */
+        @Volatile
+        var attachedOr: Boolean? = null
+
+        /** The service's own notification: built each time it is shown, as an application's is. */
+        fun fallback(context: Context): Notification = Notification.Builder(context, Device.CHANNEL_ID)
+            .setSmallIcon(R.drawable.liveupdate_status)
+            .setContentTitle("Listening")
+            .setOngoing(true)
+            .build()
 
         /** The service of this process while it is started; a service in another process is not seen here. */
         @Volatile
@@ -84,6 +103,12 @@ open class ForegroundProbeService : Service() {
             Device.waitUntil("the stopping service's notification is gone") { !shown() }
             service.stopSelf()
             Device.waitUntil("the service is destroyed") { running == null }
+        }
+
+        /** Starts the service of this process, which attaches with its fallback. */
+        fun attachOr(context: Context) {
+            attachedOr = null
+            context.startForegroundService(Intent(context, ForegroundProbeService::class.java).putExtra(EXTRA_FALLBACK, true))
         }
 
         /** Starts the service of this process, which attaches to the stored foreground activity. */
