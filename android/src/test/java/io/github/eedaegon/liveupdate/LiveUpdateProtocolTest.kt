@@ -140,6 +140,24 @@ class LiveUpdateProtocolTest {
         assertEquals(listOf("write:160"), adapter.mutations)
     }
 
+    // LU-BRIDGE-1, LU-LIMIT-3
+    @Test
+    fun readPassesTheStoredReceiptsOnAsTheyAre() {
+        val stored = "[{\"id\":\"one\",\"title\":\"a, [b]\"}, {\"id\":\"two\"}]"
+        val adapter = object : FakeAdapter() {
+            override fun readRaw(): String = stored
+        }
+        val reply = JSONObject(LiveUpdateProtocol.dispatch(adapter, "read", "{}"))
+        assertEquals("ok", reply.getString("status"))
+        assertEquals(JSONArray(stored).toString(), reply.getJSONArray("data").toString())
+        assertTrue(LiveUpdateProtocol.dispatch(adapter, "read", "{}").contains(stored))
+
+        val failing = object : FakeAdapter() {
+            override fun readRaw(): String = throw AdapterFailure("NATIVE_ERROR", "too many")
+        }
+        assertError("NATIVE_ERROR", LiveUpdateProtocol.dispatch(failing, "read", "{}"))
+    }
+
     // LU-ERR-3
     @Test
     fun sanitizesUnexpectedAdapterAndParserFailures() {
