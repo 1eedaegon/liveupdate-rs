@@ -25,7 +25,7 @@ class RecorderService : Service() {
         val attached = LiveUpdateForeground.attachOr(this, type, FALLBACK_ID) { fallback() }
         val tap = LiveUpdateActions.take(this, intent)
         report("recorder", "{\"attached\":$attached,\"tap\":\"$tap\"}")
-        if (tap != null && !tap.withheld) {
+        if (tap != null && !tap.withheld && tap.actionId == "record") {
             recording = !recording
             val context = applicationContext
             Thread { report("recording", Native.runFrom(context, "recording", "{\"on\":$recording}")) }.start()
