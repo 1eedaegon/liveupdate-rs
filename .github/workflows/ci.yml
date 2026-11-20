@@ -73,6 +73,11 @@ jobs:
           # The specification and every test it maps, and the docs that tests/docs.rs reads.
           area spec '^(src/|examples/|tests/|android/src/|docs/|tools/|README\.md$|CHANGELOG\.md$)'
           cat "$GITHUB_OUTPUT"
+      # The release reads every commit subject after the merge, and a subject it refuses stops the release.
+      # A pull request finds out first.
+      - name: Commit subjects as the release reads them
+        if: github.event_name == 'pull_request'
+        run: bash tools/release.sh plan
 
   # Every requirement of docs/spec.md has a test that names it next to its definition; CI's own patterns,
   # keys and record steps are as tests/ci/run.sh expects; the docs say what they must and the README's
@@ -150,6 +155,8 @@ jobs:
         if: ${{ !inputs.fresh }}
         with:
           cache-bin: false
+      # Before any mutant: an exclusion by line that a change above it moved would let a mutant through.
+      - run: sh tools/mutant-exclusions.sh
       - name: Mutants of the changed lines
         if: github.event_name == 'pull_request'
         env:
