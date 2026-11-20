@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 0.8.0 - 2026-11-20
+
+- test: an application built as a host builds one, from the published crate and AAR (`b820b16`)
+- docs: an icon that only a presentation names is kept from resource shrinking (`ba02041`)
+- feat: an action can deliver its tap to a service or a receiver of the application (`a97f5e8`)
+- feat: a client built from a context, without ndk-context (`b0a33a3`)
+- feat: a foreground service that attaches with a fallback is never without a notification (`79c1077`)
+- test: the consumer application has a recorder that an action's target reaches (`d3b8535`)
+- docs: a recorder's button that runs its own service, and the service's own Rust (`32e80bd`)
+- test: the target tests pace their post, and the native test library is formatted (`c55365e`)
+- test: the fallback test waits for the listener to hear the removal (`958bde8`)
+
 ## 0.7.1 - 2026-11-19
 
 - fix: a watch's icon goes when an update turns the Ongoing Activity off, and with the end (`135ccd7`)
