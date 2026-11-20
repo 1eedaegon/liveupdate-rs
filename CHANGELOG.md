@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.8.2 - 2026-11-20
+
+- ci: the emulator job runs an application built as a host builds one, and taps the recorder (`804b27f`)
+- perf: read passes the stored receipts on as they are, counted without parsing them (`be816f3`)
+- ci: the consumer's run checks the recorder wherever the build has one (`c8ce021`)
+- docs: main's suite at 0.8.1 on an Android 8 and an API 36 emulator (`5f51177`)
+
 ## 0.8.1 - 2026-11-20
 
 - ci: a pull request finds a moved mutant exclusion and a refused commit subject (`b226de8`)
