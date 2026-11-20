@@ -318,8 +318,15 @@ internal class AndroidAdapter(
     internal fun knows(id: String): Boolean = stored(id) != null
 
     /** Whether the stored receipt of [id] has the action [actionId] and says that it requires authentication. */
-    internal fun requiresAuthentication(id: String, actionId: String): Boolean {
-        val actions = stored(id)?.optJSONObject("snapshot")?.optJSONObject("presentation")?.optJSONArray("actions")
+    internal fun requiresAuthentication(id: String, actionId: String): Boolean =
+        requiresAuthentication(stored(id), actionId)
+
+    /** The stored receipt of [id], null without one: one read of the receipts for several questions. */
+    internal fun receipt(id: String): JSONObject? = stored(id)
+
+    /** Whether [receipt] has the action [actionId] and says that it requires authentication. */
+    internal fun requiresAuthentication(receipt: JSONObject?, actionId: String): Boolean {
+        val actions = receipt?.optJSONObject("snapshot")?.optJSONObject("presentation")?.optJSONArray("actions")
             ?: return false
         return (0 until actions.length()).mapNotNull(actions::optJSONObject)
             .any { it.optionalString("id") == actionId && it.opt("authenticationRequired") == true }
