@@ -15,6 +15,9 @@
 #                      must offer the Ongoing Activity: a start carries one, and an update and an end at once
 #                      leave the last content without it.
 #   scenario NAME [JSON]  Runs one scenario of the application's Rust code and prints its answer.
+#   tap TITLE          Opens the notification shade and taps the button titled TITLE (any case), then prints what
+#                      the application logged within five seconds: the recorder's taps, events, openings. On a
+#                      phone or an emulator; a watch does not list an ongoing notification.
 #   uninstall          Removes the application, and with it what `run` changed.
 #
 # What `run` does to the device: it uninstalls an earlier copy, installs with every runtime permission granted,
@@ -221,12 +224,37 @@ EOF
   echo "consumer run passed on $serial"
 }
 
+tap() {
+  title=$1
+  device logcat -c 2>/dev/null || true
+  device shell cmd statusbar expand-notifications
+  sleep 2
+  device shell uiautomator dump /sdcard/window_dump.xml >/dev/null 2>&1
+  at=$(device exec-out cat /sdcard/window_dump.xml | python3 -I -c '
+import re, sys
+want = sys.argv[1].lower()
+for node in re.finditer(r"<node [^>]*>", sys.stdin.read()):
+    text = re.search(r" text=\"([^\"]*)\"", node.group(0))
+    if text and text.group(1).lower() == want:
+        b = [int(v) for v in re.findall(r"\d+", re.search(r"bounds=\"([^\"]*)\"", node.group(0)).group(1))]
+        print((b[0] + b[2]) // 2, (b[1] + b[3]) // 2)
+        break' "$title")
+  device shell rm -f /sdcard/window_dump.xml
+  [ -n "$at" ] || fail "no button titled $title in the shade"
+  # shellcheck disable=SC2086
+  device shell input tap $at
+  sleep 5
+  device shell cmd statusbar collapse
+  device logcat -d -v tag -s "$tag:I" | tr -d '\r' | sed -n "s/^I\/$tag: //p" | grep -vE '^[a-z-]+#[0-9]+ '
+}
+
 command=${1:-}
 [ $# -eq 0 ] || shift
 case $command in
   build) build ;;
   run) run ;;
   scenario) scenario "$@" ;;
+  tap) tap "$@" ;;
   uninstall) device uninstall "$package" ;;
-  *) echo "usage: consumer.sh build | run | scenario NAME [JSON] | uninstall" >&2; exit 2 ;;
+  *) echo "usage: consumer.sh build | run | scenario NAME [JSON] | tap TITLE | uninstall" >&2; exit 2 ;;
 esac

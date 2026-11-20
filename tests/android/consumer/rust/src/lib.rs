@@ -217,6 +217,8 @@ fn run(scenario: &str, input: &str) -> Result<Value> {
         "events" => Ok(json!(client.events()?)),
         #[cfg(feature = "targets")]
         "recorder" => Ok(brief(&client.start(recorder::request(0, false))?)),
+        #[cfg(feature = "targets")]
+        "recording" => recorder::run(client, "recording", &input.to_string()),
         "end" => {
             let mut ended = Vec::new();
             for record in client.list()? {
@@ -255,18 +257,25 @@ mod recorder {
     }
 
     fn snapshot(revision: u64, recording: bool) -> Snapshot {
+        let target = |action: &str| ActionTarget {
+            action: Some(format!("io.github.eedaegon.liveupdate.consumer.{action}")),
+            ..ActionTarget::new(TargetKind::ForegroundService, SERVICE)
+        };
         let record = NotificationAction {
-            target: Some(ActionTarget {
-                action: Some("io.github.eedaegon.liveupdate.consumer.RECORD".into()),
-                ..ActionTarget::new(TargetKind::ForegroundService, SERVICE)
-            }),
+            target: Some(target("RECORD")),
             ..NotificationAction::new("record", if recording { "Stop" } else { "Record" })
+        };
+        // A button that asks for the unlock: below Android 12 the service hears it withheld while locked.
+        let discard = NotificationAction {
+            target: Some(target("DISCARD")),
+            authentication_required: true,
+            ..NotificationAction::new("discard", "Discard")
         };
         Snapshot {
             presentation: Some(AndroidPresentation {
                 small_icon: Some(IconSource::Resource(ICON.into())),
                 short_critical_text: Some(if recording { "REC" } else { "LISTEN" }.into()),
-                actions: vec![record],
+                actions: vec![record, discard],
                 ..AndroidPresentation::new(PresentationStyle::Standard)
             }),
             ..Snapshot::new(

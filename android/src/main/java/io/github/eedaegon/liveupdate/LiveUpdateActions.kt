@@ -58,13 +58,21 @@ internal class TargetTap(private val sdk: Int, private val locked: (Context) -> 
         for (extra in listOf(EXTRA_TARGET, EXTRA_ACTIVITY_ID, EXTRA_ACTION_ID, EXTRA_AUTHENTICATION)) {
             intent.removeExtra(extra)
         }
-        val required = { authentication || requiresAuthentication(context, activityId, actionId) }
+        // One read of the stored receipts, made only when a question needs it.
+        val receipt = lazy { runCatching { AndroidAdapter(context).let { it to it.receipt(activityId) } } }
+        // Receipts that cannot be read protect the action.
+        val required = {
+            authentication || receipt.value.fold(
+                { (adapter, stored) -> adapter.requiresAuthentication(stored, actionId) },
+                { true },
+            )
+        }
         if (withholdsAction(sdk, required) { locked(context) }) {
             Log.i(LOG_TAG, "A live update action that requires authentication was not taken: the device is locked.")
             return LiveUpdateTap(activityId, actionId, withheld = true)
         }
         try {
-            if (AndroidAdapter(context).knows(activityId)) {
+            if (receipt.value.getOrThrow().second != null) {
                 LiveUpdateEvents.stored(EventStore(context).appendHandled(activityId, actionId))
             }
         } catch (failure: Throwable) {

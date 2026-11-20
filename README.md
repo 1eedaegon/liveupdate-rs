@@ -468,7 +468,8 @@ pub extern "system" fn Java_com_example_Native_showRecording<'a>(
 - The component must not be exported, since any app could then send it what looks like a tap, and
   must run in the application's main process, whose event store `take` writes. A post that names a
   component your application does not have as the kind says, an exported one or one in another
-  process fails with `INVALID_INPUT`. A target beside `open_url` is refused.
+  process fails with `INVALID_INPUT`, and so does an update of an activity whose target an update of
+  the app removed: name another target, or none. A target beside `open_url` is refused.
 - The capability `presentation.action_targets` says the AAR delivers targets; without it, an earlier
   AAR, a start or an update that names one is `UNSUPPORTED_FEATURE`.
 - `LiveUpdate::android_from_raw(vm, context)` builds a client in the service's own JNI entry, with no
