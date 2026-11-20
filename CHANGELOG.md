@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.8.1 - 2026-11-20
+
+- ci: a pull request finds a moved mutant exclusion and a refused commit subject (`b226de8`)
+- perf: a target's tap reads the stored receipts once (`fd1e475`)
+- test: a service whose activity another service took shows its own, and each keeps its own (`156c84a`)
+- test: the consumer's recorder has a button that asks for the unlock, and the script taps buttons (`704aeee`)
+- docs: what the published 0.8.0 did on a locked Android 8, and after an update of the app (`9320915`)
+- docs: a language written from the right shows the card as the forced layout did (`a9c507f`)
+
 ## 0.8.0 - 2026-11-20
 
 - test: an application built as a host builds one, from the published crate and AAR (`b820b16`)
