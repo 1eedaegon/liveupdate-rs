@@ -80,7 +80,10 @@ class FallbackInstrumentationTest {
         assertTrue(LiveUpdateForeground.attach(checkNotNull(ForegroundProbeService.running), type))
         waitForeground(LiveUpdateForeground.NOTIFICATION_ID, "the activity's notification is the service's")
         Device.waitUntil("the fallback is gone") { shown(ForegroundProbeService.FALLBACK_ID) == null }
-        assertTrue(NotificationProbe.heard(fallbackKey).last().removed)
+        // The listener hears it a moment after Android's list no longer has it.
+        Device.waitUntil("the listener heard the fallback removed") {
+            NotificationProbe.heard(fallbackKey).lastOrNull()?.removed == true
+        }
         assertEquals(1, manager.activeNotifications.count { it.tag == null })
     }
 
