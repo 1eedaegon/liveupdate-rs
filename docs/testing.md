@@ -159,6 +159,22 @@ Run on 2026-11-20 with the published 0.7.1:
 
 The test packages were removed after each run, the emulator was deleted, and the PIN came off it first.
 
+### The suite of 0.8.1 on older emulators, by hand
+
+On 2026-11-20 the instrumentation tests of main at 0.8.1 ran by hand on emulators of this machine (Google APIs,
+x86_64), without coverage:
+
+- **Android 8 (API 26):** 94 of 106 in the main run, 5 of 7 with the exact alarm allowed. Each of the 12 that
+  failed asserts what a later Android does (API 34 to 37), as before; the tests of action targets, of a
+  service's fallback and of a client built from a context passed.
+- **API 36:** 96 of 106, 6 of 7. Seven assert API 37 or use `hasPromotableCharacteristics()`, which that
+  image answers with false. The Rust scheduled start timed out while the host's load was 144 and passed
+  twice alone. `leavingTheForegroundRemovesTheNotificationOrLeavesItAnOrdinaryOne` failed in the run and in
+  one of two runs alone: after the service detached, Android showed the notification the service was
+  started with (revision 0), not the last one it was given (5). On API 37 it never has. So on API 36 a
+  detached notification may show older content until the next update replaces it; the library does not
+  work around it.
+
 ### Action targets, by hand
 
 Built from this checkout, the consumer application has a recorder (`RecorderService`): a foreground service
