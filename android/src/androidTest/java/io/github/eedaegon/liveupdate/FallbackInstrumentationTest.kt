@@ -39,6 +39,9 @@ class FallbackInstrumentationTest {
     @After
     fun clear() {
         LiveUpdateForeground.setListener(null)
+        SecondForegroundProbeService.running?.let(LiveUpdateForeground::detach)
+        SecondForegroundProbeService.running?.stopSelf()
+        Device.waitUntil("the second service is gone") { SecondForegroundProbeService.running == null }
         ForegroundProbeService.running?.let(LiveUpdateForeground::detach)
         ForegroundProbeService.running?.stopSelf()
         Device.waitUntil("the service is gone") { ForegroundProbeService.running == null }
@@ -152,6 +155,32 @@ class FallbackInstrumentationTest {
         assertTrue(LiveUpdateForeground.attach(checkNotNull(ForegroundProbeService.running), type))
         waitForeground(LiveUpdateForeground.NOTIFICATION_ID, "the second activity's notification is the service's")
         Device.waitUntil("the fallback is gone") { shown(ForegroundProbeService.FALLBACK_ID) == null }
+    }
+
+    // LU-FGS-10
+    @Test
+    fun aServiceWhoseActivityAnotherServiceTookShowsItsOwnAndEachKeepsItsOwnAtTheEnd() {
+        adapter.post(store(foreground("ride")))
+        Device.paceUpdate()
+        ForegroundProbeService.attachOr(context)
+        waitForeground(LiveUpdateForeground.NOTIFICATION_ID, "the first service holds the activity")
+        assertEquals(true, ForegroundProbeService.attachedOr)
+
+        // The second takes it: the first is in the foreground with its own.
+        Device.paceUpdate()
+        SecondForegroundProbeService.attachOr(context)
+        Device.waitUntil("the second attached") { SecondForegroundProbeService.attachedOr == true }
+        waitForeground(ForegroundProbeService.FALLBACK_ID, "the first shows its own")
+        waitForeground(LiveUpdateForeground.NOTIFICATION_ID, "the second holds the activity")
+        assertNull(shown(SecondForegroundProbeService.FALLBACK_ID))
+
+        // At the end each service has its own, and the activity's is gone.
+        adapter.cancel("ride")
+        waitForeground(SecondForegroundProbeService.FALLBACK_ID, "the second shows its own")
+        Device.waitUntil("the activity's notification is gone") { shown(LiveUpdateForeground.NOTIFICATION_ID) == null }
+        assertTrue(shown(ForegroundProbeService.FALLBACK_ID)?.isForeground() == true)
+        assertNotNull(ForegroundProbeService.running)
+        assertNotNull(SecondForegroundProbeService.running)
     }
 
     // LU-FGS-10, LU-FGS-6

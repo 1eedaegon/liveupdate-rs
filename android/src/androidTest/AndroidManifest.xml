@@ -40,6 +40,12 @@
             android:exported="false"
             android:foregroundServiceType="shortService" />
 
+        <!-- A second one, which takes the activity from the first. -->
+        <service
+            android:name="io.github.eedaegon.liveupdate.SecondForegroundProbeService"
+            android:exported="false"
+            android:foregroundServiceType="shortService" />
+
         <!-- The same in a process of its own, which a test kills. -->
         <service
             android:name="io.github.eedaegon.liveupdate.RemoteForegroundProbeService"

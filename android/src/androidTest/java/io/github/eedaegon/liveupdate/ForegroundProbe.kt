@@ -119,6 +119,39 @@ open class ForegroundProbeService : Service() {
     }
 }
 
+/** A second foreground service of the application, which attaches with a fallback of its own. */
+class SecondForegroundProbeService : Service() {
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        running = this
+        val type = if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE else 0
+        attachedOr = LiveUpdateForeground.attachOr(this, type, FALLBACK_ID) { ForegroundProbeService.fallback(this) }
+        return START_NOT_STICKY
+    }
+
+    override fun onDestroy() {
+        if (running === this) running = null
+        super.onDestroy()
+    }
+
+    companion object {
+        const val FALLBACK_ID = 0x5E_0002
+
+        @Volatile
+        var attachedOr: Boolean? = null
+
+        @Volatile
+        var running: SecondForegroundProbeService? = null
+            private set
+
+        fun attachOr(context: Context) {
+            attachedOr = null
+            context.startForegroundService(Intent(context, SecondForegroundProbeService::class.java))
+        }
+    }
+}
+
 /** [ForegroundProbeService] in the process `:probe`. */
 class RemoteForegroundProbeService : ForegroundProbeService()
 
