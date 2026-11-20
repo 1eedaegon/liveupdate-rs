@@ -206,8 +206,8 @@ EOF
     device shell am kill-all
     wait_for "the process is gone" "$gone" 20
   fi
+  # The process was gone before: whatever posts it is a process that the alarm started, which may end again at once.
   wait_for "the scheduled start is shown" 'shown "$(dump)" "$later"' 180
-  [ "$(process)" != none ] || fail "the scheduled start is shown and no process of the application runs"
   echo "scheduled start: posted by its alarm, in a process that the alarm started"
 
   ended=$(scenario end)
@@ -252,7 +252,7 @@ recorder_check() {
   [ "$(field "$started" "'id' in a.get('ok', {})")" = True ] || fail "recorder: $started"
   recorder=$(field "$started" "a['ok']['id']")
   # The service is not running: the activity's notification is an ordinary one until the tap starts it.
-  wait_for "the recorder's activity is shown" 'dump | grep -q "NotificationRecord(.* id=$ACTIVITY_ID tag=null "'
+  wait_for "the recorder's activity is shown" 'dump | grep -c "NotificationRecord(.* id=$ACTIVITY_ID tag=null " >/dev/null'
   tapped=$(tap Record)
   case $tapped in *"actionId=record, withheld=false"*) ;; *) fail "recorder: the tap did not reach the service: $tapped" ;; esac
   case $tapped in *'"kind":"handled"'*) ;; *) fail "recorder: Rust did not drain the tap as handled: $tapped" ;; esac
@@ -264,13 +264,10 @@ recorder_check() {
   echo "recorder: a tap reached the service, Rust drained it as handled, and at the end the service kept its own"
 }
 
-tap() {
-  title=$1
-  device logcat -c 2>/dev/null || true
-  device shell cmd statusbar expand-notifications
-  sleep 2
+# The center of the first node on the screen whose text is [1], any case; empty when there is none.
+node_at() {
   device shell uiautomator dump /sdcard/window_dump.xml >/dev/null 2>&1
-  at=$(device exec-out cat /sdcard/window_dump.xml | python3 -I -c '
+  device exec-out cat /sdcard/window_dump.xml | python3 -I -c '
 import re, sys
 want = sys.argv[1].lower()
 for node in re.finditer(r"<node [^>]*>", sys.stdin.read()):
@@ -278,8 +275,33 @@ for node in re.finditer(r"<node [^>]*>", sys.stdin.read()):
     if text and text.group(1).lower() == want:
         b = [int(v) for v in re.findall(r"\d+", re.search(r"bounds=\"([^\"]*)\"", node.group(0)).group(1))]
         print((b[0] + b[2]) // 2, (b[1] + b[3]) // 2)
-        break' "$title")
+        break' "$1"
   device shell rm -f /sdcard/window_dump.xml
+}
+
+# Taps the button titled [1] in the shade. A notification that the shade shows collapsed hides its buttons:
+# the one titled [2] (the recorder's by default) is dragged open, and the shade is read again.
+tap() {
+  title=$1 card=${2:-Consumer recorder}
+  device logcat -c 2>/dev/null || true
+  at=
+  for _ in 1 2 3 4; do
+    device shell cmd statusbar expand-notifications
+    sleep 2
+    at=$(node_at "$title")
+    [ -n "$at" ] && break
+    open=$(node_at "$card")
+    if [ -n "$open" ]; then
+      # shellcheck disable=SC2086
+      set -- $open
+      device shell input swipe "$1" "$2" "$1" $(($2 + 600)) 400
+      sleep 2
+      at=$(node_at "$title")
+      [ -n "$at" ] && break
+    fi
+    device shell cmd statusbar collapse
+    sleep 1
+  done
   [ -n "$at" ] || fail "no button titled $title in the shade"
   # shellcheck disable=SC2086
   device shell input tap $at
