@@ -112,6 +112,14 @@ internal class AndroidAdapter(
         return JSONArray(raw).also { if (it.length() > MAX_RECORDS) nativeFailure() }
     }
 
+    override fun readRaw(): String {
+        val raw = preferences.getString(RECORDS_KEY, "[]") ?: "[]"
+        if (exceedsUtf8(raw, MAX_RECORD_BYTES)) nativeFailure()
+        val length = topLevelArrayLength(raw) ?: nativeFailure()
+        if (length > MAX_RECORDS) nativeFailure()
+        return raw
+    }
+
     override fun write(records: JSONArray) {
         if (records.length() > MAX_RECORDS) invalid()
         val raw = records.toString()

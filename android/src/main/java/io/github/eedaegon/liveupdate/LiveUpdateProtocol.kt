@@ -31,6 +31,9 @@ internal class AdapterFailure(val code: String, message: String) : Exception(mes
 internal interface ManagedAdapter {
     fun capabilities(): JSONObject
     fun read(): JSONArray
+
+    /** The stored receipts as JSON text, checked against the same bounds: what `read` answers the bridge with. */
+    fun readRaw(): String = read().toString()
     fun write(records: JSONArray)
     fun observe(): JSONArray
     fun post(record: JSONObject)
@@ -48,19 +51,24 @@ internal object LiveUpdateProtocol {
     fun dispatch(adapter: ManagedAdapter, command: String, rawPayload: String): String = try {
         if (exceedsUtf8(rawPayload, MAX_BRIDGE_BYTES)) invalid()
         val payload = JSONObject(rawPayload)
-        val data = when (command) {
-            "capabilities" -> adapter.capabilities()
-            "read" -> adapter.read()
-            "write" -> write(adapter, payload)
-            "observe" -> adapter.observe()
-            "post" -> post(adapter, payload)
-            "cancel" -> cancel(adapter, payload)
-            "events" -> adapter.drainEvents()
-            "schedule" -> schedule(adapter, payload)
-            "starts" -> adapter.starts()
-            else -> throw AdapterFailure("UNSUPPORTED_FEATURE", UNKNOWN_COMMAND_MESSAGE)
+        // The stored receipts go on as the adapter stored them: parsing a megabyte to write it out again
+        // would cost the same twice on every call of the lifecycle.
+        if (command == "read") {
+            "{\"status\":\"ok\",\"data\":${adapter.readRaw()}}"
+        } else {
+            val data = when (command) {
+                "capabilities" -> adapter.capabilities()
+                "write" -> write(adapter, payload)
+                "observe" -> adapter.observe()
+                "post" -> post(adapter, payload)
+                "cancel" -> cancel(adapter, payload)
+                "events" -> adapter.drainEvents()
+                "schedule" -> schedule(adapter, payload)
+                "starts" -> adapter.starts()
+                else -> throw AdapterFailure("UNSUPPORTED_FEATURE", UNKNOWN_COMMAND_MESSAGE)
+            }
+            success(data).toString()
         }
-        success(data).toString()
     } catch (failure: AdapterFailure) {
         error(failure.code, failure.message ?: NATIVE_MESSAGE).toString()
     } catch (_: Exception) {
