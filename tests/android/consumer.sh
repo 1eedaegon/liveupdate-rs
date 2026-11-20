@@ -111,6 +111,7 @@ PYTHON
     -Pconsumer.aar="$aar" -Pconsumer.jniLibs="$out/jniLibs" -Pconsumer.wear="$wear" -Pconsumer.targets="$targets"
   [ -f "$apk" ] || fail "the build left no $apk"
   echo "$wear" >"$out/wear"
+  echo "$targets" >"$out/targets"
   echo "built $apk for $device_abi with $(sed -n 's/^liveupdate = //p' "$out/rust/Cargo.toml")"
 }
 
@@ -242,8 +243,13 @@ held_by_service() {
 recorder_check() {
   [ "$watch" = 1 ] && { echo "recorder: not checked, a watch does not list an ongoing notification"; return 0; }
   started=$(scenario recorder)
-  case $started in *'"unknown"'*) echo "recorder: not in this build"; return 0 ;; esac
-  [ "$(field "$started" "a['ok']['state']")" = active ] || fail "recorder: $started"
+  # A build without the recorder answers {"ok":{"unknown":"recorder"}}.
+  if [ "$(field "$started" "a.get('ok', {}).get('unknown')")" = recorder ]; then
+    [ "$(cat "$out/targets" 2>/dev/null)" = true ] && fail "recorder: a build with targets has no recorder"
+    echo "recorder: not in this build"
+    return 0
+  fi
+  [ "$(field "$started" "'id' in a.get('ok', {})")" = True ] || fail "recorder: $started"
   recorder=$(field "$started" "a['ok']['id']")
   # The service is not running: the activity's notification is an ordinary one until the tap starts it.
   wait_for "the recorder's activity is shown" 'dump | grep -q "NotificationRecord(.* id=$ACTIVITY_ID tag=null "'
