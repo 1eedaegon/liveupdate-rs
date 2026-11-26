@@ -219,6 +219,8 @@ fn run(scenario: &str, input: &str) -> Result<Value> {
         "recorder" => Ok(brief(&client.start(recorder::request(0, false))?)),
         #[cfg(feature = "targets")]
         "recording" => recorder::run(client, "recording", &input.to_string()),
+        #[cfg(feature = "platform")]
+        "settings" => client.open_promotion_settings().map(|()| Value::Null),
         "end" => {
             let mut ended = Vec::new();
             for record in client.list()? {

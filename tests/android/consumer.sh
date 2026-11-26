@@ -85,11 +85,15 @@ PYTHON
   device_abi=$(property ro.product.cpu.abi)
   wear=false
   [ "${WEAR:-}" = 1 ] && wear=true
-  # Action targets came with 0.8.0.
-  targets=$(python3 -I -c 'import sys; v = sys.argv[1]; print("true" if not v or tuple(map(int, v.split("-")[0].split("."))) >= (0, 8, 0) else "false")' "${LIVEUPDATE_VERSION:-}")
+  # Action targets came with 0.8.0, and channels named by the application's strings with 0.9.0.
+  since() { python3 -I -c 'import sys; v, at = sys.argv[1], tuple(map(int, sys.argv[2].split("."))); print("true" if not v or tuple(map(int, v.split("-")[0].split("."))) >= at else "false")' "${LIVEUPDATE_VERSION:-}" "$1"; }
+  targets=$(since 0.8.0)
+  named=$(since 0.9.0)
+  echo "$named" >"$out/named"
   features=
+  [ "$named" = true ] && features="--features platform"
   if [ "$targets" = true ]; then
-    features="--features targets"
+    features="${features:---features }${features:+,}targets"
     python3 -I - "$out/app/app/src/main/AndroidManifest.xml" <<'PYTHON'
 import sys
 path = sys.argv[1]
@@ -189,6 +193,12 @@ EOF
   ride=$(field "$started" "a['ok']['id']")
   wait_for "the start is shown" 'shown "$(dump)" "$ride"'
   echo "start: shown, $(field "$started" "a['ok']['promotion']")"
+  if [ "$(cat "$out/named" 2>/dev/null)" = true ]; then
+    # The application's own strings name the library's channel.
+    dump | grep -c "mId='liveupdate-rs.v1', mName=Consumer rides," >/dev/null ||
+      fail "the channel is not named by the application's strings"
+    echo "channel: named by the application, Consumer rides"
+  fi
 
   updated=$(scenario update)
   [ "$(field "$updated" "a['ok']['revision']")" = 1 ] || fail "update: $updated"
