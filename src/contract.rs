@@ -81,6 +81,9 @@ pub struct PresentationCapabilities {
     pub action_targets: bool,
     /// `AndroidPresentation::local_only`: an activity that a paired device does not get.
     pub local_only: bool,
+    /// `LiveUpdatePush.handle`: a data message from the app's server reaches the lifecycle
+    /// ([`LiveUpdate::push`](crate::LiveUpdate::push)) while the app does not run.
+    pub push: bool,
 }
 
 /// What to do when the system cannot promote an ongoing notification.

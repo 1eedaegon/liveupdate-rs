@@ -31,6 +31,7 @@ mod error;
 mod event;
 mod model;
 mod presentation;
+pub mod push;
 
 #[cfg(all(feature = "android", target_os = "android"))]
 mod android;

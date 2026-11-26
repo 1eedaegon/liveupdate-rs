@@ -1,4 +1,4 @@
-use crate::{Error, MAX_SAFE_INTEGER, MAX_TIMESTAMP, Result};
+use crate::{Error, ErrorCode, MAX_SAFE_INTEGER, MAX_TIMESTAMP, Result};
 use serde::{Deserialize, Serialize};
 
 /// Maximum number of Android events kept between drains.
@@ -29,6 +29,21 @@ pub enum EventKind {
         /// Stable action identifier from the snapshot.
         #[serde(rename = "actionId")]
         action_id: String,
+    },
+    /// What a data message from the app's server did ([`crate::push`]). The event's activity id is
+    /// the activity's, and empty when the push named none.
+    #[serde(rename_all = "camelCase")]
+    Pushed {
+        /// `start`, `update` or `end`.
+        command: String,
+        /// The key that the push named.
+        activity_key: String,
+        /// The snapshot's revision; none for an end.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        revision: Option<u64>,
+        /// Why the lifecycle refused it; none when it did what it asked.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        code: Option<ErrorCode>,
     },
     /// A kind that this version does not know, from a later adapter.
     #[serde(other)]
@@ -69,16 +84,30 @@ impl ActivityEvent {
 
     /// Validates all transport bounds.
     pub fn validate(&self) -> Result<()> {
+        // A push that named no activity has no id; every other event is of an activity.
+        let unnamed = self.activity_id.is_empty() && matches!(self.kind, EventKind::Pushed { .. });
         if self.sequence > MAX_SAFE_INTEGER
             || self.occurred_at > MAX_TIMESTAMP
-            || !crate::model::valid_id(&self.activity_id)
+            || !(unnamed || crate::model::valid_id(&self.activity_id))
+        {
+            return Err(Error::invalid());
+        }
+        if let EventKind::Pushed {
+            command,
+            activity_key,
+            revision,
+            ..
+        } = &self.kind
+            && (!crate::push::COMMANDS.contains(&command.as_str())
+                || !crate::model::valid_key(activity_key)
+                || revision.is_some_and(|revision| revision > MAX_SAFE_INTEGER))
         {
             return Err(Error::invalid());
         }
         let action_id = match &self.kind {
             EventKind::Action { action_id } | EventKind::Handled { action_id } => Some(action_id),
             EventKind::Opened { action_id } => action_id.as_ref(),
-            EventKind::Dismissed | EventKind::Unknown => None,
+            EventKind::Dismissed | EventKind::Pushed { .. } | EventKind::Unknown => None,
         };
         if action_id.is_some_and(|id| !valid_action_id(id)) {
             return Err(Error::invalid());
