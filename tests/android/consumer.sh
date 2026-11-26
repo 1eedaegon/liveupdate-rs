@@ -244,8 +244,9 @@ EOF
   wait_for "both are gone" 'now=$(dump) && ! shown "$now" "$ride" && ! shown "$now" "$later"'
   echo "end: both removed"
 
-  recorder_check
+  # Before the recorder: its service stays in the foreground at the end, and keeps the process.
   push_check
+  recorder_check
 
   if [ "$offered" = True ]; then
     again=$(scenario start)
@@ -292,9 +293,9 @@ push() {
   fail "no answer to the push"
 }
 
-# The `pushed` events that the application logged since $since, a time on the device's clock.
+# The `pushed` events that the application logged since $since, seconds of the device's clock.
 pushed_events() {
-  device logcat -d -v tag -T "'$since'" -s "$tag:I" | grep -o '"kind":"pushed"' | wc -l | tr -d ' '
+  device logcat -d -v tag -T "$since" -s "$tag:I" | grep -o '"kind":"pushed"' | wc -l | tr -d ' ' 
 }
 
 # A start, an update and an end by data message, each in a process that the message started, and what the
@@ -309,11 +310,12 @@ push_check() {
   start=$(member '{"command":"start"}')
   update=$(member '{"command":"update","revision":1}')
   finish=$(member '{"command":"end"}')
-  since=$(device shell date "+%m-%d_%H:%M:%S.000" | tr -d '\r' | tr _ ' ')
+  # Seconds of the device's clock: logcat takes them, and they have no space for adb to quote.
+  since=$(device shell date +%s.000 | tr -d '\r')
   end_process
   [ "$(field "$(push "$start")" "a['handled']")" = True ] || fail "push: the start was not the library's"
   pushed=$(scenario list)
-  ride=$(field "$pushed" "[r['id'] for r in a['ok'] if r['activityKey'] == 'consumer:ride' and r['state'] not in ('ended', 'dismissed')][0]")
+  ride=$(field "$pushed" "[r['id'] for r in a['ok'] if r['key'] == 'consumer:pushed' and r['state'] not in ('ended', 'dismissed')][0]")
   wait_for "the pushed start is shown" 'shown "$(dump)" "$ride"'
   end_process
   [ "$(field "$(push "$update")" "a['handled']")" = True ] || fail "push: the update was not the library's"

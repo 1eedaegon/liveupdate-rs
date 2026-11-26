@@ -19,6 +19,9 @@ use std::{
 
 const RIDE: &str = "consumer:ride";
 const LATER: &str = "consumer:later";
+/// The key of the ride that the application's server begins: another than the ride's, which `run` ended.
+#[cfg(feature = "push")]
+const PUSHED: &str = "consumer:pushed";
 const ICON: &str = "consumer_status";
 
 static CONTEXT: Mutex<Option<Global<JObject<'static>>>> = Mutex::new(None);
@@ -151,13 +154,13 @@ fn payload(input: &Value) -> Result<Value> {
     let revision = input["revision"].as_u64().unwrap_or(0);
     let payload = match input["command"].as_str() {
         Some("start") => Payload::start(StartRequest::new(
-            RIDE,
+            PUSHED,
             Fallback::Notification,
             Visibility::Public,
             ride(0, 30, true),
         )),
-        Some("update") => Payload::update(RIDE, ride(revision, 50, true)),
-        Some("end") => Payload::end(RIDE, EndPolicy::Immediate),
+        Some("update") => Payload::update(PUSHED, ride(revision, 50, true)),
+        Some("end") => Payload::end(PUSHED, EndPolicy::Immediate),
         _ => {
             return Err(liveupdate::Error::new(
                 liveupdate::ErrorCode::InvalidInput,
