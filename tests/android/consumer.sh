@@ -291,6 +291,11 @@ push() {
   fail "no answer to the push"
 }
 
+# The `pushed` events that the application logged since $since, a time on the device's clock.
+pushed_events() {
+  device logcat -d -v tag -T "'$since'" -s "$tag:I" | grep -o '"kind":"pushed"' | wc -l | tr -d ' '
+}
+
 # A start, an update and an end by data message, each in a process that the message started, and what the
 # application drained of them: one `pushed` event each.
 push_check() {
@@ -315,8 +320,7 @@ push_check() {
   end_process
   [ "$(field "$(push "$finish")" "a['handled']")" = True ] || fail "push: the end was not the library's"
   wait_for "the pushed end removed it" '! shown "$(dump)" "$ride"'
-  wait_for "the application drained a pushed event of each" \
-    '[ "$(device logcat -d -v tag -T "'$since'" -s "$tag:I" | grep -o "\"kind\":\"pushed\"" | wc -l | tr -d " ")" -ge 3 ]' 20
+  wait_for "the application drained a pushed event of each" '[ "$(pushed_events)" -ge 3 ]' 20
   echo "push: a start, an update and an end by data message, each in a process the message started, and their events"
 }
 
