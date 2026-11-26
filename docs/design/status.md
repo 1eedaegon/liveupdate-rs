@@ -24,12 +24,18 @@
   with Wear OS 5, built for `armeabi-v7a`, and a live activity carries an Ongoing Activity there when the
   application has `androidx.wear:wear-ongoing`.
 
+- Activities from a push ([push](push/PRD.md)): `LiveUpdatePush.handle` hands a data message to the
+  lifecycle through the crate's native entry (feature `push`), in a process that the message started;
+  `push::Payload` builds the server's data; one lock for every client of a process.
+
 ## Not done
 
 - Tauri-side TSX/React projection and JavaScript event routing over the new core event drain.
 - Instrumentation for process recreation.
 - A check on an Android release below 36 (the adapter's API 35 behavior is tested on API 37).
 - A native Rust Android sample, and moving `tauri-plugin-live-activity` onto this crate.
+- A push delivered by FCM itself, on a device with a Firebase project of the owner's: the path is
+  tested by handing the map over, as a messaging service does.
 - `CallStyle`, more than one foreground-placed activity, and the follow-ups of
   [android-core-extensions](android-core-extensions/tech_doc.md) in `liveactivity-rs` and the Tauri
   plugin, which name this AAR's classes by its new package.
