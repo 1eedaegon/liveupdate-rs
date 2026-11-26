@@ -2,7 +2,7 @@
 
 | Need | Crate | AAR |
 | --- | --- | --- |
-| A message's way in | JNI `nativeHandle` behind `push`; `export_push!` if a dependency's symbol is not exported | `LiveUpdatePush.handle(context, data)`; meta-data `io.github.eedaegon.liveupdate.LIBRARY` |
+| A message's way in | JNI `nativeHandle` behind `push`, exported from the host's library | `LiveUpdatePush.handle(context, data)`; meta-data `io.github.eedaegon.liveupdate.LIBRARY` |
 | The rules | The lifecycle as it is: `start`, `update` and `end` through a client from `android_from_raw` | — |
 | One writer | A process-wide lock in `LiveUpdate::serialized` | The event store's lock, as before |
 | What happened | `EventKind::Pushed { command, activity_key, revision, code }` | `EventStore.appendPushed` |

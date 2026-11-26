@@ -22,8 +22,8 @@ one lifecycle call.
 
 `Java_io_github_eedaegon_liveupdate_LiveUpdatePush_nativeHandle`, in the crate, behind the feature
 `push` (which needs `android`). A cdylib exports the `#[no_mangle]` functions of the crates it links. That
-is measured with `nm -D` on the consumer application's library before anything relies on it. If a
-dependency's symbol is not exported, the host adds one line instead: `liveupdate::export_push!();`.
+was measured on 2026-11-27: a dependency's function that the host never calls is exported with LTO, on
+macOS and on Android arm64. The host writes no Rust for the push.
 
 A library that the AAR cannot load fails the push with `NATIVE_ERROR`. The `pushed` event records it,
 and `handle` answers true, since the message was the library's.
