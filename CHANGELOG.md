@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 0.11.0 - 2026-11-26
+
+- docs: the design of a watch mirror, from the bridge measured on a Galaxy Watch4 (`0b2d355`)
+- docs: a mirror alerts the phone and the watch together, measured (`61a0c7f`)
+- test: a mirror to a paired watch, its capability, and its contradiction with local_only (`0ead535`)
+- feat: AndroidPresentation::watch_mirror, refused where the adapter does not post a mirror (`1539fc6`)
+- test: a mirror beside the activity, its alert, its going and a person's no, on a device (`ad1ff00`)
+- feat: the AAR posts a mirror for a paired watch beside a mirrored activity (`96e6d1e`)
+- test: the consumer application mirrors a ride to a paired watch (`4eb25f6`)
+- docs: a phone's activity on a paired watch through its mirror (`e4d7822`)
+- fix: a mirror goes when its activity's notification goes another way, and a person's no lets the activity reach the watch (`a6ea447`)
+- test: a held activity and a scheduled start bring their mirror, and the spec's note on two clients is about two processes now (`0c9971b`)
+- test: the consumer's push check may run while the device dozes, and its mirror check captures the shade (`974b01c`)
+- test: the consumer says so when Galaxy Wearable blocks its watch application (`390b384`)
+
 ## 0.10.0 - 2026-11-26
 
 - docs: the design of activities from a push (`837911f`)
