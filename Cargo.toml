@@ -1,15 +1,15 @@
 [package]
 name = "liveupdate"
 version = "0.8.2"
-description = "Android Live Updates from Rust"
+description = "Android Live Updates from Rust: promoted ongoing notifications with ProgressStyle, MetricStyle, the status chip, Samsung Now Bar and Wear OS, through a small Kotlin AAR"
 authors = ["1eedaegon"]
 edition = "2024"
 rust-version = "1.90"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/1eedaegon/liveupdate-rs"
 readme = "README.md"
-keywords = ["android", "live-updates", "notifications", "jni", "rust"]
-categories = ["api-bindings", "os::android-apis"]
+keywords = ["android", "live-updates", "notifications", "live-activities", "wear-os"]
+categories = ["api-bindings", "os::android-apis", "gui"]
 include = [
     "/.envrc",
     "/android/build.gradle.kts",

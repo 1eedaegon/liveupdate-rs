@@ -1,4 +1,7 @@
-//! Rust-first contracts and lifecycle primitives for Android Live Updates.
+//! Android Live Updates from Rust: promoted ongoing notifications with the status bar chip,
+//! `ProgressStyle` (Android 16), `MetricStyle` (Android 17), timers, actions, the lock screen,
+//! Samsung's Now Bar and a Wear OS Ongoing Activity. Rust-first contracts and lifecycle
+//! primitives, with a small Kotlin AAR for the framework.
 //!
 //! Android framework integration is provided by a narrow managed adapter because
 //! notification framework types and components are Java/Kotlin APIs. The stable
