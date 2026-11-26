@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.8.3 - 2026-11-26
+
+- docs: what the crate is, said where people search for it (`e4b0f6b`)
+
 ## 0.8.2 - 2026-11-20
 
 - ci: the emulator job runs an application built as a host builds one, and taps the recorder (`804b27f`)
