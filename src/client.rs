@@ -95,11 +95,16 @@ impl<D: Driver> LiveUpdate<D> {
 
     /// Runs what a data message from the app's server asks ([`crate::push`]): a start as
     /// [`start`](Self::start), and an update or an end on the live activity of the payload's key,
-    /// the one that is neither ended nor dismissed. A key without one answers `NotFound`.
+    /// the one that is neither ended nor dismissed. A key without one answers `NotFound`. A start
+    /// that an ended activity of its key began answers that activity and begins nothing: a provider
+    /// may deliver a message again, or after a later one.
     pub fn push(&self, payload: &Payload) -> Result<ActivityRecord> {
         payload.validate()?;
         self.serialized(|driver| match payload.clone() {
-            Payload::Start(request) => start(driver, request),
+            Payload::Start(request) => match ended_start(driver, &request)? {
+                Some(ended) => Ok(ended),
+                None => start(driver, request),
+            },
             Payload::Update {
                 activity_key,
                 snapshot,
@@ -126,6 +131,23 @@ impl<D: Driver> LiveUpdate<D> {
         let _guard = OPERATIONS.lock().unwrap_or_else(PoisonError::into_inner);
         action(&self.driver)
     }
+}
+
+/// The ended activity that `request` began, when no activity of its key is live: a message delivered
+/// again, or after its end, which a provider of data messages may do. It begins nothing again.
+fn ended_start(driver: &impl Driver, request: &StartRequest) -> Result<Option<ActivityRecord>> {
+    let records = reconcile(driver)?;
+    let key = &request.activity_key;
+    if records
+        .iter()
+        .any(|record| !record.terminal() && record.origin.activity_key == *key)
+    {
+        return Ok(None);
+    }
+    Ok(records
+        .iter()
+        .find(|record| record.terminal() && record.origin == *request)
+        .map(DriverRecord::public))
 }
 
 /// The id of the activity of `key` that is neither ended nor dismissed.

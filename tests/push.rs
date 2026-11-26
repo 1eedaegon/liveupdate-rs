@@ -196,9 +196,20 @@ fn a_push_runs_the_lifecycle_by_the_activitys_key() {
         client.push(&Payload::update("ride:1", snapshot(3))),
         ErrorCode::NotFound,
     );
-    // The key begins again with a new id.
-    let again = client.push(&Payload::start(request("ride:1"))).unwrap();
+    // The start delivered again, after its end, begins nothing.
+    let posts = driver.counts().0;
+    let late = client.push(&Payload::start(request("ride:1"))).unwrap();
+    assert_eq!(
+        (late.id.as_str(), late.state),
+        (started.id.as_str(), ActivityState::Ended)
+    );
+    assert_eq!(driver.counts().0, posts);
+    // Another request begins the key again, with a new id.
+    let mut next = request("ride:1");
+    next.snapshot.status = "Another ride".into();
+    let again = client.push(&Payload::start(next)).unwrap();
     assert_ne!(again.id, started.id);
+    assert_eq!(again.state, ActivityState::Active);
 }
 
 /// A driver that counts the clients inside it at once.
