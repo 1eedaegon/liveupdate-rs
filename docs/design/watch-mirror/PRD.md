@@ -51,6 +51,8 @@ has, and needs no watch application to do it.
   - An ordinary revision updates the mirror quietly: importance MIN on the phone, and no vibration on the
     watch.
   - A revision with `alert: true` goes to the mirror through the alerting channel, and the watch vibrates.
+    The activity's own notification does not alert then: the mirror alerts the phone. The bridge mutes a
+    notification that the phone keeps quiet by its group, so a mirror cannot vibrate the watch alone.
 - The end:
   - The mirror carries the last content and goes at the same time.
   - An immediate end removes it.

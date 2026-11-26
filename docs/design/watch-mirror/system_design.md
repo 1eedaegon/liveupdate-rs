@@ -30,9 +30,12 @@ icons, color, actions and content intent. It differs from the activity's notific
 - It is in the group `liveupdate-rs-watch:<id>`, so that Android does not bundle it with the activity.
 - Its channel is the mirror's, `liveupdate-rs.watch.v1`, at importance MIN: quiet on the phone and on
   the watch.
-- A revision that alerts goes on the alerting channel at HIGH, so the watch vibrates. Whether it can then
-  be silent on the phone (`setSilent`) while the watch still vibrates is measured before it is decided.
-  If it cannot, the phone alerts for the activity and the mirror alike, and the README says so.
+- A revision that alerts goes on the alerting channel at HIGH, so the watch vibrates. The mirror alerts
+  the phone too, so the activity's own notification does not alert while it is mirrored. The phone and
+  the watch then alert once each. The other way does not exist. On 2026-11-27 a HIGH notification that
+  was a group child with `GROUP_ALERT_SUMMARY` (what `NotificationCompat.setSilent` does) was quiet on the
+  phone, and the bridge muted it on the watch as well: `suppressAlertingDueToGrouping-suppressed`, `alert
+  set to 0`. A mirror that is quiet on the phone is quiet on the watch.
 - The last content keeps the activity's time to go (`setTimeoutAfter`), so both go together.
 
 ## The person's no
