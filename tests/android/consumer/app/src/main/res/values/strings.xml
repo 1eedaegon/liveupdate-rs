@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The application names the library's channels in its own words, as the README says a host may. -->
+<resources>
+    <string name="liveupdate_channel_name">Consumer rides</string>
+    <string name="liveupdate_channel_description">Rides and recordings in progress</string>
+    <string name="liveupdate_alert_channel_name">Consumer ride alerts</string>
+    <string name="liveupdate_alert_channel_description">Rides that ask for attention</string>
+</resources>

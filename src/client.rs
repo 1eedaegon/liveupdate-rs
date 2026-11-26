@@ -83,6 +83,16 @@ impl<D: Driver> LiveUpdate<D> {
         self.serialized(|driver| next_check(driver))
     }
 
+    /// Opens the system's settings of the application's Live Updates (Android 16 and later), or of
+    /// its notifications before that, where a person allows or stops them: for an application that
+    /// reads `promotion_enabled: false`. Android starts it only while the application is in the
+    /// foreground and drops it otherwise without a word, so call it from a person's tap: `Ok` says
+    /// that it was asked, not that it shows. A driver without it, and a device without such a
+    /// screen, answer [`ErrorCode::UnsupportedFeature`].
+    pub fn open_promotion_settings(&self) -> Result<()> {
+        self.serialized(|driver| driver.open_promotion_settings())
+    }
+
     /// Atomically drains Android notification action and dismissal events.
     pub fn events(&self) -> Result<EventBatch> {
         self.serialized(|driver| {
@@ -107,7 +117,7 @@ fn start(driver: &impl Driver, request: StartRequest) -> Result<ActivityRecord> 
     request.validate()?;
     let capabilities = driver.capabilities()?;
     ensure_permission(capabilities)?;
-    ensure_targets(&request.snapshot, capabilities)?;
+    ensure_offered(&request.snapshot, capabilities)?;
     let records = reconcile(driver)?;
     if let Some(existing) = records
         .iter()
@@ -198,7 +208,7 @@ fn update(driver: &impl Driver, id: &str, snapshot: Snapshot) -> Result<Activity
     }
     let capabilities = driver.capabilities()?;
     ensure_permission(capabilities)?;
-    ensure_targets(&snapshot, capabilities)?;
+    ensure_offered(&snapshot, capabilities)?;
     let record = DriverRecord {
         snapshot,
         state: ActivityState::Unknown,
@@ -749,8 +759,9 @@ fn ensure_placement(
     Ok(())
 }
 
-/// An action's target needs an adapter that delivers it: an earlier one would queue the tap.
-fn ensure_targets(snapshot: &Snapshot, capabilities: Capabilities) -> Result<()> {
+/// What a snapshot asks of the adapter that an earlier one would do otherwise: an action's target,
+/// which it would queue, and an activity kept local, which it would send to a paired device.
+fn ensure_offered(snapshot: &Snapshot, capabilities: Capabilities) -> Result<()> {
     let targeted = snapshot.presentation.as_ref().is_some_and(|presentation| {
         presentation
             .actions
@@ -761,6 +772,17 @@ fn ensure_targets(snapshot: &Snapshot, capabilities: Capabilities) -> Result<()>
         return Err(failure(
             ErrorCode::UnsupportedFeature,
             "An action's target is unavailable.",
+        ));
+    }
+    // An earlier adapter would send the activity to a paired device.
+    let local = snapshot
+        .presentation
+        .as_ref()
+        .is_some_and(|presentation| presentation.local_only);
+    if local && !capabilities.presentation.local_only {
+        return Err(failure(
+            ErrorCode::UnsupportedFeature,
+            "Keeping an activity off a paired device is unavailable.",
         ));
     }
     Ok(())

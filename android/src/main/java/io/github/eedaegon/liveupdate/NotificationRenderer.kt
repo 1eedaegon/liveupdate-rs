@@ -208,6 +208,8 @@ internal class NotificationRenderer(
         // The start named a system style; an update may carry another one.
         if (requiredText(origin, "template", 16) !in VALID_STYLES) invalid()
         applyStyle(builder, style, kind, status, postedAt)
+        // A paired device does not get it: a phone's watch, or a watch's phone.
+        if (optionalBoolean(presentation, "localOnly") == true) builder.setLocalOnly(true)
         optionalObject(presentation, "chronometer")?.let { chronometer ->
             // The timer style is that clock alone.
             if (kind == "timer") invalid()

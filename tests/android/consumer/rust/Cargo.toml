@@ -12,6 +12,8 @@ crate-type = ["cdylib"]
 [features]
 # A version with action targets and `LiveUpdate::android_from_raw`: the recorder.
 targets = []
+# A version with `LiveUpdate::open_promotion_settings` (0.9.0).
+platform = []
 
 [dependencies]
 jni = { version = "0.22.4", default-features = false }

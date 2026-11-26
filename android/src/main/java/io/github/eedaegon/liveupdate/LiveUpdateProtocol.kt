@@ -34,6 +34,9 @@ internal interface ManagedAdapter {
 
     /** The stored receipts as JSON text, checked against the same bounds: what `read` answers the bridge with. */
     fun readRaw(): String = read().toString()
+
+    /** Opens the system's settings of the application's Live Updates; an adapter without them does not offer it. */
+    fun openSettings(): Unit = throw AdapterFailure("UNSUPPORTED_FEATURE", UNKNOWN_COMMAND_MESSAGE)
     fun write(records: JSONArray)
     fun observe(): JSONArray
     fun post(record: JSONObject)
@@ -65,6 +68,7 @@ internal object LiveUpdateProtocol {
                 "events" -> adapter.drainEvents()
                 "schedule" -> schedule(adapter, payload)
                 "starts" -> adapter.starts()
+                "settings" -> JSONObject.NULL.also { adapter.openSettings() }
                 else -> throw AdapterFailure("UNSUPPORTED_FEATURE", UNKNOWN_COMMAND_MESSAGE)
             }
             success(data).toString()

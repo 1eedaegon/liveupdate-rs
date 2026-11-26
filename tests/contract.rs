@@ -43,7 +43,8 @@ fn capabilities_use_the_stable_camel_case_contract() {
                 "scheduledStart": false,
                 "exactStart": false,
                 "wearOngoingActivity": false,
-                "actionTargets": false
+                "actionTargets": false,
+                "localOnly": false
             }
         })
     );

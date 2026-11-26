@@ -162,6 +162,23 @@ Run on 2026-11-20 with the published 0.7.1:
 
 The test packages were removed after each run, the emulator was deleted, and the PIN came off it first.
 
+### What Android's guides name beside a Live Update, by hand
+
+On 2026-11-26, on the Galaxy S23 (Android 17, One UI 9):
+
+- **`CallStyle`**, with throwaway tests of the platform's own API: posted without a foreground service,
+  `IllegalArgumentException: Not posted. CallStyle notifications must be for a foreground service or user
+  initated job or use a fullScreenIntent.` Held by a service, the call template, and
+  `hasPromotableCharacteristics()` false, for an ongoing, an incoming and a screening call, with or without
+  a chronometer, `CATEGORY_CALL`, a chip, or `setColorized(false)`; the same notification without the style
+  is promotable. When the service detached, Android posted it again, refused it, and ended the process:
+  `CannotPostForegroundServiceNotificationException: Bad notification for startForeground`.
+- **The settings of promotion** from the consumer application, called by a scenario while no activity of
+  it was in front: `{"ok":null}`, and nothing opened. The device test, which instrumentation lets start
+  activities, saw the screen open.
+- **The channels' names** of the consumer application, built with R8 and resource shrinking from this
+  checkout: `Consumer rides`, its own string.
+
 ### The suite of 0.8.1 on older emulators, by hand
 
 On 2026-11-20 the instrumentation tests of main at 0.8.1 ran by hand on emulators of this machine (Google APIs,

@@ -5,17 +5,20 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
 import android.service.notification.StatusBarNotification
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
 
 private const val CHANNEL_ID = "liveupdate-rs.v1"
-private const val CHANNEL_NAME = "Live updates"
+
+/** `Settings.ACTION_MANAGE_APP_PROMOTED_NOTIFICATIONS`, of API 36. */
+private const val PROMOTION_SETTINGS = "android.settings.MANAGE_APP_PROMOTED_NOTIFICATIONS"
 private const val ALERT_CHANNEL_ID = "liveupdate-rs.alerts.v1"
-private const val ALERT_CHANNEL_NAME = "Live update alerts"
 private const val PREFERENCES = "io.github.1eedaegon.liveupdate"
 private const val RECORDS_KEY = "records"
 private const val TAG_PREFIX = "liveupdate-rs:"
@@ -103,7 +106,8 @@ internal class AndroidAdapter(
                 .put("scheduledStart", true)
                 .put("exactStart", scheduled.exact())
                 .put("wearOngoingActivity", wearOngoing)
-                .put("actionTargets", true))
+                .put("actionTargets", true)
+                .put("localOnly", true))
     }
 
     override fun read(): JSONArray {
@@ -364,7 +368,7 @@ internal class AndroidAdapter(
         val presentation = record.optJSONObject("snapshot")?.optJSONObject("presentation")
         if (presentation?.opt("alert") != true || !record.isNull("dismissAt")) return null
         manager.createNotificationChannel(
-            NotificationChannel(alertChannelId, ALERT_CHANNEL_NAME, NotificationManager.IMPORTANCE_HIGH),
+            channel(alertChannelId, R.string.liveupdate_alert_channel_name, R.string.liveupdate_alert_channel_description, NotificationManager.IMPORTANCE_HIGH),
         )
         val importance = manager.getNotificationChannel(alertChannelId)?.importance
         return alertChannelId.takeIf { importance != NotificationManager.IMPORTANCE_NONE }
@@ -374,8 +378,31 @@ internal class AndroidAdapter(
 
     private fun ensureChannel() {
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_LOW),
+            channel(CHANNEL_ID, R.string.liveupdate_channel_name, R.string.liveupdate_channel_description, NotificationManager.IMPORTANCE_LOW),
         )
+    }
+
+    /**
+     * A channel named by the library's strings, which an application overrides with its own: Android takes a new name
+     * or description for a channel that exists, and keeps what the person set of its importance.
+     */
+    private fun channel(id: String, name: Int, description: Int, importance: Int) =
+        NotificationChannel(id, application.getString(name), importance).apply {
+            this.description = application.getString(description)
+        }
+
+    /**
+     * Opens the system's settings of the application's Live Updates from API 36, or of its notifications before
+     * that and where no screen answers the first; a device with neither does not offer it. Android starts it only
+     * for an application in the foreground, and drops it otherwise without a word: success is that it was asked.
+     */
+    override fun openSettings() {
+        val promotion = Intent(PROMOTION_SETTINGS).takeIf { sdk >= PROMOTION_API }
+        val screen = listOfNotNull(promotion, Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS))
+            .map { it.putExtra(Settings.EXTRA_APP_PACKAGE, application.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+            .firstOrNull { it.resolveActivity(application.packageManager) != null }
+            ?: throw AdapterFailure("UNSUPPORTED_FEATURE", "The device has no settings screen of notifications.")
+        application.startActivity(screen)
     }
 
     private fun notificationsAllowed(): Boolean {

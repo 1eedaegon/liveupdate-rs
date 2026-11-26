@@ -79,6 +79,8 @@ pub struct PresentationCapabilities {
     /// `NotificationAction::target`: a tap that Android delivers to a component of the
     /// application.
     pub action_targets: bool,
+    /// `AndroidPresentation::local_only`: an activity that a paired device does not get.
+    pub local_only: bool,
 }
 
 /// What to do when the system cannot promote an ongoing notification.
