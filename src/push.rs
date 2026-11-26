@@ -27,6 +27,10 @@ use std::collections::BTreeMap;
 /// The member of a data map that carries a payload.
 pub const DATA_KEY: &str = "liveupdate";
 
+/// The member of a data map for a layer above liveupdate: the AAR hands it to the layer's own
+/// native entry, `LiveUpdatePush.nativeLayer`, in the host's library.
+pub const LAYER_KEY: &str = "liveupdate.layer";
+
 /// The bytes of UTF-8 that FCM carries in a message's data, its keys and values together.
 pub const MAX_DATA_BYTES: usize = 4096;
 
@@ -216,8 +220,31 @@ impl Payload {
     }
 }
 
-/// What the native entry answers the AAR: what the push asked and how it went, which the AAR stores
-/// as a `pushed` event. A member that is not a payload has its code alone, and no event.
+/// What a native entry answers the AAR's `LiveUpdatePush`, which stores it as a `pushed` event: the
+/// command, the key, the revision when there is one, and the activity's id or the code of a refusal. A
+/// layer above liveupdate that takes the member [`LAYER_KEY`] answers with it too, so that both are
+/// one shape.
+#[must_use]
+pub fn outcome(
+    command: &str,
+    activity_key: &str,
+    revision: Option<u64>,
+    result: std::result::Result<&str, ErrorCode>,
+) -> String {
+    let mut outcome = serde_json::Map::new();
+    outcome.insert("command".into(), command.into());
+    outcome.insert("activityKey".into(), activity_key.into());
+    if let Some(revision) = revision {
+        outcome.insert("revision".into(), revision.into());
+    }
+    match result {
+        Ok(id) => outcome.insert("id".into(), id.into()),
+        Err(code) => outcome.insert("code".into(), json!(code)),
+    };
+    Value::Object(outcome).to_string()
+}
+
+/// The crate's own answer: a member that is not a payload has its code alone, and no event.
 #[cfg_attr(
     not(all(feature = "push", target_os = "android")),
     allow(
@@ -225,30 +252,21 @@ impl Payload {
         reason = "the native entry is Android's, with the feature `push`"
     )
 )]
-pub(crate) fn outcome(
+pub(crate) fn payload_outcome(
     payload: Option<&Payload>,
     result: std::result::Result<&str, ErrorCode>,
 ) -> Value {
-    let mut outcome = serde_json::Map::new();
-    if let Some(payload) = payload {
-        outcome.insert("command".into(), payload.command().into());
-        outcome.insert("activityKey".into(), payload.activity_key().into());
-        if let Some(revision) = payload.revision() {
-            outcome.insert("revision".into(), revision.into());
-        }
-    }
-    match (payload, result) {
-        (Some(_), Ok(id)) => {
-            outcome.insert("id".into(), id.into());
-        }
-        (None, Ok(_)) => {
-            outcome.insert("code".into(), json!(ErrorCode::InvalidInput));
-        }
-        (_, Err(code)) => {
-            outcome.insert("code".into(), json!(code));
-        }
-    }
-    Value::Object(outcome)
+    let Some(payload) = payload else {
+        let code = result.err().unwrap_or(ErrorCode::InvalidInput);
+        return json!({ "code": code });
+    };
+    let answer = outcome(
+        payload.command(),
+        payload.activity_key(),
+        payload.revision(),
+        result,
+    );
+    serde_json::from_str(&answer).unwrap_or(Value::Null)
 }
 
 #[cfg(test)]

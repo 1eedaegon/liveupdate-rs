@@ -116,6 +116,7 @@ internal class AndroidAdapter(
                 .put("actionTargets", true)
                 .put("localOnly", true)
                 .put("push", true)
+                .put("pushLayer", true)
                 .put("watchMirror", mirrors))
     }
 

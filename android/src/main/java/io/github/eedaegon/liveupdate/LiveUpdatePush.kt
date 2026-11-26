@@ -26,23 +26,31 @@ object LiveUpdatePush {
     /** The member of a data message that carries a payload. */
     const val DATA_KEY = "liveupdate"
 
+    /**
+     * The member of a data message for a layer above liveupdate, which the host's library takes through its own
+     * native entry, [nativeLayer]: a crate that keeps more of an activity than liveupdate's receipt.
+     */
+    const val LAYER_KEY = "liveupdate.layer"
+
     /** The manifest's meta-data that names the host's library, as `System.loadLibrary` takes it. */
     const val LIBRARY = "io.github.eedaegon.liveupdate.LIBRARY"
 
     /**
      * Runs a message's payload on the calling thread, and answers whether the message was the library's: false
-     * for a map without [DATA_KEY], which the host handles itself. A library that cannot be loaded, and a member
-     * that is not a payload, are logged; neither names an activity to store an event of.
+     * for a map without [DATA_KEY] and [LAYER_KEY], which the host handles itself. A map with [LAYER_KEY] goes to
+     * the layer alone, also beside [DATA_KEY]: one message has one owner. A library that cannot be loaded or lacks
+     * the entry, and an answer without a command, are logged; neither names an activity to store an event of.
      */
     @JvmStatic
     fun handle(context: Context, data: Map<String, String>): Boolean {
-        val member = data[DATA_KEY] ?: return false
+        val layer = data[LAYER_KEY]
+        val member = layer ?: data[DATA_KEY] ?: return false
         val application = context.applicationContext ?: context
         val outcome = try {
             library(application)?.let(System::loadLibrary)
-            JSONObject(nativeHandle(application, member))
+            JSONObject(if (layer != null) nativeLayer(application, layer) else nativeHandle(application, member))
         } catch (_: UnsatisfiedLinkError) {
-            Log.e(LOG_TAG, "No library with liveupdate's feature `push` is loaded: name it in the meta-data $LIBRARY.")
+            Log.e(LOG_TAG, "No loaded library has the entry for this push: name it in the meta-data $LIBRARY.")
             return true
         } catch (_: Exception) {
             Log.e(LOG_TAG, "A live update push failed.")
@@ -69,4 +77,8 @@ object LiveUpdatePush {
 
     @JvmStatic
     private external fun nativeHandle(context: Context, member: String): String
+
+    /** The entry of a layer above liveupdate, which the host's library exports when it has such a layer. */
+    @JvmStatic
+    private external fun nativeLayer(context: Context, member: String): String
 }

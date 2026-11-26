@@ -84,6 +84,9 @@ pub struct PresentationCapabilities {
     /// `LiveUpdatePush.handle`: a data message from the app's server reaches the lifecycle
     /// ([`LiveUpdate::push`](crate::LiveUpdate::push)) while the app does not run.
     pub push: bool,
+    /// `LiveUpdatePush.handle` hands a data message's member `liveupdate.layer` to a layer's own
+    /// native entry ([`crate::push::LAYER_KEY`]).
+    pub push_layer: bool,
     /// `AndroidPresentation::watch_mirror`: a second notification, not ongoing, that a paired
     /// watch's bridge takes. A phone's.
     pub watch_mirror: bool,
