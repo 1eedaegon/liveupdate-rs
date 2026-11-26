@@ -374,7 +374,7 @@ fn a_layer_answers_in_the_crates_shape() {
         refused,
         json!({ "command": "end", "activityKey": "layout:1", "code": "NOT_FOUND" })
     );
-    // The crate's own answer is the same shape.
+    // An adapter before the layer's way in.
     let capabilities = FakeDriver::default().edit(|state| state.capabilities);
     assert!(!capabilities.presentation.push_layer);
 }
