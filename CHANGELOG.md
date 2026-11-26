@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+## 0.10.0 - 2026-11-26
+
+- docs: the design of activities from a push (`837911f`)
+- docs: a dependency's JNI function is exported from the host's library, measured (`f8bbad5`)
+- test: a push's payload, its run by the activity's key, one lock per process, and its event (`947c2bf`)
+- feat: activities from a push, run through the lifecycle by the activity's key (`c5940d3`)
+- test: a push handed over as a messaging service does, and the outcome the native entry answers (`5924d51`)
+- feat: LiveUpdatePush hands a data message to the lifecycle through the crate's native entry (`f74c156`)
+- test: the consumer application takes a start, an update and an end by data message, each in a process the message started (`3eaf289`)
+- docs: activities from a push, with the server's example (`13fb1ff`)
+- fix: the event store reads a push that named no activity, with its empty id (`2d9c1ca`)
+- test: the consumer's push check reads the log from its time, quoted for the device (`e7c4dad`)
+- fix: a start delivered again after its end begins nothing (`bed7608`)
+- docs: what a push stores and what it only logs, and what the capability says (`dc5d534`)
+- test: a pushed event's key and revision bounds, and a late start while another key is live (`9d55cf2`)
+- test: the push's device test writes the Rust coverage after the push ran (`a82531e`)
+- test: the consumer asks am kill again until the process is in the background (`4e3ffd1`)
+- test: the consumer's push check runs before the recorder's, under its own key, and reads the log from epoch seconds (`02a9a36`)
+
 ## 0.9.1 - 2026-11-26
 
 - docs: a phone's activity on a paired watch, as Galaxy Wearable's bridge treats it (`e797352`)
