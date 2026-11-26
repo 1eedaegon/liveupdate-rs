@@ -5,7 +5,7 @@ mod common;
 use common::{FakeDriver, assert_code, request, snapshot};
 use liveupdate::{
     ActivityEvent, ActivityState, AndroidPresentation, BigTextStyle, EndPolicy, ErrorCode,
-    EventBatch, EventKind, LiveUpdate, PresentationStyle, Snapshot,
+    EventBatch, EventKind, LiveUpdate, MAX_SAFE_INTEGER, PresentationStyle, Snapshot,
     push::{DATA_KEY, MAX_DATA_BYTES, Payload},
 };
 use serde_json::{Value, json};
@@ -196,7 +196,8 @@ fn a_push_runs_the_lifecycle_by_the_activitys_key() {
         client.push(&Payload::update("ride:1", snapshot(3))),
         ErrorCode::NotFound,
     );
-    // The start delivered again, after its end, begins nothing.
+    // The start delivered again, after its end, begins nothing, also while another key is live.
+    client.push(&Payload::start(request("ride:2"))).unwrap();
     let posts = driver.counts().0;
     let late = client.push(&Payload::start(request("ride:1"))).unwrap();
     assert_eq!(
@@ -324,6 +325,20 @@ fn what_a_push_did_is_an_event_with_its_command_key_revision_and_code() {
     }))
     .unwrap();
     assert_code(dismissed.validate(), ErrorCode::InvalidInput);
+    // The key and the revision are checked as a payload's are.
+    let pushed = |key: &str, revision: u64| -> ActivityEvent {
+        serde_json::from_value(json!({
+            "sequence": 4, "activityId": "a1", "occurredAt": 5,
+            "kind": { "kind": "pushed", "command": "update", "activityKey": key, "revision": revision }
+        }))
+        .unwrap()
+    };
+    pushed("ride:1", MAX_SAFE_INTEGER).validate().unwrap();
+    assert_code(
+        pushed("ride:1", MAX_SAFE_INTEGER + 1).validate(),
+        ErrorCode::InvalidInput,
+    );
+    assert_code(pushed("", 1).validate(), ErrorCode::InvalidInput);
     for command in ["pause", ""] {
         let odd: ActivityEvent = serde_json::from_value(json!({
             "sequence": 4, "activityId": "a1", "occurredAt": 5,
