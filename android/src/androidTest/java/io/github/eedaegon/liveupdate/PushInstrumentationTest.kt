@@ -108,6 +108,27 @@ class PushInstrumentationTest {
         Device.waitForGone(id)
     }
 
+    // LU-PUSH-10
+    @Test
+    fun aLayersMemberGoesToTheLayersEntryAlone() {
+        assertTrue(AndroidAdapter(context).capabilities().getJSONObject("presentation").getBoolean("pushLayer"))
+        // The tests' library plays a layer whose entry answers what it was given.
+        val layer = JSONObject().put("command", "update").put("activityKey", "layout:1").put("revision", 2).toString()
+        assertTrue(LiveUpdatePush.handle(context, mapOf(LiveUpdatePush.LAYER_KEY to layer)))
+        val event = pushed()
+        assertEquals("layered", event.getString("activityId"))
+        assertEquals("layout:1", event.getJSONObject("kind").getString("activityKey"))
+        assertEquals(2, event.getJSONObject("kind").getLong("revision"))
+        // Both members: the layer's alone, and liveupdate's member begins nothing.
+        val both = start("ride:1") + (LiveUpdatePush.LAYER_KEY to layer)
+        assertTrue(LiveUpdatePush.handle(context, both))
+        assertEquals("layout:1", pushed().getJSONObject("kind").getString("activityKey"))
+        assertTrue(manager.activeNotifications.isEmpty())
+        // An answer without a command stores nothing.
+        assertTrue(LiveUpdatePush.handle(context, mapOf(LiveUpdatePush.LAYER_KEY to "{")))
+        assertEquals(0, EventStore(context).size())
+    }
+
     companion object {
         /**
          * The Rust coverage counters of this process, written again after the push ran: the push's native entry

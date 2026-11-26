@@ -94,6 +94,32 @@ pub extern "system" fn Java_io_github_eedaegon_liveupdate_NativeRust_lifecycleFr
         .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// A layer above liveupdate, as `LiveUpdatePush` hands it its member: it answers in the crate's shape what the
+/// member says, as `layered`, and its code alone for a member it cannot read.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_io_github_eedaegon_liveupdate_LiveUpdatePush_nativeLayer<'caller>(
+    mut unowned_env: EnvUnowned<'caller>,
+    _class: jni::objects::JClass<'caller>,
+    _context: JObject<'caller>,
+    member: JString<'caller>,
+) -> JString<'caller> {
+    unowned_env
+        .with_env(|env| {
+            let member = member.mutf8_chars(env)?.to_string();
+            let answer = match serde_json::from_str::<Value>(&member) {
+                Ok(value) => liveupdate::push::outcome(
+                    value["command"].as_str().unwrap_or_default(),
+                    value["activityKey"].as_str().unwrap_or_default(),
+                    value["revision"].as_u64(),
+                    Ok("layered"),
+                ),
+                Err(_) => json!({ "code": "INVALID_INPUT" }).to_string(),
+            };
+            env.new_string(answer)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_io_github_eedaegon_liveupdate_NativeRust_writeCoverage<'caller>(
     mut unowned_env: EnvUnowned<'caller>,
