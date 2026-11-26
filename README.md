@@ -1,6 +1,20 @@
 # liveupdate-rs
 
-Android Live Updates from Rust.
+[![crates.io](https://img.shields.io/crates/v/liveupdate.svg)](https://crates.io/crates/liveupdate)
+[![docs.rs](https://docs.rs/liveupdate/badge.svg)](https://docs.rs/liveupdate)
+[![CI](https://github.com/1eedaegon/liveupdate-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/1eedaegon/liveupdate-rs/actions/workflows/ci.yml)
+[![License: MIT OR Apache-2.0](https://img.shields.io/crates/l/liveupdate.svg)](#license)
+
+Android Live Updates from Rust: promoted ongoing notifications with the status bar chip,
+`ProgressStyle` (Android 16), `MetricStyle` (Android 17), timers, actions that open a screen or run your
+own service, the lock screen, Samsung's Now Bar and a Wear OS Ongoing Activity, through one typed Rust
+API and a small Kotlin AAR. From Android 8 an activity is an ongoing notification; from Android 16 it is
+promoted where Android allows it.
+
+It is the Android side of what iOS calls Live Activities.
+[liveactivity-rs](https://github.com/1eedaegon/liveactivity-rs) gives both platforms one API, and
+[tauri-plugin-live-activity](https://github.com/1eedaegon/tauri-plugin-live-activity) brings them to
+Tauri 2 apps.
 
 Android exposes promoted ongoing notifications through Java/Kotlin framework APIs, not a pure NDK
 API. `liveupdate` keeps validation, idempotency, revision ordering, the durable lifecycle and the
