@@ -3,7 +3,7 @@
 # (LIVEUPDATE_VERSION) or as this checkout builds them, the README's installation word for word, R8 and
 # resource shrinking, and an icon that only Rust names (tests/android/consumer).
 #
-#   ANDROID_SERIAL=SERIAL [LIVEUPDATE_VERSION=0.7.1] [WEAR=1] [OUT=dir] tests/android/consumer.sh COMMAND
+#   ANDROID_SERIAL=SERIAL [LIVEUPDATE_VERSION=0.7.1] [WEAR=1] [DOZE=1] [OUT=dir] tests/android/consumer.sh COMMAND
 #
 #   build              Fetches the published AAR and checks its sha256, or builds this checkout's; builds the
 #                      Rust library for the device's ABI with cargo-ndk, then the release APK. WEAR=1 adds
@@ -284,9 +284,13 @@ end_process() {
 }
 
 # A message's member, handed to LiveUpdatePush by the application's receiver as a messaging service does; prints
-# the receiver's answer.
+# the receiver's answer. With DOZE=1 the device dozes first, as an idle phone does when a message comes.
 push() {
   member=$1
+  if [ "${DOZE:-}" = 1 ]; then
+    device shell dumpsys deviceidle force-idle >/dev/null
+    trap 'device shell dumpsys deviceidle unforce >/dev/null 2>&1' EXIT
+  fi
   case $member in *"'"*) fail "the member may not have a single quote" ;; esac
   nonce=$(od -An -N6 -tu2 /dev/urandom | tr -d ' \n')
   device shell am broadcast -n "$package/.PushReceiver" --es member "'$member'" --es nonce "$nonce" >/dev/null
@@ -311,6 +315,11 @@ mirror_check() {
   printf '%s\n' "$now" | grep "NotificationRecord(.* tag=liveupdate-rs-watch:$mirrored " | grep -q ONGOING_EVENT &&
     fail "mirror: the mirror is ongoing"
   record "$now" "$mirrored" | grep -m1 'flags=' | grep -q LOCAL_ONLY || fail "mirror: the activity's own is not local-only"
+  # What the shade shows of the two, for a look: the screen as it is, with the shade opened.
+  device shell cmd statusbar expand-notifications >/dev/null 2>&1 || true
+  sleep 1
+  device exec-out screencap -p >"$out/mirror-shade.png" 2>/dev/null || true
+  device shell cmd statusbar collapse >/dev/null 2>&1 || true
   ended=$(scenario end)
   [ "$(field "$ended" "len(a['ok'])")" = 1 ] || fail "mirror end: $ended"
   wait_for "the mirror is gone with its activity" '! dump | grep -q "tag=liveupdate-rs-watch:$mirrored "'
@@ -348,7 +357,8 @@ push_check() {
   [ "$(field "$(push "$finish")" "a['handled']")" = True ] || fail "push: the end was not the library's"
   wait_for "the pushed end removed it" '! shown "$(dump)" "$ride"'
   wait_for "the application drained a pushed event of each" '[ "$(pushed_events)" -ge 3 ]' 20
-  echo "push: a start, an update and an end by data message, each in a process the message started, and their events"
+  [ "${DOZE:-}" = 1 ] && device shell dumpsys deviceidle unforce >/dev/null
+  echo "push: a start, an update and an end by data message, each in a process the message started$([ "${DOZE:-}" = 1 ] && echo " while the device dozed"), and their events"
 }
 
 held_by_service() {
