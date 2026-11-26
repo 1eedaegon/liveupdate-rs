@@ -580,8 +580,15 @@ In a watch app the same calls put the activity on the watch face, as an icon tha
 with `wear_ongoing_activity: false` keeps its activity off the watch face. An update may turn it off
 or on; a notification that a foreground service holds keeps its icon until the activity ends.
 
-For Wear OS 3 to 6 (seen on 5): older watches ignore it, Wear OS 7 shows Live Updates itself, and a
-phone's activity stays on the phone.
+For Wear OS 3 to 6 (seen on 5): older watches ignore it, and Wear OS 7 shows Live Updates itself.
+
+A phone's activity reaches a paired watch only where the watch's bridge takes it. Android's
+[bridging](https://developer.android.com/training/wearables/notifications/bridger) leaves ongoing
+notifications out, except that Live Updates may be bridged, depending on the Wear OS version and the
+maker. Galaxy Wearable did not bridge it to a Galaxy Watch4 on Wear OS 6: it dropped the activity as
+ongoing, although the app was allowed for the watch and the phone's screen was off. The last content
+after an end is not ongoing, so it goes through the bridge like any other notification. `local_only`
+keeps an activity off a watch whose bridge would take it.
 
 ## Versions
 
@@ -680,7 +687,9 @@ oversized adapter data fails closed as `NATIVE_ERROR`.
   characters is cut, a number too. A right-to-left layout is the system's: the library passes no
   direction.
 - On a watch the icon on the watch face is all an activity shows: Wear OS does not list an ongoing
-  notification among its notifications, and a revision that alerts does not pop up there.
+  notification among its notifications, and a revision that alerts does not pop up there. A phone's
+  activity is not bridged to a Galaxy Watch on Wear OS 6, which drops ongoing notifications (see
+  [Wear OS](#wear-os)).
 - From Android 15 a clock in the header, of a `Timer` style, a `chronometer` or a schema-v1 timer,
   cannot be more than 14 days old: the system drops such a post without an error, so the adapter
   refuses it with `INVALID_INPUT`. The age is counted from the end of a countdown and from the start
