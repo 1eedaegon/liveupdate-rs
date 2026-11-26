@@ -194,7 +194,9 @@ pub extern "system" fn Java_io_github_eedaegon_liveupdate_LiveUpdatePush_nativeH
             let outcome = catch_unwind(std::panic::AssertUnwindSafe(|| {
                 push(vm.get_raw().cast(), context.as_raw().cast(), &member)
             }))
-            .unwrap_or_else(|_| crate::push::outcome(None, Err(crate::ErrorCode::NativeError)));
+            .unwrap_or_else(|_| {
+                crate::push::payload_outcome(None, Err(crate::ErrorCode::NativeError))
+            });
             env.new_string(outcome.to_string())
         })
         .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
@@ -204,13 +206,13 @@ pub extern "system" fn Java_io_github_eedaegon_liveupdate_LiveUpdatePush_nativeH
 fn push(vm: *mut c_void, context: *mut c_void, member: &str) -> serde_json::Value {
     let payload = match crate::push::Payload::parse(member) {
         Ok(payload) => payload,
-        Err(error) => return crate::push::outcome(None, Err(error.code)),
+        Err(error) => return crate::push::payload_outcome(None, Err(error.code)),
     };
     // SAFETY: the process VM, and a context reference that is valid on this thread for the call.
     let result = unsafe { LiveUpdate::android_from_raw(vm, context) }
         .and_then(|client| client.push(&payload));
     match result {
-        Ok(record) => crate::push::outcome(Some(&payload), Ok(&record.id)),
-        Err(error) => crate::push::outcome(Some(&payload), Err(error.code)),
+        Ok(record) => crate::push::payload_outcome(Some(&payload), Ok(&record.id)),
+        Err(error) => crate::push::payload_outcome(Some(&payload), Err(error.code)),
     }
 }

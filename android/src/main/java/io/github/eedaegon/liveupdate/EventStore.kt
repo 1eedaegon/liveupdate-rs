@@ -62,9 +62,17 @@ internal class EventStore(context: Context) {
         val command = outcome.optionalString("command")
         val key = outcome.optionalString("activityKey")
         val id = outcome.optionalString("id") ?: ""
-        if (command !in PUSH_COMMANDS || key == null || (id.isNotEmpty() && !validId(id))) invalid()
+        // What the crate refuses here would cost the whole batch it is drained in: a layer's answer is checked as
+        // the crate checks it.
+        if (command !in PUSH_COMMANDS || key == null || !isValidActivityKey(key) || (id.isNotEmpty() && !validId(id))) {
+            invalid()
+        }
         val kind = JSONObject().put("kind", "pushed").put("command", command).put("activityKey", key)
-        if (outcome.has("revision")) kind.put("revision", outcome.getLong("revision"))
+        if (outcome.has("revision")) {
+            val revision = outcome.opt("revision") as? Number ?: invalid()
+            if (revision !is Int && revision !is Long || revision.toLong() !in 0..MAX_SAFE_INTEGER) invalid()
+            kind.put("revision", revision.toLong())
+        }
         outcome.optionalString("code")?.let { kind.put("code", it) }
         return append(id, kind)
     }

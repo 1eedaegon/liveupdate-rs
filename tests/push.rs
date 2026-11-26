@@ -6,7 +6,7 @@ use common::{FakeDriver, assert_code, request, snapshot};
 use liveupdate::{
     ActivityEvent, ActivityState, AndroidPresentation, BigTextStyle, EndPolicy, ErrorCode,
     EventBatch, EventKind, LiveUpdate, MAX_SAFE_INTEGER, PresentationStyle, Snapshot,
-    push::{DATA_KEY, MAX_DATA_BYTES, Payload},
+    push::{DATA_KEY, LAYER_KEY, MAX_DATA_BYTES, Payload, outcome},
 };
 use serde_json::{Value, json};
 use std::{
@@ -356,4 +356,25 @@ fn the_adapter_says_whether_a_push_can_reach_it() {
     assert!(!capabilities.presentation.push);
     let written = serde_json::to_value(capabilities).unwrap();
     assert_eq!(written["presentation"]["push"], json!(false));
+}
+
+// LU-PUSH-9
+#[test]
+fn a_layer_answers_in_the_crates_shape() {
+    assert_eq!(LAYER_KEY, "liveupdate.layer");
+    let done: Value =
+        serde_json::from_str(&outcome("update", "layout:1", Some(2), Ok("a1"))).unwrap();
+    assert_eq!(
+        done,
+        json!({ "command": "update", "activityKey": "layout:1", "revision": 2, "id": "a1" })
+    );
+    let refused: Value =
+        serde_json::from_str(&outcome("end", "layout:1", None, Err(ErrorCode::NotFound))).unwrap();
+    assert_eq!(
+        refused,
+        json!({ "command": "end", "activityKey": "layout:1", "code": "NOT_FOUND" })
+    );
+    // An adapter before the layer's way in.
+    let capabilities = FakeDriver::default().edit(|state| state.capabilities);
+    assert!(!capabilities.presentation.push_layer);
 }
