@@ -1,6 +1,6 @@
 [package]
 name = "liveupdate"
-version = "0.9.0"
+version = "0.9.1"
 description = "Android Live Updates from Rust: promoted ongoing notifications with ProgressStyle, MetricStyle, the status chip, Samsung Now Bar and Wear OS, through a small Kotlin AAR"
 authors = ["1eedaegon"]
 edition = "2024"

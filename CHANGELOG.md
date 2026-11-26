@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.9.1 - 2026-11-26
+
+- docs: a phone's activity on a paired watch, as Galaxy Wearable's bridge treats it (`e797352`)
+
 ## 0.9.0 - 2026-11-26
 
 - feat: an activity kept off a paired watch, the settings of promotion, and channels named by the application (`a7361bb`)
