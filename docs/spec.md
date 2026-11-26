@@ -340,6 +340,15 @@ What Android's notification guides name beside a Live Update ([platform-gaps](de
 | LU-PLAT-2 | `LiveUpdate::open_promotion_settings()` sends `settings` and expects `null`: the adapter opens the system's settings of the application's Live Updates from API 36, or of its notifications before that and where no screen answers, as a new task. A driver without it, an adapter of an earlier version and a device with no such screen answer `UNSUPPORTED_FEATURE`. Android drops the start of an application that is not in the foreground without a word: success says that it was asked. | The S23 → a settings screen in front. | `UnsupportedFeature` | all; Android |
 | LU-PLAT-3 | The adapter names its two channels by its string resources `liveupdate_channel_name`, `liveupdate_channel_description`, `liveupdate_alert_channel_name` and `liveupdate_alert_channel_description`, which an application overrides with its own, also for a channel that exists. | The test package's and the consumer application's own names → the channels have them. | — | Android |
 
+## Watch mirror
+
+A phone's activity on a paired watch, through the bridge the watch has ([watch-mirror](design/watch-mirror/PRD.md)).
+
+| ID | Behavior | Input → expected result | Errors | Platform |
+| --- | --- | --- | --- | --- |
+| LU-MIRROR-1 | `AndroidPresentation::watch_mirror` asks for a second notification of the activity, the mirror, which a paired watch's bridge takes. False by default and left out of the JSON. The capability `watchMirror` says that the adapter posts it: a phone with an AAR that has it. A start or an update that asks for it where it is false is refused and posts nothing. | `watch_mirror: true` → its JSON; without the capability → error. | `UnsupportedFeature` | all |
+| LU-MIRROR-2 | `watch_mirror` beside `local_only` is a contradiction: one keeps the activity off a paired device, the other sends it there. | Both → error, also where both are offered. | `InvalidInput` | all |
+
 ## Push
 
 An activity begun, updated or ended by a data message from the app's server ([push](design/push/PRD.md)).
@@ -670,6 +679,8 @@ with a capability, and the lifecycle refuses the request where the adapter does 
 | LU-PLAT-1 | `tests/platform.rs::an_activity_may_stay_off_a_paired_watch_and_is_left_out_when_it_does_not` (integration)<br>`tests/platform.rs::an_activity_kept_off_the_watch_needs_the_adapters_capability` (integration)<br>`android/src/androidTest/java/io/github/eedaegon/liveupdate/PlatformInstrumentationTest.kt::anActivityKeptOffTheWatchIsLocalOnly` (device) |
 | LU-PLAT-2 | `tests/platform.rs::the_settings_of_promotion_open_through_the_bridge_and_a_driver_without_them_says_so` (integration)<br>`android/src/test/java/io/github/eedaegon/liveupdate/LiveUpdateProtocolTest.kt::settingsOpensTheScreenAndAnAdapterWithoutItSaysSo` (kotlin)<br>`android/src/androidTest/java/io/github/eedaegon/liveupdate/PlatformInstrumentationTest.kt::theSettingsOfPromotionOpen` (device) |
 | LU-PLAT-3 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/PlatformInstrumentationTest.kt::theChannelsAreNamedByTheApplicationsStrings` (device) |
+| LU-MIRROR-1 | `tests/mirror.rs::an_activity_may_be_mirrored_to_a_watch_and_is_left_out_when_it_is_not` (integration)<br>`tests/mirror.rs::a_mirror_needs_the_adapters_capability` (integration) |
+| LU-MIRROR-2 | `tests/mirror.rs::an_activity_kept_off_a_paired_device_is_not_mirrored_to_one` (integration) |
 | LU-PUSH-1 | `tests/push.rs::a_payload_is_one_member_of_the_data_map_with_its_version_and_command` (integration)<br>`tests/push.rs::a_payload_of_another_version_or_command_is_refused` (integration) |
 | LU-PUSH-2 | `tests/push.rs::the_server_builds_only_what_the_lifecycle_would_take_and_what_fcm_carries` (integration) |
 | LU-PUSH-3 | `tests/push.rs::a_push_runs_the_lifecycle_by_the_activitys_key` (integration) |
