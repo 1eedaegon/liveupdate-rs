@@ -5,4 +5,6 @@
     <string name="liveupdate_channel_description">What the tests post</string>
     <string name="liveupdate_alert_channel_name">Test ride alerts</string>
     <string name="liveupdate_alert_channel_description">What the tests post to alert</string>
+    <string name="liveupdate_watch_channel_name">Test rides on a watch</string>
+    <string name="liveupdate_watch_channel_description">What the tests post for a watch</string>
 </resources>
