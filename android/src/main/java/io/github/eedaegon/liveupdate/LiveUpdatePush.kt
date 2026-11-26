@@ -17,7 +17,8 @@ private const val LOG_TAG = "LiveUpdate"
  * }
  * ```
  *
- * The Rust lifecycle runs the member [DATA_KEY] (`liveupdate::push::Payload`) through the crate's native entry
+ * The Rust lifecycle runs the member [DATA_KEY] (`liveupdate::push::Payload`) through the crate's native entry, and a
+ * layer above liveupdate takes the member [LAYER_KEY] through its own,
  * (the feature `push`), in the host's library: the manifest's meta-data [LIBRARY] names it, or the host loaded it
  * already. What the push did is stored as a `pushed` event, which `LiveUpdate::events()` drains. The service runs in
  * the application's main process, as the application's own client does: their receipts are one process's.

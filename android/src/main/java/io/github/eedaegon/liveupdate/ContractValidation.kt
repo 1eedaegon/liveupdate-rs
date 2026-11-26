@@ -54,3 +54,10 @@ private fun isContractWhitespace(codePoint: Int): Boolean =
         codePoint == 0x205f ||
         codePoint == 0x3000 ||
         codePoint == 0xfeff
+
+/** Matches Rust's `valid_key`: an ASCII letter or digit, then letters, digits, `.`, `_`, `:` and `-`, at most 128. */
+internal fun isValidActivityKey(value: String): Boolean =
+    value.length in 1..128 && value[0].isAsciiLetterOrDigit() &&
+        value.all { it.isAsciiLetterOrDigit() || it in ".:_-" }
+
+private fun Char.isAsciiLetterOrDigit(): Boolean = this in 'a'..'z' || this in 'A'..'Z' || this in '0'..'9'

@@ -42,5 +42,6 @@ nothing of the layer.
 
 - A device test hands a layer's member to a native entry of the test library. It sees the answer stored
   as a `pushed` event, and a map with both members going to the layer alone.
-- A library without the layer's entry stores nothing and answers true.
+- An answer whose key or revision the crate would refuse stores nothing. A library without the layer's
+  entry stores nothing and answers true: read in the code, not run, since the tests' library has the entry.
 - Tests are written and seen failing first.
