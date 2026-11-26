@@ -204,10 +204,10 @@ On 2026-11-27, on this machine:
 - **R8 keeps the entry.** The consumer application, built with R8 and resource shrinking from this
   checkout, keeps `LiveUpdatePush.nativeHandle` (`dexdump`). Its manifest has the receiver that plays a
   messaging service, and the meta-data that names its library.
-- **On a device**, `PushInstrumentationTest` and `consumer.sh run`'s push check hand the map over as a
-  messaging service does. The consumer's check is a start, an update and an end, each in a process that
-  the message started after `am kill`. A delivery by FCM itself needs a Firebase project of the owner's;
-  its keys stay outside the repository.
+- **On a device** (CI's API 37 emulator; not yet the S23), `PushInstrumentationTest` and
+  `consumer.sh run`'s push check hand the map over as a messaging service does. The consumer's check is
+  a start, an update and an end, each in a process that the message started after `am kill`. A delivery
+  by FCM itself needs a Firebase project of the owner's; its keys stay outside the repository.
 
 ### The suite of 0.8.1 on older emulators, by hand
 

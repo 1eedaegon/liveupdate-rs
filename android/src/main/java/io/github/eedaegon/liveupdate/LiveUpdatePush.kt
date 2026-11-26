@@ -42,7 +42,7 @@ object LiveUpdatePush {
             library(application)?.let(System::loadLibrary)
             JSONObject(nativeHandle(application, member))
         } catch (_: UnsatisfiedLinkError) {
-            Log.e(LOG_TAG, "The host's library with liveupdate's feature `push` is not loaded.")
+            Log.e(LOG_TAG, "No library with liveupdate's feature `push` is loaded: name it in the meta-data $LIBRARY.")
             return true
         } catch (_: Exception) {
             Log.e(LOG_TAG, "A live update push failed.")

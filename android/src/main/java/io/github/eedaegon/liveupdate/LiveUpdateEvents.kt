@@ -19,6 +19,7 @@ fun interface LiveUpdateNativeListener {
 /**
  * An event as it was stored. [kind] is `action`, `dismissed`, `opened`, `handled` or `pushed`, or a kind of a later
  * version; [actionId] names the action of an `action`, a `handled`, and an `opened` that an action opened.
+ * [activityId] is empty for a `pushed` that named no live activity.
  */
 data class LiveUpdateEvent(
     val sequence: Long,

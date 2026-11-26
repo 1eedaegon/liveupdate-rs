@@ -25,8 +25,9 @@ one lifecycle call.
 was measured on 2026-11-27: a dependency's function that the host never calls is exported with LTO, on
 macOS and on Android arm64. The host writes no Rust for the push.
 
-A library that the AAR cannot load fails the push with `NATIVE_ERROR`. The `pushed` event records it,
-and `handle` answers true, since the message was the library's.
+A library that the AAR cannot load, or that lacks the entry, a member that is not a payload, and a panic
+are logged, and `handle` answers true, since the message was the library's. None of them names an
+activity whose event it could be, so nothing is stored.
 
 ## One lock per process
 
@@ -63,8 +64,14 @@ as an event of kind `pushed`:
 
 `code` is absent when the push did what it asked. The event's activity id is the activity's id when
 the push named one. It is empty when there was none: an update of an unknown key, or a start refused
-before an id was made. `EventKind::Pushed` is new. A crate before it reads `Unknown`, but no crate
-before it has the entry.
+before an id was made. `EventKind::Pushed` is new. A crate before it refuses an event with an empty id,
+and loses the batch it is in. Only a host whose library has this version's entry stores such an event,
+so this happens only where an earlier crate drains the same store: a downgrade over the application's
+data, or a second library.
+
+A start that an ended activity of its key began answers that activity and begins nothing. FCM may
+deliver a message again, or after a later one. A start after its end would otherwise bring the activity
+back. A new activity under the key is a request that differs from the ended one.
 
 ## The server's builder
 
@@ -80,5 +87,6 @@ a server and an app do not both update one activity. The README says so.
 
 ## Capability
 
-`push: true` from an AAR with `LiveUpdatePush`. The crate never needs it itself: the entry does not
-exist without the AAR. liveactivity-rs reads it to answer `UNSUPPORTED_FEATURE`.
+`push: true` from an AAR with `LiveUpdatePush`. It says what the AAR has, not what the host built: a
+library without the feature `push` has no entry, and `handle` logs that. liveactivity-rs reads it to
+answer `UNSUPPORTED_FEATURE` with an earlier AAR.

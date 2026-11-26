@@ -608,12 +608,13 @@ pub fn ride_messages() -> Result<Vec<BTreeMap<String, String>>> {
 - **Checks.** The lifecycle checks a push as it checks your own calls. `to_data` refuses what it would
   refuse, and data over FCM's 4096 bytes.
 - **Revisions.** The server owns the revisions of an activity it pushes to. A push older than the shown
-  revision is `STALE_REVISION`, and a repeat changes nothing. So an activity has one writer: the server
-  or the app.
+  revision is `STALE_REVISION`, and a repeated update changes nothing. So an activity has one writer: the
+  server or the app. A start delivered again after its end answers the ended activity; begin a new
+  activity under the key with another request.
 - **What happened.** `LiveUpdate::events()` answers what each push did, as `EventKind::Pushed { command,
   activity_key, revision, code }`. `code` is set when the lifecycle refused the push. A push that named no
-  live activity has an empty activity id. A library that does not load, and a member that is not a
-  payload, are logged and stored as nothing.
+  live activity has an empty activity id, also for a native listener. A library that does not load or
+  lacks the feature `push`, and a member that is not a payload, are logged and stored as nothing.
 - **Process.** Your messaging service runs in the app's main process, as your own client does. Every
   client of a process takes one lock, so a push waits for your app's call and the reverse.
 - **Delivery.**
@@ -621,7 +622,8 @@ pub fn ride_messages() -> Result<Vec<BTreeMap<String, String>>> {
   - Send a start, an end and an update that alerts at high priority, and other updates at normal
     priority. FCM lowers the priority of an app whose high-priority messages show nothing.
   - FCM delivers nothing to an app that the person force-stopped.
-- `capabilities()?.presentation.push` is true with an AAR that has `LiveUpdatePush`.
+- `capabilities()?.presentation.push` is true with an AAR that has `LiveUpdatePush`. It does not say
+  whether your library was built with the feature.
 
 ### Settings and channels
 
