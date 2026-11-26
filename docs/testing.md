@@ -178,6 +178,20 @@ On 2026-11-26, on the Galaxy S23 (Android 17, One UI 9):
   activities, saw the screen open.
 - **The channels' names** of the consumer application, built with R8 and resource shrinking from this
   checkout: `Consumer rides`, its own string.
+- **A paired watch.** The phone was paired through Galaxy Wearable with a Galaxy Watch4 Classic (Wear
+  OS 6). The consumer application, built from the published 0.9.0, was allowed for the watch
+  (`notification_package_allow_status … "status":true`). The phone's screen was off, and the scenarios
+  ran over adb. The bridge's log is in `com.samsung.android.waterplugin:persistent`, tag
+  `Notification4Water_NB`:
+  - The start, an ongoing promoted notification: `NotificationChecker.checkIgnoreCase - onGoing`, then
+    `Ignored package` and `Discarding notification`.
+  - The last content after `quick-end`, which is not ongoing (channel importance 2): `allow state : true`,
+    then `PendingManager.getPendingState-NOT_WEARING_WATCH` and `Adding notification to the queue`. The
+    watch's wrist detection was on and the watch was not worn.
+
+  The watch's notifications page stayed empty. Two things decide nothing:
+  - Galaxy Wearable by default sends nothing while the phone is in use (screen on).
+  - `cmd notification post` posts as `com.android.shell`, which is not among the allowed applications.
 
 ### The suite of 0.8.1 on older emulators, by hand
 
