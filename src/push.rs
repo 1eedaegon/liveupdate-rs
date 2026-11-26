@@ -21,6 +21,7 @@
 
 use crate::{EndPolicy, Error, ErrorCode, Result, Snapshot, StartRequest, model::valid_key};
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 /// The member of a data map that carries a payload.
@@ -214,3 +215,41 @@ impl Payload {
         Ok(payload)
     }
 }
+
+/// What the native entry answers the AAR: what the push asked and how it went, which the AAR stores
+/// as a `pushed` event. A member that is not a payload has its code alone, and no event.
+#[cfg_attr(
+    not(all(feature = "push", target_os = "android")),
+    allow(
+        dead_code,
+        reason = "the native entry is Android's, with the feature `push`"
+    )
+)]
+pub(crate) fn outcome(
+    payload: Option<&Payload>,
+    result: std::result::Result<&str, ErrorCode>,
+) -> Value {
+    let mut outcome = serde_json::Map::new();
+    if let Some(payload) = payload {
+        outcome.insert("command".into(), payload.command().into());
+        outcome.insert("activityKey".into(), payload.activity_key().into());
+        if let Some(revision) = payload.revision() {
+            outcome.insert("revision".into(), revision.into());
+        }
+    }
+    match (payload, result) {
+        (Some(_), Ok(id)) => {
+            outcome.insert("id".into(), id.into());
+        }
+        (None, Ok(_)) => {
+            outcome.insert("code".into(), json!(ErrorCode::InvalidInput));
+        }
+        (_, Err(code)) => {
+            outcome.insert("code".into(), json!(code));
+        }
+    }
+    Value::Object(outcome)
+}
+
+#[cfg(test)]
+mod tests;
