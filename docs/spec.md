@@ -352,6 +352,7 @@ A phone's activity on a paired watch, through the bridge the watch has ([watch-m
 | LU-MIRROR-4 | A revision that alerts goes to the mirror on the alerting channel, and the activity's own notification stays on its quiet channel: the phone and the watch alert once each, since a mirror that the phone keeps quiet is quiet on the watch too. The next revision puts the mirror back on its own channel. | Revision 1 alerts → own on `liveupdate-rs.v1`, mirror on `liveupdate-rs.alerts.v1`; revision 2 → mirror on `liveupdate-rs.watch.v1`. | — | Android |
 | LU-MIRROR-5 | The mirror goes with its activity: an update without `watch_mirror` removes it and one with it brings it back; the last content is the mirror's too, not ongoing and gone at the same time; a removal of the last content and a cancel remove it. A dismissal of the activity's own notification removes it, and an observation removes a mirror whose activity Android has not listed for the listing's grace, as after a service stopped. | Each → the mirror there or gone. | — | Android |
 | LU-MIRROR-6 | A person who dismisses the mirror, on the watch or on the phone, stops it for that activity: its delete intent is kept by the adapter, and later posts of the activity post no mirror, nor keep the activity off a paired device. It is no event of the activity, and a cancel of the activity forgets it. | The mirror's delete intent, then an update → no mirror, no event; a cancel → forgotten. | — | Android |
+| LU-MIRROR-7 | Every path that posts an activity brings its mirror: a held activity, whose service's notification is local-only and whose updates update the mirror, and a scheduled start, whose alarm posts the mirror with the activity. | A held activity, updated and cancelled; a scheduled start at its time → the mirror each time. | — | Android |
 
 ## Push
 
@@ -395,8 +396,9 @@ with a capability, and the lifecycle refuses the request where the adapter does 
 
 ## Not proven by a test
 
-- **One client per process.** Two clients over the same storage are not serialized against each other;
-  their read-modify-write cycles can interleave. The README says to keep one.
+- **Two processes over one storage.** Every client of a process takes one lock (LU-PUSH-4), but a client
+  in another process of the application, such as a service declared with `android:process`, does not:
+  their read-modify-write cycles can interleave. The README says to keep the lifecycle in the main process.
 - **OEM promotion policy and appearance.** The S23 verifies API 37 notification structure and One UI
   extras, but no automated assertion can guarantee that a user's current promotion setting or an
   OEM allow-list gives every app the same visual prominence. Other OEM system UIs remain untested.
@@ -689,6 +691,7 @@ with a capability, and the lifecycle refuses the request where the adapter does 
 | LU-MIRROR-4 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/MirrorInstrumentationTest.kt::aRevisionThatAlertsAlertsThroughTheMirrorAlone` (device) |
 | LU-MIRROR-5 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/MirrorInstrumentationTest.kt::aMirrorGoesWithItsActivity` (device)<br>`android/src/androidTest/java/io/github/eedaegon/liveupdate/MirrorInstrumentationTest.kt::aMirrorWhoseActivityWentAnotherWayGoesToo` (device) |
 | LU-MIRROR-6 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/MirrorInstrumentationTest.kt::aPersonsDismissalOfTheMirrorStopsIt` (device) |
+| LU-MIRROR-7 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/MirrorInstrumentationTest.kt::aHeldActivityIsMirroredAndItsServicesNotificationStaysOnThePhone` (device)<br>`android/src/androidTest/java/io/github/eedaegon/liveupdate/MirrorInstrumentationTest.kt::aScheduledStartBringsItsMirrorAtItsTime` (device) |
 | LU-PUSH-1 | `tests/push.rs::a_payload_is_one_member_of_the_data_map_with_its_version_and_command` (integration)<br>`tests/push.rs::a_payload_of_another_version_or_command_is_refused` (integration) |
 | LU-PUSH-2 | `tests/push.rs::the_server_builds_only_what_the_lifecycle_would_take_and_what_fcm_carries` (integration) |
 | LU-PUSH-3 | `tests/push.rs::a_push_runs_the_lifecycle_by_the_activitys_key` (integration) |

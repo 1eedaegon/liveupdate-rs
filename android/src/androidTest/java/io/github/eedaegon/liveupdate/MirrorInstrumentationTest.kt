@@ -28,7 +28,14 @@ class MirrorInstrumentationTest {
     fun prepare() = Device.prepare()
 
     @After
-    fun clear() = Device.clear()
+    fun clear() {
+        // Whatever the probe service still shows under the foreground id goes with the service.
+        ForegroundProbeService.stop(
+            LiveUpdateForeground.NOTIFICATION_ID,
+            Notification.Builder(context, Device.CHANNEL_ID).setSmallIcon(R.drawable.liveupdate_status).build(),
+        )
+        Device.clear()
+    }
 
     private fun record(id: String, mirrored: Boolean, revision: Long = 0, alert: Boolean = false) = v2Record(
         id,
@@ -153,6 +160,40 @@ class MirrorInstrumentationTest {
         Device.waitForGone("stopped")
         prompt.observe()
         Device.waitUntil("an observation takes the mirror left alone") { mirror("stopped") == null }
+    }
+
+    // LU-MIRROR-7
+    @Test
+    fun aHeldActivityIsMirroredAndItsServicesNotificationStaysOnThePhone() {
+        val held = record("held", mirrored = true).apply { getJSONObject("origin").put("placement", "foreground") }
+        adapter.write(JSONArray().put(JSONObject(held.toString()).put("reportedState", "unknown")))
+        adapter.post(held)
+        waitForMirror("held")
+        ForegroundProbeService.attach(context)
+        Device.waitUntil("the service holds the activity, local-only") {
+            manager.activeNotifications.firstOrNull { it.tag == null && it.id == LiveUpdateForeground.NOTIFICATION_ID }
+                ?.notification?.let { it.flags and Notification.FLAG_LOCAL_ONLY != 0 } == true
+        }
+        Device.paceUpdate()
+        adapter.post(JSONObject(held.toString()).put("snapshot", record("held", mirrored = true, revision = 1).getJSONObject("snapshot")))
+        waitForMirror("held", revision = 1)
+        adapter.cancel("held")
+        Device.waitUntil("the mirror goes with the held activity") { mirror("held") == null }
+    }
+
+    // LU-MIRROR-7
+    @Test
+    fun aScheduledStartBringsItsMirrorAtItsTime() {
+        val startAt = System.currentTimeMillis() + 5_000
+        val later = record("later", mirrored = true)
+            .put("state", "scheduled").put("awaitingObservation", false)
+            .apply { getJSONObject("origin").put("startAt", startAt) }
+        Device.dispatch("write", JSONObject().put("records", JSONArray().put(JSONObject(later.toString()).put("reportedState", "unknown"))))
+        Device.dispatch("schedule", JSONObject().put("record", later))
+        assertNull(mirror("later"))
+        Device.waitForShown("later")
+        assertTrue(System.currentTimeMillis() >= startAt)
+        waitForMirror("later")
     }
 
     // LU-MIRROR-6
