@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.9.0 - 2026-11-26
+
+- feat: an activity kept off a paired watch, the settings of promotion, and channels named by the application (`a7361bb`)
+- test: the consumer application names its channels and asks for the settings of promotion (`f12e532`)
+- docs: the settings, the channels' names, and what is not offered, with CallStyle's evidence (`ecaa9d4`)
+- ci: a pull request reads the commit subjects alone, also while a release waits for its tag (`92cada1`)
+
 ## 0.8.3 - 2026-11-26
 
 - docs: what the crate is, said where people search for it (`e4b0f6b`)
