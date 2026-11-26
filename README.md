@@ -215,6 +215,7 @@ delivered); the record's `template` follows the latest snapshot. Schema v1 keeps
 | Header text | `sub_text: Some("Mochi Express".into())` | At most 64 characters |
 | Samsung Now Bar | `samsung_now_bar: Some(SamsungNowBar { primary, secondary })` | One UI on API 37 and newer: its two lines take the place of the style there; see [Limits](#limits) |
 | Not on a watch's face | `wear_ongoing_activity: false` | In a watch app, this activity stays in the tray; see [Wear OS](#wear-os) |
+| Not on a paired device | `local_only: true` | A phone's watch does not get it, nor a watch's phone; set later, it does not take back a copy the watch has; `UNSUPPORTED_FEATURE` with an AAR before 0.9 |
 
 ### The request and the lifecycle
 
@@ -535,6 +536,35 @@ Native code can watch every event without taking it from the queue that Rust dra
 (`kind`, `activityId`, `actionId`), on the thread that stored it, beside the one listener of
 `setListener`.
 
+### Settings and channels
+
+`LiveUpdate::open_promotion_settings()` opens the system's screen where a person allows or stops the
+application's Live Updates (Android 16 and later), or its notification settings before that: for an
+application that reads `promotion_enabled: false`. Android starts it only while the application is in the
+foreground, and drops it otherwise without a word: `Ok` says that it was asked. Call it from a person's tap.
+
+The AAR posts on two channels, which the system's settings list by name. Name them in your own words and
+languages: define these strings in your app's `res/values*/strings.xml`, and they take the place of the
+AAR's English ones, also for a channel that exists.
+
+```xml
+<string name="liveupdate_channel_name">Deliveries</string>
+<string name="liveupdate_channel_description">Deliveries in progress</string>
+<string name="liveupdate_alert_channel_name">Delivery alerts</string>
+<string name="liveupdate_alert_channel_description">Deliveries that ask for your attention</string>
+```
+
+### What is not offered
+
+- **`CallStyle`.** Android's guide lists it among the styles of a Live Update, and on a Galaxy S23 with
+  Android 17 a call notification was never promotable (`hasPromotableCharacteristics()` false, held by a
+  service or not). There Android refused one that neither a foreground service held nor a full-screen
+  intent opened, and ended the application's process when the service detached from it. An application
+  with calls uses `android.telecom` and its own notification.
+- **Replies, groups, `BigPictureStyle`, `InboxStyle`, `MessagingStyle`, bubbles and custom views.**
+  Android's guide does not list them among the styles of a Live Update, and a group summary or a custom
+  view keeps a notification from being one.
+
 ### Wear OS
 
 In a watch app the same calls put the activity on the watch face, as an icon that opens the app:
@@ -563,9 +593,9 @@ The crate and the AAR of a release have one version and are tested as a pair. Th
 | Later | Up to 0.6.0 | A request with a member that the AAR does not know fails with `INVALID_INPUT`; one without works |
 | Earlier | Later | It works: the crate reads what it knows of a reply. From 0.7.0 an event of a kind it does not know is `EventKind::Unknown`; before, the batch with it was lost |
 
-A member that an activity depends on, a start time or the foreground placement, is not left out
-silently: the crate refuses the request with `UNSUPPORTED_FEATURE` where the AAR does not report its
-capability.
+A member that an activity depends on, a start time, the foreground placement, an action's target or
+`local_only`, is not left out silently: the crate refuses the request with `UNSUPPORTED_FEATURE` where the
+AAR does not report its capability.
 
 - A request that the application gives as JSON is read strictly in every version: a member that the
   crate does not know is a mistake where it was written, and is refused.
