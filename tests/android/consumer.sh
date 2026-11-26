@@ -19,6 +19,7 @@
 #                      through its own client; at the end the service keeps its own notification.
 #                      From 0.10.0, and from this checkout: a start, an update and an end by data message, each in a
 #                      process that the message started, are shown, and the application drains a `pushed` event of each.
+#                      From 0.11.0, and from this checkout: a mirrored ride has its mirror beside it, not ongoing.
 #   scenario NAME [JSON]  Runs one scenario of the application's Rust code and prints its answer.
 #   push MEMBER        Hands a data message's member to LiveUpdatePush through the application's receiver, as a
 #                      messaging service does, and prints the receiver's answer (0.10.0 and later, or this checkout).
@@ -94,9 +95,12 @@ PYTHON
   targets=$(since 0.8.0)
   named=$(since 0.9.0)
   pushed=$(since 0.10.0)
+  mirror=$(since 0.11.0)
   echo "$named" >"$out/named"
+  echo "$mirror" >"$out/mirror"
   features=
   [ "$named" = true ] && features="--features platform"
+  [ "$mirror" = true ] && features="${features:---features }${features:+,}mirror"
   if [ "$pushed" = true ]; then
     features="${features:---features }${features:+,}push"
     python3 -I - "$out/app/app/src/main/AndroidManifest.xml" <<'PYTHON'
@@ -246,6 +250,7 @@ EOF
 
   # Before the recorder: its service stays in the foreground at the end, and keeps the process.
   push_check
+  mirror_check
   recorder_check
 
   if [ "$offered" = True ]; then
@@ -291,6 +296,25 @@ push() {
     sleep 0.4
   done
   fail "no answer to the push"
+}
+
+# A ride mirrored to a paired watch: beside its own notification, a mirror that is not ongoing, and the activity's
+# own is the phone's alone.
+mirror_check() {
+  [ "$(cat "$out/mirror" 2>/dev/null)" = true ] || { echo "mirror: not in this build"; return 0; }
+  [ "$watch" = 1 ] && { echo "mirror: not checked, a watch posts none"; return 0; }
+  started=$(scenario mirror)
+  [ "$(field "$started" "'id' in a.get('ok', {})")" = True ] || fail "mirror: $started"
+  mirrored=$(field "$started" "a['ok']['id']")
+  wait_for "the mirror is shown" 'dump | grep -q "NotificationRecord(.* tag=liveupdate-rs-watch:$mirrored "'
+  now=$(dump)
+  printf '%s\n' "$now" | grep "NotificationRecord(.* tag=liveupdate-rs-watch:$mirrored " | grep -q ONGOING_EVENT &&
+    fail "mirror: the mirror is ongoing"
+  record "$now" "$mirrored" | grep -m1 'flags=' | grep -q LOCAL_ONLY || fail "mirror: the activity's own is not local-only"
+  ended=$(scenario end)
+  [ "$(field "$ended" "len(a['ok'])")" = 1 ] || fail "mirror end: $ended"
+  wait_for "the mirror is gone with its activity" '! dump | grep -q "tag=liveupdate-rs-watch:$mirrored "'
+  echo "mirror: beside the activity, not ongoing, the activity's own local-only, and gone with it"
 }
 
 # The `pushed` events that the application logged since $since, seconds of the device's clock.

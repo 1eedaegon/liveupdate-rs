@@ -16,6 +16,8 @@ targets = []
 platform = []
 # A version with activities from a push (0.10.0): the crate's native entry, and the server's payload.
 push = ["liveupdate/push"]
+# A version with a mirror for a paired watch (0.11.0).
+mirror = []
 
 [dependencies]
 jni = { version = "0.22.4", default-features = false }
