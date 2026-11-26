@@ -135,9 +135,13 @@ internal class EventStore(context: Context) {
         for (index in 0 until events.length()) {
             val event = events.opt(index) as? JSONObject ?: nativeFailure()
             val sequence = strictLong(event, "sequence", 0, MAX_SAFE_INTEGER)
-            if (sequence <= previous || !validId(event.opt("activityId") as? String ?: nativeFailure())) nativeFailure()
+            val id = event.opt("activityId") as? String ?: nativeFailure()
+            val kind = event.opt("kind") as? JSONObject ?: nativeFailure()
+            // A push that named no activity has no id; every other event is of an activity.
+            val unnamed = id.isEmpty() && kind.opt("kind") == "pushed"
+            if (sequence <= previous || !(unnamed || validId(id))) nativeFailure()
             strictLong(event, "occurredAt", 0, MAX_TIMESTAMP)
-            validateKind(event.opt("kind") as? JSONObject ?: nativeFailure())
+            validateKind(kind)
             previous = sequence
         }
     }
@@ -148,6 +152,7 @@ internal class EventStore(context: Context) {
             "opened" -> if (kind.has("actionId") && !validActionId(kind.opt("actionId") as? String ?: nativeFailure())) {
                 nativeFailure()
             }
+            "pushed" -> if (kind.opt("command") !in PUSH_COMMANDS || kind.opt("activityKey") !is String) nativeFailure()
             // A dismissal says nothing more, and a kind of a later version is not this one's to check.
             else -> Unit
         }
