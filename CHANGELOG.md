@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.12.0 - 2026-11-26
+
+- test: a layer's member goes to the layer's entry alone and answers in the crate's shape (`2fd1767`)
+- feat: a data message's member for a layer above liveupdate goes to the layer's own native entry (`23131e7`)
+- docs: a push for a layer above liveupdate (`ae76f3c`)
+- test: a layer's answer whose key or revision the crate would refuse is stored as nothing (`861e148`)
+- fix: the event store checks a pushed key and revision as the crate does (`6d0784a`)
+
 ## 0.11.0 - 2026-11-26
 
 - docs: the design of a watch mirror, from the bridge measured on a Galaxy Watch4 (`0b2d355`)
