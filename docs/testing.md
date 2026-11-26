@@ -42,7 +42,8 @@ the line that holds the code its reason is about. Move the numbers in the same c
 `cargo fmt`.
 
 The release reads every commit subject after the merge, and stops at one it refuses. The changes job
-of a pull request runs `bash tools/release.sh plan`, which refuses the same subjects first.
+of a pull request runs `bash tools/release.sh subjects`, which refuses the same subjects first, without
+the plan's version arithmetic: a version commit of main may still wait for its tag.
 
 ## On an emulator
 
