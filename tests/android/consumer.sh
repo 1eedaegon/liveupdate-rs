@@ -206,6 +206,14 @@ run() {
   if [ "$api" -ge 31 ]; then device shell cmd appops set "$package" SCHEDULE_EXACT_ALARM allow; fi
   watch=$(device shell pm list features | tr -d '\r' | grep -c "feature:android.hardware.type.watch$" || true)
   echo "device $(property ro.product.model), API $api, $(property ro.product.cpu.abi)$([ "$watch" = 1 ] && echo ", a watch")"
+  # Galaxy Wearable decides the notifications of an application installed on a Galaxy Watch: a few seconds after
+  # the install it blocks one that the phone's list does not allow, whatever was granted.
+  if [ "$watch" = 1 ]; then
+    sleep 8
+    if device shell dumpsys notification | grep -q "AppSettings: $package (.*) importance=NONE"; then
+      fail "the watch blocks the application's notifications: allow LiveUpdate consumer in Galaxy Wearable's notifications on the phone, then run again"
+    fi
+  fi
 
   capabilities=$(scenario capabilities)
   read -r answered promotion offered <<EOF
