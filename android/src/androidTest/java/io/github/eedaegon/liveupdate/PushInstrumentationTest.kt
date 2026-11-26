@@ -6,12 +6,14 @@ import io.github.eedaegon.liveupdate.Device.manager
 import io.github.eedaegon.liveupdate.Device.v2Snapshot
 import org.json.JSONObject
 import org.junit.After
+import org.junit.AfterClass
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
 
 /**
  * A data message from the app's server, handed to `LiveUpdatePush.handle` as a messaging service does. The test
@@ -104,5 +106,18 @@ class PushInstrumentationTest {
         assertTrue(LiveUpdatePush.handle(context, end("ride:1")))
         assertEquals(id, pushed().getString("activityId"))
         Device.waitForGone(id)
+    }
+
+    companion object {
+        /**
+         * The Rust coverage counters of this process, written again after the push ran: the push's native entry
+         * runs here, and the counters are the process's whole count.
+         */
+        @JvmStatic
+        @AfterClass
+        fun writeCoverage() {
+            val file = File(context.filesDir, "liveupdate.profraw")
+            println("liveupdate: Rust coverage written=${NativeRust.writeCoverage(file.absolutePath)}")
+        }
     }
 }
