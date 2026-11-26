@@ -11,7 +11,7 @@ use liveupdate::{
     MetricValue, NextCheck, Observation, Placement, PresentationCapabilities, PresentationStyle,
     ProgressPoint, ProgressSegment, ProgressStyle, PromotionState, PublicVersion, SamsungNowBar,
     SemanticStyle, Snapshot, StartOutcome, StartReport, StartRequest, TargetKind, Template, Timer,
-    TimerStyle, Visibility,
+    TimerStyle, Visibility, push::Payload,
 };
 use serde_json::json;
 
@@ -37,6 +37,7 @@ fn every_public_enum_may_gain_a_variant() {
             | EventKind::Dismissed
             | EventKind::Opened { .. }
             | EventKind::Handled { .. }
+            | EventKind::Pushed { .. }
             | EventKind::Unknown => 1,
             _ => 0,
         }
@@ -151,6 +152,12 @@ fn every_public_enum_may_gain_a_variant() {
             _ => 0,
         }
     }
+    fn payload(value: &Payload) -> u8 {
+        match value {
+            Payload::Start(_) | Payload::Update { .. } | Payload::End { .. } => 1,
+            _ => 0,
+        }
+    }
 
     assert_eq!(error_code(ErrorCode::Conflict), 1);
     assert_eq!(event_kind(&EventKind::Unknown), 1);
@@ -168,6 +175,7 @@ fn every_public_enum_may_gain_a_variant() {
     assert_eq!(end_policy(EndPolicy::After { at: 1 }), 1);
     assert_eq!(next_check(NextCheck::At(1)), 1);
     assert_eq!(target_kind(TargetKind::ForegroundService), 1);
+    assert_eq!(payload(&Payload::end("ride", EndPolicy::Immediate)), 1);
 }
 
 // LU-COMPAT-4
@@ -201,8 +209,8 @@ fn no_public_enum_of_the_crate_is_closed() {
             assert!(open, "{}: {line} is not #[non_exhaustive]", path.display());
         }
     }
-    // The sixteen that `every_public_enum_may_gain_a_variant` matches.
-    assert_eq!(enums, 16);
+    // The seventeen that `every_public_enum_may_gain_a_variant` matches.
+    assert_eq!(enums, 17);
 }
 
 // LU-COMPAT-5
