@@ -55,8 +55,13 @@ internal object Device {
      * ends the whole test run when a command writes to a pipe that is closed already.
      */
     fun shell(command: String) {
+        shellOutput(command)
+    }
+
+    /** Runs [command] as [shell] does, and answers what it wrote. */
+    fun shellOutput(command: String): String {
         val output = instrumentation.uiAutomation.executeShellCommand(command)
-        ParcelFileDescriptor.AutoCloseInputStream(output).use { it.readBytes() }
+        return ParcelFileDescriptor.AutoCloseInputStream(output).use { String(it.readBytes()) }
     }
 
     /**

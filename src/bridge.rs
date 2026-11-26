@@ -72,6 +72,11 @@ impl<B: Bridge> Driver for JsonDriver<B> {
     fn starts(&self) -> Result<Vec<StartReport>> {
         self.request("starts", &Empty {})
     }
+
+    fn open_promotion_settings(&self) -> Result<()> {
+        self.request::<_, Option<serde_json::Value>>("settings", &Empty {})
+            .map(|_| ())
+    }
 }
 
 impl<B: Bridge> JsonDriver<B> {

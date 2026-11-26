@@ -692,6 +692,12 @@ pub struct AndroidPresentation {
     /// otherwise, and then left out of the JSON.
     #[serde(default = "carried", skip_serializing_if = "is_true")]
     pub wear_ongoing_activity: bool,
+    /// Whether the activity stays on the device it is posted on, where the adapter offers it
+    /// (`PresentationCapabilities::local_only`): a paired watch does not get the notification of a
+    /// phone, nor a phone that of a watch. False unless a presentation says so, and then left out
+    /// of the JSON.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub local_only: bool,
 }
 
 impl AndroidPresentation {
@@ -714,6 +720,7 @@ impl AndroidPresentation {
             accent_color: None,
             sub_text: None,
             wear_ongoing_activity: true,
+            local_only: false,
         }
     }
 

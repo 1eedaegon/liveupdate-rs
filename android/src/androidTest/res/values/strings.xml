@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The test package names the AAR's channels as an application does: its own strings take their place. -->
+<resources>
+    <string name="liveupdate_channel_name">Test rides</string>
+    <string name="liveupdate_channel_description">What the tests post</string>
+    <string name="liveupdate_alert_channel_name">Test ride alerts</string>
+    <string name="liveupdate_alert_channel_description">What the tests post to alert</string>
+</resources>

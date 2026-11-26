@@ -52,7 +52,9 @@ class AndroidAdapterInstrumentationTest {
         adapter.capabilities()
 
         val channel = manager.getNotificationChannel(Device.CHANNEL_ID)!!
-        assertEquals("Live updates", channel.name)
+        // The test package's own strings name it, as an application's do.
+        assertEquals("Test rides", channel.name)
+        assertEquals("What the tests post", channel.description)
         assertEquals(NotificationManager.IMPORTANCE_LOW, channel.importance)
         adapter.capabilities()
         assertEquals(1, manager.notificationChannels.count { it.id == Device.CHANNEL_ID })

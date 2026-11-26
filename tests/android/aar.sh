@@ -52,6 +52,11 @@ the_aar_holds_the_bridge_and_its_resources() {
       || fail "classes.jar lacks $class"
   done
   [ -f "$work/res/drawable/liveupdate_status.xml" ] || fail "the drawable liveupdate_status is missing"
+  # The channels' names, which an application overrides with its own strings.
+  for name in liveupdate_channel_name liveupdate_channel_description liveupdate_alert_channel_name \
+    liveupdate_alert_channel_description; do
+    grep -q "name=\"$name\"" "$work/res/values/values.xml" || fail "the string $name is missing"
+  done
   grep -q 'package="io.github.eedaegon.liveupdate"' "$work/AndroidManifest.xml" || fail "the namespace differs"
   grep -q 'android:minSdkVersion="26"' "$work/AndroidManifest.xml" || fail "minSdk is not 26"
 }

@@ -172,6 +172,15 @@ pub trait Driver: Send + Sync {
     fn starts(&self) -> Result<Vec<StartReport>> {
         Ok(Vec::new())
     }
+    /// Opens the system's settings of the application's Live Updates. The default answers
+    /// [`crate::ErrorCode::UnsupportedFeature`] and keeps existing custom drivers
+    /// source-compatible.
+    fn open_promotion_settings(&self) -> Result<()> {
+        Err(crate::Error::new(
+            crate::ErrorCode::UnsupportedFeature,
+            "The driver cannot open the settings of promotion.",
+        ))
+    }
 }
 
 #[cfg(test)]

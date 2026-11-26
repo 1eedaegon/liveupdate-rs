@@ -158,6 +158,23 @@ class LiveUpdateProtocolTest {
         assertError("NATIVE_ERROR", LiveUpdateProtocol.dispatch(failing, "read", "{}"))
     }
 
+    // LU-PLAT-2
+    @Test
+    fun settingsOpensTheScreenAndAnAdapterWithoutItSaysSo() {
+        var opened = 0
+        val adapter = object : FakeAdapter() {
+            override fun openSettings() {
+                opened += 1
+            }
+        }
+        val reply = JSONObject(LiveUpdateProtocol.dispatch(adapter, "settings", "{}"))
+        assertEquals("ok", reply.getString("status"))
+        assertTrue(reply.isNull("data"))
+        assertEquals(1, opened)
+
+        assertError("UNSUPPORTED_FEATURE", LiveUpdateProtocol.dispatch(FakeAdapter(), "settings", "{}"))
+    }
+
     // LU-ERR-3
     @Test
     fun sanitizesUnexpectedAdapterAndParserFailures() {

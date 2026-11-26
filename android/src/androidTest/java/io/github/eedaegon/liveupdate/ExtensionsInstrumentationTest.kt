@@ -460,7 +460,7 @@ class ExtensionsInstrumentationTest {
         assertEquals(ALERT_CHANNEL, alerting.channelId)
         assertEquals(0, alerting.flags and Notification.FLAG_ONLY_ALERT_ONCE)
         assertEquals(NotificationManager.IMPORTANCE_HIGH, manager.getNotificationChannel(ALERT_CHANNEL).importance)
-        assertEquals("Live update alerts", manager.getNotificationChannel(ALERT_CHANNEL).name)
+        assertEquals("Test ride alerts", manager.getNotificationChannel(ALERT_CHANNEL).name)
 
         Device.paceUpdate()
         adapter.post(JSONObject(quiet.toString()).put("snapshot", snapshot(revision = 2)))
