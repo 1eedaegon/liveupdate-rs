@@ -1,0 +1,84 @@
+# System design
+
+## The way in
+
+```
+FirebaseMessagingService.onMessageReceived (the host's)
+  └─ LiveUpdatePush.handle(context, message.data)          AAR, Kotlin
+       ├─ no "liveupdate" member → false
+       ├─ the host's library: System.loadLibrary(meta-data io.github.eedaegon.liveupdate.LIBRARY),
+       │  or already loaded
+       ├─ nativeHandle(context, payload) → outcome JSON     JNI symbol exported by the crate
+       │    └─ LiveUpdate::android_from_raw(vm, context)    Rust: start / update / end under the
+       │                                                    process-wide lock
+       ├─ EventStore.appendPushed(outcome)                  one writer of the events, as before
+       └─ true
+```
+
+`handle` runs on the caller's thread. FCM gives `onMessageReceived` a few seconds, and the push takes
+one lifecycle call.
+
+## The JNI symbol
+
+`Java_io_github_eedaegon_liveupdate_LiveUpdatePush_nativeHandle`, in the crate, behind the feature
+`push` (which needs `android`). A cdylib exports the `#[no_mangle]` functions of the crates it links. That
+is measured with `nm -D` on the consumer application's library before anything relies on it. If a
+dependency's symbol is not exported, the host adds one line instead: `liveupdate::export_push!();`.
+
+A library that the AAR cannot load fails the push with `NATIVE_ERROR`. The `pushed` event records it,
+and `handle` answers true, since the message was the library's.
+
+## One lock per process
+
+`LiveUpdate::serialized` takes a process-wide mutex instead of the client's own. The app's retained
+client and the client that a push builds then take turns, and so do clients that a host made by
+mistake. The README's "one retained client per process" stays the advice: a client reconciles on its
+first call.
+
+The push and the app's code must run in the same process, as an action's target must. A service
+declared in another process has its own lock and its own client, and loses receipts. The docs say so.
+
+## The payload
+
+The data map's member `liveupdate` is JSON:
+
+| Command | Members |
+| --- | --- |
+| `start` | `"v": 1`, `"command": "start"`, `"request"`: a `StartRequest` |
+| `update` | `"v": 1`, `"command": "update"`, `"activityKey"`, `"snapshot"` |
+| `end` | `"v": 1`, `"command": "end"`, `"activityKey"`, `"policy"`: an `EndPolicy` |
+
+An unknown `v` or command is refused with `INVALID_INPUT`. An unknown member is left alone. An update or
+end names the live activity of its key, which is the one that is neither ended nor dismissed. Without
+one, the push answers `NOT_FOUND`.
+
+## Outcome and event
+
+The native entry answers `{"command","activityKey","revision","id"?,"error"?}`, and the AAR stores it
+as an event of kind `pushed`:
+
+```json
+{"kind":"pushed","command":"update","activityKey":"ride:42","revision":3,"code":"STALE_REVISION"}
+```
+
+`code` is absent when the push did what it asked. The event's activity id is the activity's id when
+the push named one. It is empty when there was none: an update of an unknown key, or a start refused
+before an id was made. `EventKind::Pushed` is new. A crate before it reads `Unknown`, but no crate
+before it has the entry.
+
+## The server's builder
+
+`liveupdate::push::Payload` builds on every target and needs no feature:
+
+- `Payload::start(request)`, `Payload::update(key, snapshot)`, `Payload::end(key, policy)`;
+- `.to_data() -> Result<BTreeMap<String, String>>`. It validates as the lifecycle does: the request,
+  the snapshot, the key. A payload whose map is over 4096 bytes of UTF-8 (FCM's limit for data) is
+  `INVALID_INPUT`, with a message that says so.
+
+Revisions are the server's: a push of revision 3 after the app's own revision 3 is `STALE_REVISION`, so
+a server and an app do not both update one activity. The README says so.
+
+## Capability
+
+`push: true` from an AAR with `LiveUpdatePush`. The crate never needs it itself: the entry does not
+exist without the AAR. liveactivity-rs reads it to answer `UNSUPPORTED_FEATURE`.

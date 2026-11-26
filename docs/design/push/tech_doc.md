@@ -1,0 +1,31 @@
+# Technical design
+
+- **Crate**
+  - `src/push.rs`: `Payload`, its commands, `to_data`, the size check. It builds everywhere.
+  - `src/push_android.rs` (features `android` and `push`):
+    - the JNI function;
+    - the parse of the payload;
+    - the lookup by key;
+    - the outcome.
+  - `src/client.rs`: a process-wide lock.
+  - `src/event.rs`: `EventKind::Pushed`. An empty activity id is valid for it alone.
+  - `src/contract.rs`: the capability.
+- **AAR**
+  - `LiveUpdatePush.kt`: `handle`, the library's loading, the native declaration.
+  - `EventStore.appendPushed`, and the capability in `AndroidAdapter`.
+  - The consumer rules keep `LiveUpdatePush` and its native method (R8).
+- **Tests first**
+  - Rust:
+    - the payload's JSON for each command;
+    - `to_data` refuses what the lifecycle refuses, and a payload over 4096 bytes;
+    - two clients in one process take turns;
+    - the outcome's mapping;
+    - the event's JSON.
+  - Kotlin unit: `handle` answers false without the member, and the event store keeps `pushed`.
+  - Device, the consumer application through its service entry with no activity running:
+    - a start, an update and an end by map;
+    - a stale push, a repeat, an unknown key;
+    - a push during the app's own update.
+  - Measure: `nm -D` of the consumer's library for the symbol.
+  - With the owner's Firebase project, outside the repository: the consumer application's messaging
+    service and a local sender. Each is timed, with the delivered priority recorded.
