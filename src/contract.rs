@@ -84,6 +84,9 @@ pub struct PresentationCapabilities {
     /// `LiveUpdatePush.handle`: a data message from the app's server reaches the lifecycle
     /// ([`LiveUpdate::push`](crate::LiveUpdate::push)) while the app does not run.
     pub push: bool,
+    /// `AndroidPresentation::watch_mirror`: a second notification, not ongoing, that a paired
+    /// watch's bridge takes. A phone's.
+    pub watch_mirror: bool,
 }
 
 /// What to do when the system cannot promote an ongoing notification.
