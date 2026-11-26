@@ -9,6 +9,7 @@ import android.util.Log
 
 internal const val LIVE_UPDATE_ACTION = "io.github.1eedaegon.liveupdate.ACTION"
 internal const val LIVE_UPDATE_DISMISSED = "io.github.1eedaegon.liveupdate.DISMISSED"
+internal const val LIVE_UPDATE_MIRROR_DISMISSED = "io.github.1eedaegon.liveupdate.MIRROR_DISMISSED"
 internal const val ACTIVITY_ID_EXTRA = "activityId"
 internal const val ACTION_ID_EXTRA = "actionId"
 internal const val AUTHENTICATION_EXTRA = "authenticationRequired"
@@ -65,11 +66,27 @@ internal fun requiresAuthentication(context: Context, activityId: String, action
     true
 }
 
-/** Receives explicit immutable delete PendingIntents from system dismissal. */
+/**
+ * Receives explicit immutable delete PendingIntents from system dismissal: of an activity's notification, an
+ * event; of its mirror, the person's no to the mirror, which is the adapter's to keep.
+ */
 class LiveUpdateDismissReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != LIVE_UPDATE_DISMISSED) return
         val activityId = intent.getStringExtra(ACTIVITY_ID_EXTRA) ?: return
+        if (intent.action == LIVE_UPDATE_MIRROR_DISMISSED) {
+            try {
+                AndroidAdapter(context).mirrorDismissed(activityId)
+            } catch (_: Exception) {
+                Log.e(LOG_TAG, "Could not keep a live update mirror's dismissal.")
+            }
+            return
+        }
+        if (intent.action != LIVE_UPDATE_DISMISSED) return
+        try {
+            AndroidAdapter(context).activityDismissed(activityId)
+        } catch (_: Exception) {
+            Log.e(LOG_TAG, "Could not remove a dismissed live update's mirror.")
+        }
         try {
             LiveUpdateEvents.stored(EventStore(context).appendDismissed(activityId))
         } catch (_: Exception) {

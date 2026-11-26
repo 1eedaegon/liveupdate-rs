@@ -698,6 +698,13 @@ pub struct AndroidPresentation {
     /// of the JSON.
     #[serde(default, skip_serializing_if = "is_false")]
     pub local_only: bool,
+    /// Whether a second notification of the activity, the mirror, shows it on a paired watch, where
+    /// the adapter offers it (`PresentationCapabilities::watch_mirror`). A watch's bridge leaves an
+    /// ongoing notification out, and a Live Update is one: the mirror is not ongoing. The phone
+    /// lists it too, quietly. False unless a presentation says so, and then left out of the JSON;
+    /// not beside `local_only`.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub watch_mirror: bool,
 }
 
 impl AndroidPresentation {
@@ -721,6 +728,7 @@ impl AndroidPresentation {
             sub_text: None,
             wear_ongoing_activity: true,
             local_only: false,
+            watch_mirror: false,
         }
     }
 
@@ -744,6 +752,8 @@ impl AndroidPresentation {
             || !valid_optional_text(self.sub_text.as_deref(), MAX_SUB_TEXT)
             // A small icon is drawn from a resource: Android tints its shape.
             || matches!(self.small_icon, Some(IconSource::AppFile(_)))
+            // One keeps the activity off a paired device, the other sends it there.
+            || (self.local_only && self.watch_mirror)
         {
             return Err(Error::invalid());
         }

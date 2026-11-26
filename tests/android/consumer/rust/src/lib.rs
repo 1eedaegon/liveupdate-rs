@@ -248,6 +248,20 @@ fn run(scenario: &str, input: &str) -> Result<Value> {
         "recording" => recorder::run(client, "recording", &input.to_string()),
         #[cfg(feature = "platform")]
         "settings" => client.open_promotion_settings().map(|()| Value::Null),
+        // A ride mirrored to a paired watch, under a key of its own.
+        #[cfg(feature = "mirror")]
+        "mirror" => {
+            let mut snapshot = ride(0, 40, false);
+            if let Some(presentation) = snapshot.presentation.as_mut() {
+                presentation.watch_mirror = true;
+            }
+            Ok(brief(&client.start(StartRequest::new(
+                "consumer:mirror",
+                Fallback::Notification,
+                Visibility::Public,
+                snapshot,
+            ))?))
+        }
         // What the application's server sends for the ride, as `consumer.sh` hands it to the push's receiver.
         #[cfg(feature = "push")]
         "payload" => payload(&input),

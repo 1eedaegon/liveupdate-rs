@@ -216,6 +216,7 @@ delivered); the record's `template` follows the latest snapshot. Schema v1 keeps
 | Samsung Now Bar | `samsung_now_bar: Some(SamsungNowBar { primary, secondary })` | One UI on API 37 and newer: its two lines take the place of the style there; see [Limits](#limits) |
 | Not on a watch's face | `wear_ongoing_activity: false` | In a watch app, this activity stays in the tray; see [Wear OS](#wear-os) |
 | Not on a paired device | `local_only: true` | A phone's watch does not get it, nor a watch's phone; set later, it does not take back a copy the watch has; `UNSUPPORTED_FEATURE` with an AAR before 0.9 |
+| On a paired watch | `watch_mirror: true` | A phone's activity reaches the watch as a second notification that is not ongoing, the mirror; see [Wear OS](#wear-os). Not beside `local_only`; `UNSUPPORTED_FEATURE` on a watch and with an AAR before 0.11 |
 
 ### The request and the lifecycle
 
@@ -678,6 +679,28 @@ maker. Galaxy Wearable did not bridge it to a Galaxy Watch4 on Wear OS 6: it dro
 ongoing, although the app was allowed for the watch and the phone's screen was off. The last content
 after an end is not ongoing, so it goes through the bridge like any other notification. `local_only`
 keeps an activity off a watch whose bridge would take it.
+
+`watch_mirror: true` shows a phone's activity on the watch anyway. The AAR posts a second notification
+beside the activity, the mirror, which is not ongoing, so the bridge takes it:
+
+- It has the activity's title, status, icons, color, actions and tap. The watch's card shows the large
+  icon, the title, the time, the status and the color as a tint, but no progress bar. A tap on the watch
+  runs the action on the phone.
+- The phone lists it too, quietly: on its own channel, "Live updates on a watch", at the lowest
+  importance. One UI shows it collapsed to one line in the silent section.
+- An ordinary update changes it in place without a sound. A revision with `alert: true` alerts through
+  the mirror alone, so the phone and the watch alert once each. A phone cannot keep a notification
+  quiet and have the watch vibrate for it: the bridge mutes what the phone mutes.
+- The activity's own notification is local-only meanwhile, so a watch that bridges Live Updates shows
+  one card.
+- The last content of an end is the mirror's too, and goes at the same time. An update without the
+  member removes the mirror.
+- A person who dismisses the mirror has said no, on the watch or the phone. "Clear all" in the phone's
+  silent section counts too. The activity is not mirrored again, and its own notification is no longer
+  local-only.
+- If the activity's own notification goes another way, the mirror goes too: when the person swipes it
+  away, or when a service that held it stops.
+- The bridge holds notifications while the watch is not worn, if its wrist detection is on.
 
 ## Versions
 

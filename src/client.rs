@@ -831,6 +831,17 @@ fn ensure_offered(snapshot: &Snapshot, capabilities: Capabilities) -> Result<()>
             "Keeping an activity off a paired device is unavailable.",
         ));
     }
+    // An earlier adapter, or a watch, would show the activity on this device alone.
+    let mirrored = snapshot
+        .presentation
+        .as_ref()
+        .is_some_and(|presentation| presentation.watch_mirror);
+    if mirrored && !capabilities.presentation.watch_mirror {
+        return Err(failure(
+            ErrorCode::UnsupportedFeature,
+            "Mirroring an activity to a paired watch is unavailable.",
+        ));
+    }
     Ok(())
 }
 

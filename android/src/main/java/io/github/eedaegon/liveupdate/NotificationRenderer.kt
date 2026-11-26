@@ -17,6 +17,9 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 internal const val RECORD_EXTRA = "io.github.1eedaegon.liveupdate.record"
+/** The revision that a mirror shows: it carries no receipt, which the watch's bridge would carry too. */
+internal const val MIRROR_REVISION_EXTRA = "io.github.1eedaegon.liveupdate.mirrorRevision"
+internal const val MIRROR_TAG_PREFIX = "liveupdate-rs-watch:"
 
 private const val MAX_SAFE_INTEGER = 9_007_199_254_740_991L
 private const val MAX_TIMESTAMP = 8_640_000_000_000_000L
@@ -58,6 +61,23 @@ internal class NotificationRenderer(
         record: JSONObject,
         alertChannelId: String? = null,
         postedAt: Long = System.currentTimeMillis(),
+        mirrored: Boolean = false,
+    ): Notification = render(record, alertChannelId, postedAt, mirrorChannelId = null, mirrored)
+
+    /**
+     * The mirror of [record], for a paired watch's bridge: the activity's content, not ongoing, not promoted, not
+     * local-only, without the receipt, on [mirrorChannelId], or on [alertChannelId] for a revision that alerts.
+     */
+    fun mirror(record: JSONObject, alertChannelId: String?, mirrorChannelId: String): Notification =
+        render(record, alertChannelId, System.currentTimeMillis(), mirrorChannelId, mirrored = true)
+
+    /** [mirrored] says that the adapter mirrors the activity: its own notification is then the phone's alone. */
+    private fun render(
+        record: JSONObject,
+        alertChannelId: String?,
+        postedAt: Long,
+        mirrorChannelId: String?,
+        mirrored: Boolean,
     ): Notification {
         validateRecordShape(record)
         val id = requiredText(record, "id", 256)
@@ -66,12 +86,15 @@ internal class NotificationRenderer(
         val schema = requiredInt(origin, "schemaVersion", 1, 2)
         val title = requiredText(snapshot, "title", 120)
         val status = requiredText(snapshot, "status", 240)
-        val builder = baseBuilder(record, id, title, status, alertChannelId ?: channelId)
+        val builder = baseBuilder(record, id, title, status, alertChannelId ?: mirrorChannelId ?: channelId)
         if (alertChannelId != null) builder.setOnlyAlertOnce(false)
         when (schema) {
             1 -> applyLegacy(builder, snapshot, requiredText(origin, "template", 16))
             2 -> applyRich(builder, id, snapshot, origin, title, status, postedAt)
         }
+        // A mirrored activity is the phone's, and its mirror the watch's.
+        if (mirrored) builder.setLocalOnly(true)
+        if (mirrorChannelId != null) mirrored(builder, id, snapshot)
         // The last content of an ended activity reports nothing when it goes.
         if (!record.isMissingOrNull("dismissAt")) builder.setDeleteIntent(null)
         // A presentation may turn the Ongoing Activity off; schema version 1 has no presentation to say so.
@@ -83,6 +106,21 @@ internal class NotificationRenderer(
             carryOngoing(ongoing, notification)
         }
         return notification
+    }
+
+    /**
+     * What makes a mirror of the activity's build: a watch's bridge leaves an ongoing notification out. Its own
+     * group keeps Android from bundling it with the activity, and its delete intent is the mirror's.
+     */
+    @SuppressLint("InlinedApi")
+    private fun mirrored(builder: Notification.Builder, id: String, snapshot: JSONObject) {
+        builder.setOngoing(false).setLocalOnly(false).setGroup(MIRROR_TAG_PREFIX + id)
+            .setDeleteIntent(mirrorDeleteIntent(id))
+        builder.extras.remove(RECORD_EXTRA)
+        builder.extras.remove(Notification.EXTRA_REQUEST_PROMOTED_ONGOING)
+        // The Now Bar is the activity's: One UI would show a second entry for the mirror.
+        SamsungNowBar.extras(sdk, "", "").forEach { (key, _) -> builder.extras.remove(key) }
+        builder.extras.putLong(MIRROR_REVISION_EXTRA, requiredLong(snapshot, "revision", 0, MAX_SAFE_INTEGER))
     }
 
     /**
@@ -209,6 +247,7 @@ internal class NotificationRenderer(
         if (requiredText(origin, "template", 16) !in VALID_STYLES) invalid()
         applyStyle(builder, style, kind, status, postedAt)
         // A paired device does not get it: a phone's watch, or a watch's phone.
+        optionalBoolean(presentation, "watchMirror")
         if (optionalBoolean(presentation, "localOnly") == true) builder.setLocalOnly(true)
         optionalObject(presentation, "chronometer")?.let { chronometer ->
             // The timer style is that clock alone.
@@ -536,6 +575,19 @@ internal class NotificationRenderer(
             .setAction(LIVE_UPDATE_ACTION).setData(data)
             .putExtra(ACTIVITY_ID_EXTRA, activityId).putExtra(ACTION_ID_EXTRA, actionId)
             .putExtra(AUTHENTICATION_EXTRA, authentication)
+        return PendingIntent.getBroadcast(
+            application,
+            0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
+    private fun mirrorDeleteIntent(activityId: String): PendingIntent {
+        val data = Uri.Builder().scheme("liveupdate").authority("mirror").appendPath(activityId).build()
+        val intent = Intent(application, LiveUpdateDismissReceiver::class.java)
+            .setAction(LIVE_UPDATE_MIRROR_DISMISSED).setData(data)
+            .putExtra(ACTIVITY_ID_EXTRA, activityId)
         return PendingIntent.getBroadcast(
             application,
             0,

@@ -1,0 +1,50 @@
+# System design
+
+## The member
+
+`AndroidPresentation { watch_mirror: true, .. }` is `"watchMirror": true` in JSON, and is left out when
+false. The lifecycle refuses it:
+- with `UNSUPPORTED_FEATURE` where the capability `watchMirror` is false: a watch, or an AAR before the
+  mirror;
+- with `INVALID_INPUT` beside `local_only: true`.
+
+The check is the same for a start, an update and a scheduled start.
+
+## The adapter, at each post of an activity
+
+1. The activity's own notification is built as before. With `watchMirror` it is also local-only.
+2. Then the mirror, under the tag `liveupdate-rs-watch:` + id and the notification id 1:
+   - **Removed** when the post removes the last content, when the presentation has no `watchMirror`,
+     when the adapter does not offer it, or when the person dismissed it.
+   - **Posted** otherwise.
+3. A cancel of the activity cancels its mirror and forgets its dismissal.
+
+## The mirror's notification
+
+The renderer builds it from the same record, with the activity's content: title, status, style,
+icons, color, actions and content intent. It differs from the activity's notification in these ways:
+
+- It is not ongoing, carries no request for promotion and no Ongoing Activity, and is not local-only.
+- It has no record extra: the bridge carries the extras to the watch.
+- Its delete intent is the mirror's (`liveupdate://mirror/<id>`), and none for the last content.
+- It is in the group `liveupdate-rs-watch:<id>`, so that Android does not bundle it with the activity.
+- Its channel is the mirror's, `liveupdate-rs.watch.v1`, at importance MIN: quiet on the phone and on
+  the watch.
+- A revision that alerts goes on the alerting channel at HIGH, so the watch vibrates. The mirror alerts
+  the phone too, so the activity's own notification does not alert while it is mirrored. The phone and
+  the watch then alert once each. The other way does not exist. On 2026-11-27 a HIGH notification that
+  was a group child with `GROUP_ALERT_SUMMARY` (what `NotificationCompat.setSilent` does) was quiet on the
+  phone, and the bridge muted it on the watch as well: `suppressAlertingDueToGrouping-suppressed`, `alert
+  set to 0`. A mirror that is quiet on the phone is quiet on the watch.
+- The last content keeps the activity's time to go (`setTimeoutAfter`), so both go together.
+
+## The person's no
+
+The mirror's delete intent reaches `LiveUpdateDismissReceiver` with the action
+`io.github.eedaegon.liveupdate.MIRROR_DISMISSED`. The adapter adds the id to a set in its preferences,
+under one lock. It keeps only ids whose receipts are stored: an id is added only when its receipt is
+stored, and every change drops the ids whose receipts went. While the person's no stands, the activity
+is not mirrored, so its own notification is no longer local-only either. A "Clear all" in the phone's
+silent section dismisses the mirror too, and counts as a no. Android sends no
+delete intent for a cancel by the application. A dismissal that the bridge echoes back after the
+application's own cancel reaches no notification, so it changes nothing.

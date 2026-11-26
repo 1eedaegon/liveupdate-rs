@@ -340,6 +340,20 @@ What Android's notification guides name beside a Live Update ([platform-gaps](de
 | LU-PLAT-2 | `LiveUpdate::open_promotion_settings()` sends `settings` and expects `null`: the adapter opens the system's settings of the application's Live Updates from API 36, or of its notifications before that and where no screen answers, as a new task. A driver without it, an adapter of an earlier version and a device with no such screen answer `UNSUPPORTED_FEATURE`. Android drops the start of an application that is not in the foreground without a word: success says that it was asked. | The S23 → a settings screen in front. | `UnsupportedFeature` | all; Android |
 | LU-PLAT-3 | The adapter names its two channels by its string resources `liveupdate_channel_name`, `liveupdate_channel_description`, `liveupdate_alert_channel_name` and `liveupdate_alert_channel_description`, which an application overrides with its own, also for a channel that exists. | The test package's and the consumer application's own names → the channels have them. | — | Android |
 
+## Watch mirror
+
+A phone's activity on a paired watch, through the bridge the watch has ([watch-mirror](design/watch-mirror/PRD.md)).
+
+| ID | Behavior | Input → expected result | Errors | Platform |
+| --- | --- | --- | --- | --- |
+| LU-MIRROR-1 | `AndroidPresentation::watch_mirror` asks for a second notification of the activity, the mirror, which a paired watch's bridge takes. False by default and left out of the JSON. The capability `watchMirror` says that the adapter posts it: a phone with an AAR that has it. A start or an update that asks for it where it is false is refused and posts nothing. | `watch_mirror: true` → its JSON; without the capability → error. | `UnsupportedFeature` | all |
+| LU-MIRROR-2 | `watch_mirror` beside `local_only` is a contradiction: one keeps the activity off a paired device, the other sends it there. | Both → error, also where both are offered. | `InvalidInput` | all |
+| LU-MIRROR-3 | Where the adapter offers it, a mirrored activity has a second notification under the tag `liveupdate-rs-watch:` and the id, on the channel `liveupdate-rs.watch.v1` at importance MIN, named by `liveupdate_watch_channel_name` and `liveupdate_watch_channel_description`. It has the activity's title and status. It is not ongoing, not promoted and not local-only, and it carries no receipt. The activity's own notification is local-only while it is mirrored, so a watch that bridges a Live Update shows one card. The lifecycle's observation and listing do not see the mirror. | A mirrored activity → the two notifications; another → no mirror, not local-only. | — | Android |
+| LU-MIRROR-4 | A revision that alerts goes to the mirror on the alerting channel, and the activity's own notification stays on its quiet channel: the phone and the watch alert once each, since a mirror that the phone keeps quiet is quiet on the watch too. The next revision puts the mirror back on its own channel. | Revision 1 alerts → own on `liveupdate-rs.v1`, mirror on `liveupdate-rs.alerts.v1`; revision 2 → mirror on `liveupdate-rs.watch.v1`. | — | Android |
+| LU-MIRROR-5 | The mirror goes with its activity: an update without `watch_mirror` removes it and one with it brings it back; the last content is the mirror's too, not ongoing and gone at the same time; a removal of the last content and a cancel remove it. A dismissal of the activity's own notification removes it, and an observation removes a mirror whose activity Android has not listed for the listing's grace, as after a service stopped. | Each → the mirror there or gone. | — | Android |
+| LU-MIRROR-6 | A person who dismisses the mirror, on the watch or on the phone, stops it for that activity: its delete intent is kept by the adapter, and later posts of the activity post no mirror, nor keep the activity off a paired device. It is no event of the activity, and a cancel of the activity forgets it. | The mirror's delete intent, then an update → no mirror, no event; a cancel → forgotten. | — | Android |
+| LU-MIRROR-7 | Every path that posts an activity brings its mirror: a held activity, whose service's notification is local-only and whose updates update the mirror, and a scheduled start, whose alarm posts the mirror with the activity. | A held activity, updated and cancelled; a scheduled start at its time → the mirror each time. | — | Android |
+
 ## Push
 
 An activity begun, updated or ended by a data message from the app's server ([push](design/push/PRD.md)).
@@ -382,8 +396,9 @@ with a capability, and the lifecycle refuses the request where the adapter does 
 
 ## Not proven by a test
 
-- **One client per process.** Two clients over the same storage are not serialized against each other;
-  their read-modify-write cycles can interleave. The README says to keep one.
+- **Two processes over one storage.** Every client of a process takes one lock (LU-PUSH-4), but a client
+  in another process of the application, such as a service declared with `android:process`, does not:
+  their read-modify-write cycles can interleave. The README says to keep the lifecycle in the main process.
 - **OEM promotion policy and appearance.** The S23 verifies API 37 notification structure and One UI
   extras, but no automated assertion can guarantee that a user's current promotion setting or an
   OEM allow-list gives every app the same visual prominence. Other OEM system UIs remain untested.
@@ -670,6 +685,13 @@ with a capability, and the lifecycle refuses the request where the adapter does 
 | LU-PLAT-1 | `tests/platform.rs::an_activity_may_stay_off_a_paired_watch_and_is_left_out_when_it_does_not` (integration)<br>`tests/platform.rs::an_activity_kept_off_the_watch_needs_the_adapters_capability` (integration)<br>`android/src/androidTest/java/io/github/eedaegon/liveupdate/PlatformInstrumentationTest.kt::anActivityKeptOffTheWatchIsLocalOnly` (device) |
 | LU-PLAT-2 | `tests/platform.rs::the_settings_of_promotion_open_through_the_bridge_and_a_driver_without_them_says_so` (integration)<br>`android/src/test/java/io/github/eedaegon/liveupdate/LiveUpdateProtocolTest.kt::settingsOpensTheScreenAndAnAdapterWithoutItSaysSo` (kotlin)<br>`android/src/androidTest/java/io/github/eedaegon/liveupdate/PlatformInstrumentationTest.kt::theSettingsOfPromotionOpen` (device) |
 | LU-PLAT-3 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/PlatformInstrumentationTest.kt::theChannelsAreNamedByTheApplicationsStrings` (device) |
+| LU-MIRROR-1 | `tests/mirror.rs::an_activity_may_be_mirrored_to_a_watch_and_is_left_out_when_it_is_not` (integration)<br>`tests/mirror.rs::a_mirror_needs_the_adapters_capability` (integration) |
+| LU-MIRROR-2 | `tests/mirror.rs::an_activity_kept_off_a_paired_device_is_not_mirrored_to_one` (integration) |
+| LU-MIRROR-3 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/MirrorInstrumentationTest.kt::aMirrorIsPostedBesideTheActivityAndTheActivityStaysOnThePhone` (device) |
+| LU-MIRROR-4 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/MirrorInstrumentationTest.kt::aRevisionThatAlertsAlertsThroughTheMirrorAlone` (device) |
+| LU-MIRROR-5 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/MirrorInstrumentationTest.kt::aMirrorGoesWithItsActivity` (device)<br>`android/src/androidTest/java/io/github/eedaegon/liveupdate/MirrorInstrumentationTest.kt::aMirrorWhoseActivityWentAnotherWayGoesToo` (device) |
+| LU-MIRROR-6 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/MirrorInstrumentationTest.kt::aPersonsDismissalOfTheMirrorStopsIt` (device) |
+| LU-MIRROR-7 | `android/src/androidTest/java/io/github/eedaegon/liveupdate/MirrorInstrumentationTest.kt::aHeldActivityIsMirroredAndItsServicesNotificationStaysOnThePhone` (device)<br>`android/src/androidTest/java/io/github/eedaegon/liveupdate/MirrorInstrumentationTest.kt::aScheduledStartBringsItsMirrorAtItsTime` (device) |
 | LU-PUSH-1 | `tests/push.rs::a_payload_is_one_member_of_the_data_map_with_its_version_and_command` (integration)<br>`tests/push.rs::a_payload_of_another_version_or_command_is_refused` (integration) |
 | LU-PUSH-2 | `tests/push.rs::the_server_builds_only_what_the_lifecycle_would_take_and_what_fcm_carries` (integration) |
 | LU-PUSH-3 | `tests/push.rs::a_push_runs_the_lifecycle_by_the_activitys_key` (integration) |

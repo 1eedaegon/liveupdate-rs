@@ -28,6 +28,9 @@
   lifecycle through the crate's native entry (feature `push`), in a process that the message started;
   `push::Payload` builds the server's data; one lock for every client of a process.
 
+- A mirror for a paired watch ([watch-mirror](watch-mirror/PRD.md)): `watch_mirror` posts a second
+  notification, not ongoing, which Galaxy Wearable's bridge takes where it drops a Live Update.
+
 ## Not done
 
 - Tauri-side TSX/React projection and JavaScript event routing over the new core event drain.

@@ -45,7 +45,8 @@ fn capabilities_use_the_stable_camel_case_contract() {
                 "wearOngoingActivity": false,
                 "actionTargets": false,
                 "localOnly": false,
-                "push": false
+                "push": false,
+                "watchMirror": false
             }
         })
     );
