@@ -16,13 +16,13 @@
   - `res/values/strings.xml`: the mirror channel's two strings.
 - **Tests first**
   - Rust: JSON, the refusal, and the contradiction.
-  - Kotlin unit: the protocol carries the member.
   - Device:
     - the mirror's tag, channel and flags;
     - the activity's own notification is local-only;
     - the alerting revision's channel;
     - the end and its time;
-    - the update that turns it off;
+    - the update that turns it off, a dismissal of the activity, and a mirror left alone after a service
+      stopped;
     - the dismissal;
     - observation;
     - the capability on a phone.

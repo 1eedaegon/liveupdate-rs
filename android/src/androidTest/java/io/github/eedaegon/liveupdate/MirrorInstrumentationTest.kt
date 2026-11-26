@@ -8,6 +8,7 @@ import io.github.eedaegon.liveupdate.Device.context
 import io.github.eedaegon.liveupdate.Device.manager
 import io.github.eedaegon.liveupdate.Device.v2Record
 import io.github.eedaegon.liveupdate.Device.v2Snapshot
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -131,9 +132,34 @@ class MirrorInstrumentationTest {
         Device.waitUntil("a cancel takes the mirror") { mirror("other") == null }
     }
 
+    // LU-MIRROR-5
+    @Test
+    fun aMirrorWhoseActivityWentAnotherWayGoesToo() {
+        // A swipe of the activity's notification sends its delete intent: the mirror goes with it.
+        adapter.post(record("swiped", mirrored = true))
+        val own = Device.waitForShown("swiped")
+        waitForMirror("swiped")
+        manager.cancel(Device.TAG_PREFIX + "swiped", Device.NOTIFICATION_ID)
+        checkNotNull(own.deleteIntent).send()
+        Device.waitUntil("the mirror of a dismissed activity is gone") { mirror("swiped") == null }
+
+        // A notification that went without a word, as a stopped service's does: the next observation finds the
+        // mirror alone, once Android had the time to list the activity.
+        val prompt = AndroidAdapter(context, listingGrace = 0)
+        prompt.post(record("stopped", mirrored = true))
+        Device.waitForShown("stopped")
+        waitForMirror("stopped")
+        manager.cancel(Device.TAG_PREFIX + "stopped", Device.NOTIFICATION_ID)
+        Device.waitForGone("stopped")
+        prompt.observe()
+        Device.waitUntil("an observation takes the mirror left alone") { mirror("stopped") == null }
+    }
+
     // LU-MIRROR-6
     @Test
     fun aPersonsDismissalOfTheMirrorStopsIt() {
+        // The lifecycle stores the receipt before it posts: a dismissal is kept for a stored activity alone.
+        adapter.write(JSONArray().put(record("ride", mirrored = true)))
         adapter.post(record("ride", mirrored = true))
         val mirror = waitForMirror("ride")
         // As a swipe on the watch does, through the bridge: the phone's mirror is cancelled, and its intent sent.
@@ -144,9 +170,11 @@ class MirrorInstrumentationTest {
         }
         Device.paceUpdate()
         adapter.post(record("ride", mirrored = true, revision = 1))
-        Device.waitForShown("ride", revision = 1)
+        val own = Device.waitForShown("ride", revision = 1)
         Thread.sleep(1_000)
         assertNull(mirror("ride"))
+        // Not mirrored any more, the activity is no longer the phone's alone.
+        assertEquals(0, own.flags and Notification.FLAG_LOCAL_ONLY)
         // Not an event of the activity: the person did not dismiss the activity.
         assertEquals(0, EventStore(context).size())
         // The activity's end forgets it.

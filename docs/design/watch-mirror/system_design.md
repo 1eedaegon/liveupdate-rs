@@ -41,7 +41,10 @@ icons, color, actions and content intent. It differs from the activity's notific
 ## The person's no
 
 The mirror's delete intent reaches `LiveUpdateDismissReceiver` with the action
-`io.github.eedaegon.liveupdate.MIRROR_DISMISSED`. The adapter adds the id to a set in its preferences.
-The set is bounded by the stored receipts: an id that is no longer stored is dropped. Android sends no
+`io.github.eedaegon.liveupdate.MIRROR_DISMISSED`. The adapter adds the id to a set in its preferences,
+under one lock. It keeps only ids whose receipts are stored: an id is added only when its receipt is
+stored, and every change drops the ids whose receipts went. While the person's no stands, the activity
+is not mirrored, so its own notification is no longer local-only either. A "Clear all" in the phone's
+silent section dismisses the mirror too, and counts as a no. Android sends no
 delete intent for a cancel by the application. A dismissal that the bridge echoes back after the
 application's own cancel reaches no notification, so it changes nothing.

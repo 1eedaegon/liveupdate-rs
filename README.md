@@ -695,8 +695,11 @@ beside the activity, the mirror, which is not ongoing, so the bridge takes it:
   one card.
 - The last content of an end is the mirror's too, and goes at the same time. An update without the
   member removes the mirror.
-- A person who dismisses the mirror, on the watch or the phone, has said no: the activity is not
-  mirrored again.
+- A person who dismisses the mirror has said no, on the watch or the phone. "Clear all" in the phone's
+  silent section counts too. The activity is not mirrored again, and its own notification is no longer
+  local-only.
+- If the activity's own notification goes another way, the mirror goes too: when the person swipes it
+  away, or when a service that held it stops.
 - The bridge holds notifications while the watch is not worn, if its wrist detection is on.
 
 ## Versions

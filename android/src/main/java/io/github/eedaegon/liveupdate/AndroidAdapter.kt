@@ -22,6 +22,7 @@ private const val ALERT_CHANNEL_ID = "liveupdate-rs.alerts.v1"
 private const val MIRROR_CHANNEL_ID = "liveupdate-rs.watch.v1"
 /** The activities whose mirror a person dismissed. */
 private const val DISMISSED_MIRRORS_KEY = "mirrorsDismissed"
+private val MIRRORS_LOCK = Any()
 private const val PREFERENCES = "io.github.1eedaegon.liveupdate"
 private const val RECORDS_KEY = "records"
 private const val TAG_PREFIX = "liveupdate-rs:"
@@ -70,7 +71,7 @@ internal class AndroidAdapter(
     private val manufacturer: String = Build.MANUFACTURER,
     private val alertChannelId: String = ALERT_CHANNEL_ID,
     exactAlarms: Boolean? = null,
-    listingGrace: Long = LISTING_GRACE,
+    private val listingGrace: Long = LISTING_GRACE,
     wearOngoing: Boolean? = null,
     watchMirror: Boolean? = null,
 ) : ManagedAdapter {
@@ -143,6 +144,7 @@ internal class AndroidAdapter(
 
     /** The adapter's own notifications among [entries], Android's active notifications. */
     internal fun observe(entries: Array<StatusBarNotification>): JSONArray {
+        sweepMirrors(entries)
         val observations = JSONArray()
         for (entry in entries) {
             val tagged = entry.id == NOTIFICATION_ID && entry.tag?.startsWith(TAG_PREFIX) == true
@@ -183,10 +185,9 @@ internal class AndroidAdapter(
         val id = record.optionalString("id") ?: invalid()
         if (!validId(id)) invalid()
         val alerting = alertChannel(record)
-        val mirrored = mirrors && record.optJSONObject("snapshot")?.optJSONObject("presentation")
-            ?.opt("watchMirror") == true && id !in dismissedMirrors()
+        val mirrored = mirrored(id, record)
         // A mirrored activity alerts through its mirror alone: the phone and the watch once each.
-        val notification = renderer().build(record, alerting.takeUnless { mirrored })
+        val notification = renderer().build(record, alerting.takeUnless { mirrored }, mirrored = mirrored)
         val foreground = isForegroundPlaced(record)
         val removes = !record.isNull("dismissAt") && record.getLong("dismissAt") <= System.currentTimeMillis()
         if (!removes) refuseOldTime(notification)
@@ -216,24 +217,56 @@ internal class AndroidAdapter(
         }
     }
 
+    /** Whether the adapter mirrors the activity [id] of [record]: it asks, a phone offers it, and no one said no. */
+    private fun mirrored(id: String, record: JSONObject): Boolean =
+        mirrors && record.optJSONObject("snapshot")?.optJSONObject("presentation")?.opt("watchMirror") == true &&
+            id !in dismissedMirrors()
+
     /**
      * Keeps that a person dismissed the mirror of [id], on the watch or on the phone: later posts of the activity
-     * post none. Ids that no stored receipt has any more are dropped on the way.
+     * post none. An id whose receipt is not stored is not kept, and ids whose receipts went are dropped on the way.
      */
     internal fun mirrorDismissed(id: String) {
         if (!validId(id)) invalid()
-        val records = read()
-        val stored = (0 until records.length()).mapNotNullTo(mutableSetOf()) { records.getJSONObject(it).optionalString("id") }
-        val kept = dismissedMirrors().filterTo(mutableSetOf()) { it in stored } + id
-        if (!preferences.edit().putStringSet(DISMISSED_MIRRORS_KEY, kept).commit()) nativeFailure()
+        keepDismissedMirrors { dismissed, stored -> if (id in stored) dismissed + id else dismissed }
+    }
+
+    /** Removes the mirror of an activity whose own notification a person dismissed. */
+    internal fun activityDismissed(id: String) {
+        if (validId(id)) manager.cancel(MIRROR_TAG_PREFIX + id, NOTIFICATION_ID)
     }
 
     private fun dismissedMirrors(): Set<String> = preferences.getStringSet(DISMISSED_MIRRORS_KEY, null) ?: emptySet()
 
+    /** Changes the set of dismissed mirrors under one lock, keeping only the ids of stored receipts. */
+    private fun keepDismissedMirrors(change: (Set<String>, Set<String>) -> Set<String>) = synchronized(MIRRORS_LOCK) {
+        val records = read()
+        val stored = (0 until records.length()).mapNotNullTo(mutableSetOf()) { records.getJSONObject(it).optionalString("id") }
+        val kept = change(dismissedMirrors().filterTo(mutableSetOf()) { it in stored }, stored)
+        if (!preferences.edit().putStringSet(DISMISSED_MIRRORS_KEY, kept).commit()) nativeFailure()
+    }
+
     private fun forgetMirror(id: String) {
         manager.cancel(MIRROR_TAG_PREFIX + id, NOTIFICATION_ID)
-        val dismissed = dismissedMirrors()
-        if (id in dismissed) preferences.edit().putStringSet(DISMISSED_MIRRORS_KEY, dismissed - id).commit()
+        if (id in dismissedMirrors()) keepDismissedMirrors { dismissed, _ -> dismissed - id }
+    }
+
+    /**
+     * Removes the mirrors among [entries] whose activity Android does not list, once the listing's grace has
+     * passed since the mirror's post: an activity's notification may go without the adapter, as a stopped
+     * service's does.
+     */
+    private fun sweepMirrors(entries: Array<StatusBarNotification>) {
+        val listed = entries.mapNotNullTo(mutableSetOf()) { entry ->
+            if (entry.id == NOTIFICATION_ID && entry.tag?.startsWith(TAG_PREFIX) == true) entry.tag.removePrefix(TAG_PREFIX)
+            else if (isForegroundEntry(entry)) recordIdOf(entry) else null
+        }
+        val now = System.currentTimeMillis()
+        for (entry in entries) {
+            val id = entry.tag?.takeIf { entry.id == NOTIFICATION_ID && it.startsWith(MIRROR_TAG_PREFIX) }
+                ?.removePrefix(MIRROR_TAG_PREFIX) ?: continue
+            if (id !in listed && now - entry.postTime >= listingGrace) manager.cancel(entry.tag, NOTIFICATION_ID)
+        }
     }
 
     /**
@@ -340,7 +373,7 @@ internal class AndroidAdapter(
             isForegroundPlaced(record) && record.optionalString("state") !in setOf("ended", "dismissed")
         } ?: return null
         val id = record.optionalString("id") ?: return null
-        val notification = renderer().build(posted(record))
+        val notification = renderer().build(posted(record), mirrored = mirrored(id, record))
         refuseOldTime(notification)
         return id to notification
     }

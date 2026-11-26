@@ -83,6 +83,11 @@ class LiveUpdateDismissReceiver : BroadcastReceiver() {
         }
         if (intent.action != LIVE_UPDATE_DISMISSED) return
         try {
+            AndroidAdapter(context).activityDismissed(activityId)
+        } catch (_: Exception) {
+            Log.e(LOG_TAG, "Could not remove a dismissed live update's mirror.")
+        }
+        try {
             LiveUpdateEvents.stored(EventStore(context).appendDismissed(activityId))
         } catch (_: Exception) {
             Log.e(LOG_TAG, "Could not persist a live update dismissal.")

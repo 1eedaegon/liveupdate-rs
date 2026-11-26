@@ -15,4 +15,7 @@ goes through `AndroidAdapter.post`:
 - a scheduled start's alarm;
 - a held activity's update through its service.
 
-The mirror is decided there, once, and nothing else changes.
+The mirror is decided there. A service's attach builds the activity's own notification with the same
+decision, so that it stays local-only while mirrored. An activity's notification can also go without
+the adapter: a person swipes it, or a service stops. So its delete intent removes the mirror, and an
+observation removes a mirror whose activity Android has not listed for the listing's grace.

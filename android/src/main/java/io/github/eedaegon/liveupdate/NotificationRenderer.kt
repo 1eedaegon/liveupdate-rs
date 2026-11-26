@@ -61,20 +61,23 @@ internal class NotificationRenderer(
         record: JSONObject,
         alertChannelId: String? = null,
         postedAt: Long = System.currentTimeMillis(),
-    ): Notification = render(record, alertChannelId, postedAt, mirrorChannelId = null)
+        mirrored: Boolean = false,
+    ): Notification = render(record, alertChannelId, postedAt, mirrorChannelId = null, mirrored)
 
     /**
      * The mirror of [record], for a paired watch's bridge: the activity's content, not ongoing, not promoted, not
      * local-only, without the receipt, on [mirrorChannelId], or on [alertChannelId] for a revision that alerts.
      */
     fun mirror(record: JSONObject, alertChannelId: String?, mirrorChannelId: String): Notification =
-        render(record, alertChannelId, System.currentTimeMillis(), mirrorChannelId)
+        render(record, alertChannelId, System.currentTimeMillis(), mirrorChannelId, mirrored = true)
 
+    /** [mirrored] says that the adapter mirrors the activity: its own notification is then the phone's alone. */
     private fun render(
         record: JSONObject,
         alertChannelId: String?,
         postedAt: Long,
         mirrorChannelId: String?,
+        mirrored: Boolean,
     ): Notification {
         validateRecordShape(record)
         val id = requiredText(record, "id", 256)
@@ -89,6 +92,8 @@ internal class NotificationRenderer(
             1 -> applyLegacy(builder, snapshot, requiredText(origin, "template", 16))
             2 -> applyRich(builder, id, snapshot, origin, title, status, postedAt)
         }
+        // A mirrored activity is the phone's, and its mirror the watch's.
+        if (mirrored) builder.setLocalOnly(true)
         if (mirrorChannelId != null) mirrored(builder, id, snapshot)
         // The last content of an ended activity reports nothing when it goes.
         if (!record.isMissingOrNull("dismissAt")) builder.setDeleteIntent(null)
@@ -113,6 +118,8 @@ internal class NotificationRenderer(
             .setDeleteIntent(mirrorDeleteIntent(id))
         builder.extras.remove(RECORD_EXTRA)
         builder.extras.remove(Notification.EXTRA_REQUEST_PROMOTED_ONGOING)
+        // The Now Bar is the activity's: One UI would show a second entry for the mirror.
+        SamsungNowBar.extras(sdk, "", "").forEach { (key, _) -> builder.extras.remove(key) }
         builder.extras.putLong(MIRROR_REVISION_EXTRA, requiredLong(snapshot, "revision", 0, MAX_SAFE_INTEGER))
     }
 
@@ -239,10 +246,9 @@ internal class NotificationRenderer(
         // The start named a system style; an update may carry another one.
         if (requiredText(origin, "template", 16) !in VALID_STYLES) invalid()
         applyStyle(builder, style, kind, status, postedAt)
-        // A paired device does not get it: a phone's watch, or a watch's phone. A mirrored activity is the phone's,
-        // and its mirror the watch's.
-        val mirrored = optionalBoolean(presentation, "watchMirror") == true
-        if (optionalBoolean(presentation, "localOnly") == true || mirrored) builder.setLocalOnly(true)
+        // A paired device does not get it: a phone's watch, or a watch's phone.
+        optionalBoolean(presentation, "watchMirror")
+        if (optionalBoolean(presentation, "localOnly") == true) builder.setLocalOnly(true)
         optionalObject(presentation, "chronometer")?.let { chronometer ->
             // The timer style is that clock alone.
             if (kind == "timer") invalid()
