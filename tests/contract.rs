@@ -44,7 +44,8 @@ fn capabilities_use_the_stable_camel_case_contract() {
                 "exactStart": false,
                 "wearOngoingActivity": false,
                 "actionTargets": false,
-                "localOnly": false
+                "localOnly": false,
+                "push": false
             }
         })
     );

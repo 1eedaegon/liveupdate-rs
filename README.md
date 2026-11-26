@@ -227,6 +227,7 @@ delivered); the record's `template` follows the latest snapshot. Schema v1 keeps
 | Foreground service | `placement: Placement::Foreground` | A service of the app holds the notification; see [Foreground service](#foreground-service) |
 | Stale content | `Snapshot::stale_at` | The record reads `Stale` from that time |
 | Start later | `start_at: Some(time)` | Stored now and begun at that time, also while the app does not run; see [Scheduled start](#scheduled-start) |
+| From your server | `push::Payload` and `LiveUpdatePush.handle` | A data message begins, updates or ends an activity while the app does not run; see [Activities from a push](#activities-from-a-push) |
 | End at once | `end(id, EndPolicy::Immediate)` | The notification is removed |
 | Keep the last content | `end(id, EndPolicy::After { at })` | It stays, no longer ongoing, until `at`; update first to change it, end again with `Immediate` to remove it early |
 | What the person did | `LiveUpdate::events()` | `Action`, `Dismissed` and `Opened` events, drained once |
@@ -536,6 +537,94 @@ Native code can watch every event without taking it from the queue that Rust dra
 (`kind`, `activityId`, `actionId`), on the thread that stored it, beside the one listener of
 `setListener`.
 
+### Activities from a push
+
+Android has no push that draws a Live Update as APNs draws an iPhone's Live Activity. A data message
+wakes the app, from FCM or any provider that delivers a map of strings. The AAR hands it to the Rust
+lifecycle in the process that the message started, and none of your code runs for it. Turn on the
+crate's `push` feature, which exports the entry from your library:
+
+```toml
+liveupdate = { version = "0.10.0", features = ["android", "push"] }
+```
+
+Name your library in the manifest, unless your `Application` loads it already:
+
+```xml
+<meta-data android:name="io.github.eedaegon.liveupdate.LIBRARY" android:value="myapp" />
+```
+
+Then add one line to your messaging service:
+
+```kotlin
+override fun onMessageReceived(message: RemoteMessage) {
+    if (LiveUpdatePush.handle(this, message.data)) return
+    // Your own messages.
+}
+```
+
+Your server builds the data with the same crate, on any target and without a feature
+(`examples/push.rs`):
+
+```rust
+//! What an app's server sends for a ride: the data of the messages that begin, update and end its
+//! activity on the phone, also while the app does not run. It builds on any target.
+
+#![deny(clippy::unwrap_used, clippy::expect_used)]
+
+use liveupdate::{
+    AndroidPresentation, EndPolicy, Fallback, PresentationStyle, Result, Snapshot, StartRequest,
+    Visibility, push::Payload,
+};
+use std::collections::BTreeMap;
+
+fn ride(revision: u64, status: &str) -> Snapshot {
+    Snapshot {
+        presentation: Some(AndroidPresentation::new(PresentationStyle::Standard)),
+        ..Snapshot::new(revision, "Ride", status)
+    }
+}
+
+/// The data of each message, in the order the server sends them: one member, `liveupdate`.
+pub fn ride_messages() -> Result<Vec<BTreeMap<String, String>>> {
+    let key = "ride:42";
+    Ok(vec![
+        Payload::start(StartRequest::new(
+            key,
+            Fallback::Notification,
+            Visibility::Public,
+            ride(0, "Driver assigned"),
+        ))
+        .to_data()?,
+        Payload::update(key, ride(1, "2 minutes away")).to_data()?,
+        Payload::end(key, EndPolicy::Immediate).to_data()?,
+    ])
+}
+```
+
+- **What a payload names.** `Payload::start(request)` begins an activity. `Payload::update(key, snapshot)`
+  and `Payload::end(key, policy)` act on the live activity of a key: the server knows the key, and the
+  device makes the id. `LiveUpdate::push(&payload)` runs the same payload from Rust.
+- **Checks.** The lifecycle checks a push as it checks your own calls. `to_data` refuses what it would
+  refuse, and data over FCM's 4096 bytes.
+- **Revisions.** The server owns the revisions of an activity it pushes to. A push older than the shown
+  revision is `STALE_REVISION`, and a repeated update changes nothing. So an activity has one writer: the
+  server or the app. A start delivered again after its end answers the ended activity; begin a new
+  activity under the key with another request.
+- **What happened.** `LiveUpdate::events()` answers what each push did, as `EventKind::Pushed { command,
+  activity_key, revision, code }`. `code` is set when the lifecycle refused the push. A push that named no
+  live activity has an empty activity id, also for a native listener. A library that does not load or
+  lacks the feature `push`, and a member that is not a payload, are logged and stored as nothing.
+- **Process.** Your messaging service runs in the app's main process, as your own client does. Every
+  client of a process takes one lock, so a push waits for your app's call and the reverse.
+- **Delivery.**
+  - FCM gives `onMessageReceived` a few seconds, and a push takes one lifecycle call.
+  - Send a start, an end and an update that alerts at high priority, and other updates at normal
+    priority. FCM lowers the priority of an app whose high-priority messages show nothing.
+  - FCM delivers nothing to an app that the person force-stopped.
+- `capabilities()?.presentation.push` is true with an AAR that has `LiveUpdatePush`. It does not say
+  whether your library was built with the feature.
+
 ### Settings and channels
 
 `LiveUpdate::open_promotion_settings()` opens the system's screen where a person allows or stops the
@@ -696,16 +785,18 @@ oversized adapter data fails closed as `NATIVE_ERROR`.
   of a clock that counts up. An activity that runs longer leaves the clock out, or from API 37 shows
   the time as a stopwatch metric, which has no such limit.
 - An update needs the app's process: Android has no push that updates a notification. In the
-  background, use a foreground service or a data message that wakes the app. A start does not:
-  `start_at` begins an activity while the app does not run.
+  background, use a foreground service, or a data message that the AAR hands to the lifecycle (see
+  [Activities from a push](#activities-from-a-push)). A start does not: `start_at` begins an activity
+  while the app does not run.
 - A scheduled start is on the minute only with the exact-alarm permission: `SCHEDULE_EXACT_ALARM`,
   which from Android 14 the person has to allow, or `USE_EXACT_ALARM`. Without it Android chooses the
   moment, up to ten minutes late while the device is awake and up to an hour while it dozes. It cannot
   be updated before it begins, and it does not take the foreground placement.
 - Visibility is reported as `Unknown`: requesting private notification content does not prove what
   an OEM system UI actually revealed.
-- Use one retained client per process so operations share the same serialization boundary. Every
-  call blocks its thread for a storage write and a framework call, so keep it off the UI thread.
+- Use one retained client per process. Every client of a process takes one lock, also the one that a
+  push builds, so a second client is not a second writer, only a second reconciliation. Every call
+  blocks its thread for a storage write and a framework call, so keep it off the UI thread.
 
 ## Development
 

@@ -176,3 +176,41 @@ fn invoke(
     let output = JString::cast_local(env, output)?;
     Ok(output.mutf8_chars(env)?.to_string())
 }
+
+/// The entry of the AAR's `LiveUpdatePush.handle`, exported from the host's library: it runs the member
+/// of a data message through a client built from `context` and answers what it did as JSON.
+#[cfg(feature = "push")]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_io_github_eedaegon_liveupdate_LiveUpdatePush_nativeHandle<'caller>(
+    mut unowned_env: jni::EnvUnowned<'caller>,
+    _class: JClass<'caller>,
+    context: JObject<'caller>,
+    member: JString<'caller>,
+) -> JString<'caller> {
+    unowned_env
+        .with_env(|env| {
+            let member = member.mutf8_chars(env)?.to_string();
+            let vm = env.get_java_vm()?;
+            let outcome = catch_unwind(std::panic::AssertUnwindSafe(|| {
+                push(vm.get_raw().cast(), context.as_raw().cast(), &member)
+            }))
+            .unwrap_or_else(|_| crate::push::outcome(None, Err(crate::ErrorCode::NativeError)));
+            env.new_string(outcome.to_string())
+        })
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+}
+
+#[cfg(feature = "push")]
+fn push(vm: *mut c_void, context: *mut c_void, member: &str) -> serde_json::Value {
+    let payload = match crate::push::Payload::parse(member) {
+        Ok(payload) => payload,
+        Err(error) => return crate::push::outcome(None, Err(error.code)),
+    };
+    // SAFETY: the process VM, and a context reference that is valid on this thread for the call.
+    let result = unsafe { LiveUpdate::android_from_raw(vm, context) }
+        .and_then(|client| client.push(&payload));
+    match result {
+        Ok(record) => crate::push::outcome(Some(&payload), Ok(&record.id)),
+        Err(error) => crate::push::outcome(Some(&payload), Err(error.code)),
+    }
+}

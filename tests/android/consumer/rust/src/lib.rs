@@ -19,6 +19,9 @@ use std::{
 
 const RIDE: &str = "consumer:ride";
 const LATER: &str = "consumer:later";
+/// The key of the ride that the application's server begins: another than the ride's, which `run` ended.
+#[cfg(feature = "push")]
+const PUSHED: &str = "consumer:pushed";
 const ICON: &str = "consumer_status";
 
 static CONTEXT: Mutex<Option<Global<JObject<'static>>>> = Mutex::new(None);
@@ -144,6 +147,30 @@ fn ride(revision: u64, progress: u32, carried: bool) -> Snapshot {
     }
 }
 
+/// The member of a data message for the ride: `{"command": "start" | "update" | "end", "revision": n}`.
+#[cfg(feature = "push")]
+fn payload(input: &Value) -> Result<Value> {
+    use liveupdate::push::{DATA_KEY, Payload};
+    let revision = input["revision"].as_u64().unwrap_or(0);
+    let payload = match input["command"].as_str() {
+        Some("start") => Payload::start(StartRequest::new(
+            PUSHED,
+            Fallback::Notification,
+            Visibility::Public,
+            ride(0, 30, true),
+        )),
+        Some("update") => Payload::update(PUSHED, ride(revision, 50, true)),
+        Some("end") => Payload::end(PUSHED, EndPolicy::Immediate),
+        _ => {
+            return Err(liveupdate::Error::new(
+                liveupdate::ErrorCode::InvalidInput,
+                "Unknown command.",
+            ));
+        }
+    };
+    Ok(Value::String(payload.to_data()?.remove(DATA_KEY).unwrap_or_default()))
+}
+
 fn brief(record: &ActivityRecord) -> Value {
     json!({
         "id": record.id,
@@ -221,6 +248,9 @@ fn run(scenario: &str, input: &str) -> Result<Value> {
         "recording" => recorder::run(client, "recording", &input.to_string()),
         #[cfg(feature = "platform")]
         "settings" => client.open_promotion_settings().map(|()| Value::Null),
+        // What the application's server sends for the ride, as `consumer.sh` hands it to the push's receiver.
+        #[cfg(feature = "push")]
+        "payload" => payload(&input),
         "end" => {
             let mut ended = Vec::new();
             for record in client.list()? {

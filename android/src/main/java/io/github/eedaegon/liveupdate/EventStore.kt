@@ -9,6 +9,7 @@ private const val EVENTS_KEY = "events.v2"
 private const val EVENT_SEQUENCE_KEY = "eventSequence.v2"
 private const val EVENT_DROPPED_KEY = "eventDropped.v2"
 private const val MAX_EVENTS = 128
+private val PUSH_COMMANDS = setOf("start", "update", "end")
 private const val MAX_EVENT_BYTES = 1_048_576
 private const val MAX_SAFE_INTEGER = 9_007_199_254_740_991L
 private const val MAX_TIMESTAMP = 8_640_000_000_000_000L
@@ -16,7 +17,7 @@ private const val INVALID_MESSAGE = "Invalid live update request."
 private const val NATIVE_MESSAGE = "The Android live update adapter failed."
 
 /**
- * Durable, process-safe queue for notification action and dismissal events. A stored event keeps what it has:
+ * Durable, process-safe queue for notification action and dismissal events, and what a push did. A stored event keeps what it has:
  * a later version of the AAR may have stored a kind or a member that this one does not know, and the crate reads
  * such an event as one of an unknown kind.
  */
@@ -51,6 +52,21 @@ internal class EventStore(context: Context) {
     fun appendHandled(activityId: String, actionId: String): JSONObject {
         if (!validId(activityId) || !validActionId(actionId)) invalid()
         return append(activityId, JSONObject().put("kind", "handled").put("actionId", actionId), durable = false)
+    }
+
+    /**
+     * What a push did, from the crate's answer: its command, key and revision, with the activity's id when it did
+     * what it asked, or the code of the refusal and the id empty when the push named no activity.
+     */
+    fun appendPushed(outcome: JSONObject): JSONObject {
+        val command = outcome.optionalString("command")
+        val key = outcome.optionalString("activityKey")
+        val id = outcome.optionalString("id") ?: ""
+        if (command !in PUSH_COMMANDS || key == null || (id.isNotEmpty() && !validId(id))) invalid()
+        val kind = JSONObject().put("kind", "pushed").put("command", command).put("activityKey", key)
+        if (outcome.has("revision")) kind.put("revision", outcome.getLong("revision"))
+        outcome.optionalString("code")?.let { kind.put("code", it) }
+        return append(id, kind)
     }
 
     fun size(): Int = synchronized(EVENT_LOCK) { readEvents().length() }
@@ -119,9 +135,13 @@ internal class EventStore(context: Context) {
         for (index in 0 until events.length()) {
             val event = events.opt(index) as? JSONObject ?: nativeFailure()
             val sequence = strictLong(event, "sequence", 0, MAX_SAFE_INTEGER)
-            if (sequence <= previous || !validId(event.opt("activityId") as? String ?: nativeFailure())) nativeFailure()
+            val id = event.opt("activityId") as? String ?: nativeFailure()
+            val kind = event.opt("kind") as? JSONObject ?: nativeFailure()
+            // A push that named no activity has no id; every other event is of an activity.
+            val unnamed = id.isEmpty() && kind.opt("kind") == "pushed"
+            if (sequence <= previous || !(unnamed || validId(id))) nativeFailure()
             strictLong(event, "occurredAt", 0, MAX_TIMESTAMP)
-            validateKind(event.opt("kind") as? JSONObject ?: nativeFailure())
+            validateKind(kind)
             previous = sequence
         }
     }
@@ -132,6 +152,7 @@ internal class EventStore(context: Context) {
             "opened" -> if (kind.has("actionId") && !validActionId(kind.opt("actionId") as? String ?: nativeFailure())) {
                 nativeFailure()
             }
+            "pushed" -> if (kind.opt("command") !in PUSH_COMMANDS || kind.opt("activityKey") !is String) nativeFailure()
             // A dismissal says nothing more, and a kind of a later version is not this one's to check.
             else -> Unit
         }

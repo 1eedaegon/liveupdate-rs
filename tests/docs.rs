@@ -44,15 +44,17 @@ fn rust_blocks(markdown: &str) -> Vec<String> {
 fn the_readme_shows_the_compiled_example_whole() {
     // examples/delivery.rs and examples/service.rs compile for Android (`cargo ndk check
     // --all-targets --features android`) and for the host (`cargo clippy --all-targets
-    // --all-features`).
+    // --all-features`); examples/push.rs, a server's, on every target.
     let example = read("examples/delivery.rs");
     let service = read("examples/service.rs");
+    let push = read("examples/push.rs");
     assert!(example.contains("LiveUpdate::android()"));
     assert!(service.contains("LiveUpdate::android_from_raw"));
+    assert!(push.contains("Payload::update("));
     assert_eq!(
         rust_blocks(&read("README.md")),
-        [example, service],
-        "the README's Rust code is not examples/delivery.rs and examples/service.rs verbatim"
+        [example, service, push],
+        "the README's Rust code is not examples/delivery.rs, examples/service.rs and examples/push.rs verbatim"
     );
 }
 

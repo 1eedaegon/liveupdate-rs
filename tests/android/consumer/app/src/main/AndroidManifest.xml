@@ -26,5 +26,6 @@
             android:exported="true" />
 
         <!-- TARGETS: a version that has action targets puts its recorder service here. -->
+        <!-- PUSH: a version that has activities from a push puts its receiver and the library's name here. -->
     </application>
 </manifest>

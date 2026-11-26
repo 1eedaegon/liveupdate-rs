@@ -43,9 +43,15 @@ name = "service"
 crate-type = ["lib"]
 required-features = ["android"]
 
+[[example]]
+name = "push"
+crate-type = ["lib"]
+
 [features]
 default = []
 android = ["dep:jni", "dep:ndk-context"]
+# The native entry of `LiveUpdatePush.handle`: a data message from the app's server reaches the lifecycle.
+push = ["android"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

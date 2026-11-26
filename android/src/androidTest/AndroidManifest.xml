@@ -9,6 +9,11 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <application>
+        <!-- The host's library, which LiveUpdatePush loads for a data message: here the tests' own. -->
+        <meta-data
+            android:name="io.github.eedaegon.liveupdate.LIBRARY"
+            android:value="liveupdate_android_native_test" />
+
         <!-- Gives the test package a launch activity, which a notification's content intent opens. -->
         <activity
             android:name="io.github.eedaegon.liveupdate.LaunchActivity"

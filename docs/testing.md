@@ -193,6 +193,22 @@ On 2026-11-26, on the Galaxy S23 (Android 17, One UI 9):
   - Galaxy Wearable by default sends nothing while the phone is in use (screen on).
   - `cmd notification post` posts as `com.android.shell`, which is not among the allowed applications.
 
+### Activities from a push
+
+On 2026-11-27, on this machine:
+
+- **The native entry is exported** from a host's library that never calls it. A cdylib over a crate with
+  a `#[no_mangle] extern "system"` function, built with LTO, lists it as defined on macOS (`nm -gU`) and on
+  Android arm64 (`llvm-nm -D`). The instrumentation tests' library and the consumer application's, built
+  with the feature `push`, list `Java_io_github_eedaegon_liveupdate_LiveUpdatePush_nativeHandle`.
+- **R8 keeps the entry.** The consumer application, built with R8 and resource shrinking from this
+  checkout, keeps `LiveUpdatePush.nativeHandle` (`dexdump`). Its manifest has the receiver that plays a
+  messaging service, and the meta-data that names its library.
+- **On a device** (CI's API 37 emulator; not yet the S23), `PushInstrumentationTest` and
+  `consumer.sh run`'s push check hand the map over as a messaging service does. The consumer's check is
+  a start, an update and an end, each in a process that the message started after `am kill`. A delivery
+  by FCM itself needs a Firebase project of the owner's; its keys stay outside the repository.
+
 ### The suite of 0.8.1 on older emulators, by hand
 
 On 2026-11-20 the instrumentation tests of main at 0.8.1 ran by hand on emulators of this machine (Google APIs,

@@ -107,7 +107,8 @@ internal class AndroidAdapter(
                 .put("exactStart", scheduled.exact())
                 .put("wearOngoingActivity", wearOngoing)
                 .put("actionTargets", true)
-                .put("localOnly", true))
+                .put("localOnly", true)
+                .put("push", true))
     }
 
     override fun read(): JSONArray {

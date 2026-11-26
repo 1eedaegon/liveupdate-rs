@@ -1,7 +1,7 @@
 use crate::{
     ActivityRecord, ActivityState, Capabilities, Driver, DriverRecord, EndPolicy, Error, ErrorCode,
     EventBatch, Fallback, NextCheck, Observation, Placement, PromotionState, Result, Snapshot,
-    StartOutcome, StartReport, StartRequest, model::valid_id,
+    StartOutcome, StartReport, StartRequest, model::valid_id, push::Payload,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -20,20 +20,20 @@ const OBSERVATION_LIMIT: usize = ACTIVE_LIMIT + TOMBSTONE_LIMIT;
 /// the next start or update, a state or the time of a delayed end.
 const STORE_LIMIT: usize = 1_000_000;
 
+/// The lock of every client of the process: the app's retained client and one that a push builds
+/// take turns, so the receipts have one writer at a time.
+static OPERATIONS: Mutex<()> = Mutex::new(());
+
 /// Thread-safe Rust owner of Android live update lifecycle and ordering.
 pub struct LiveUpdate<D> {
     driver: D,
-    operations: Mutex<()>,
 }
 
 impl<D: Driver> LiveUpdate<D> {
     /// Creates a client around an Android framework and persistence driver.
     #[must_use]
     pub fn new(driver: D) -> Self {
-        Self {
-            driver,
-            operations: Mutex::new(()),
-        }
+        Self { driver }
     }
 
     /// Returns the capabilities currently reported by Android.
@@ -93,6 +93,29 @@ impl<D: Driver> LiveUpdate<D> {
         self.serialized(|driver| driver.open_promotion_settings())
     }
 
+    /// Runs what a data message from the app's server asks ([`crate::push`]): a start as
+    /// [`start`](Self::start), and an update or an end on the live activity of the payload's key,
+    /// the one that is neither ended nor dismissed. A key without one answers `NotFound`. A start
+    /// that an ended activity of its key began answers that activity and begins nothing: a provider
+    /// may deliver a message again, or after a later one.
+    pub fn push(&self, payload: &Payload) -> Result<ActivityRecord> {
+        payload.validate()?;
+        self.serialized(|driver| match payload.clone() {
+            Payload::Start(request) => match ended_start(driver, &request)? {
+                Some(ended) => Ok(ended),
+                None => start(driver, request),
+            },
+            Payload::Update {
+                activity_key,
+                snapshot,
+            } => update(driver, &live_id(driver, &activity_key)?, snapshot),
+            Payload::End {
+                activity_key,
+                policy,
+            } => end(driver, &live_id(driver, &activity_key)?, policy),
+        })
+    }
+
     /// Atomically drains Android notification action and dismissal events.
     pub fn events(&self) -> Result<EventBatch> {
         self.serialized(|driver| {
@@ -105,12 +128,35 @@ impl<D: Driver> LiveUpdate<D> {
     fn serialized<T>(&self, action: impl FnOnce(&D) -> Result<T>) -> Result<T> {
         // The lock guards no data: a driver that panicked left only durable receipts, which every
         // operation reconciles, so a poisoned lock is taken over instead of failing forever.
-        let _guard = self
-            .operations
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
+        let _guard = OPERATIONS.lock().unwrap_or_else(PoisonError::into_inner);
         action(&self.driver)
     }
+}
+
+/// The ended activity that `request` began, when no activity of its key is live: a message delivered
+/// again, or after its end, which a provider of data messages may do. It begins nothing again.
+fn ended_start(driver: &impl Driver, request: &StartRequest) -> Result<Option<ActivityRecord>> {
+    let records = reconcile(driver)?;
+    let key = &request.activity_key;
+    if records
+        .iter()
+        .any(|record| !record.terminal() && record.origin.activity_key == *key)
+    {
+        return Ok(None);
+    }
+    Ok(records
+        .iter()
+        .find(|record| record.terminal() && record.origin == *request)
+        .map(DriverRecord::public))
+}
+
+/// The id of the activity of `key` that is neither ended nor dismissed.
+fn live_id(driver: &impl Driver, key: &str) -> Result<String> {
+    reconcile(driver)?
+        .iter()
+        .find(|record| !record.terminal() && record.origin.activity_key == key)
+        .map(|record| record.id.clone())
+        .ok_or_else(|| Error::new(ErrorCode::NotFound, "No live activity has this key."))
 }
 
 fn start(driver: &impl Driver, request: StartRequest) -> Result<ActivityRecord> {

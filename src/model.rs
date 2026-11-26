@@ -343,7 +343,7 @@ pub(crate) fn valid_id(value: &str) -> bool {
     valid_text(value, 256)
 }
 
-fn valid_key(value: &str) -> bool {
+pub(crate) fn valid_key(value: &str) -> bool {
     let mut characters = value.chars();
     let Some(first) = characters.next() else {
         return false;
