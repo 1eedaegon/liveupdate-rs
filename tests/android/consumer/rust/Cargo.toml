@@ -14,6 +14,8 @@ crate-type = ["cdylib"]
 targets = []
 # A version with `LiveUpdate::open_promotion_settings` (0.9.0).
 platform = []
+# A version with activities from a push (0.10.0): the crate's native entry, and the server's payload.
+push = ["liveupdate/push"]
 
 [dependencies]
 jni = { version = "0.22.4", default-features = false }

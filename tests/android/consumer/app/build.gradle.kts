@@ -12,6 +12,8 @@ val jniLibs = providers.gradleProperty("consumer.jniLibs").get()
 val wear = providers.gradleProperty("consumer.wear").orNull == "true"
 // A version with action targets: the recorder service, which an earlier AAR could not compile.
 val targets = providers.gradleProperty("consumer.targets").orNull == "true"
+// A version with activities from a push: the receiver that plays a messaging service.
+val push = providers.gradleProperty("consumer.push").orNull == "true"
 
 android {
     namespace = "io.github.eedaegon.liveupdate.consumer"
@@ -37,6 +39,7 @@ android {
 
     sourceSets["main"].jniLibs.srcDir(jniLibs)
     if (targets) sourceSets["main"].java.srcDir("src/targets/java")
+    if (push) sourceSets["main"].java.srcDir("src/push/java")
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

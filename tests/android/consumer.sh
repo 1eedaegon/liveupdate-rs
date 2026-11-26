@@ -17,7 +17,11 @@
 #                      checkout) on a device that is not a watch: its activity's Record button, tapped in the
 #                      shade, reaches the recorder service, which takes it as handled and updates the activity
 #                      through its own client; at the end the service keeps its own notification.
+#                      From 0.10.0, and from this checkout: a start, an update and an end by data message, each in a
+#                      process that the message started, are shown, and the application drains a `pushed` event of each.
 #   scenario NAME [JSON]  Runs one scenario of the application's Rust code and prints its answer.
+#   push MEMBER        Hands a data message's member to LiveUpdatePush through the application's receiver, as a
+#                      messaging service does, and prints the receiver's answer (0.10.0 and later, or this checkout).
 #   tap TITLE          Opens the notification shade and taps the button titled TITLE (any case), then prints what
 #                      the application logged within five seconds: the recorder's taps, events, openings. On a
 #                      phone or an emulator; a watch does not list an ongoing notification.
@@ -89,9 +93,28 @@ PYTHON
   since() { python3 -I -c 'import sys; v, at = sys.argv[1], tuple(map(int, sys.argv[2].split("."))); print("true" if not v or tuple(map(int, v.split("-")[0].split("."))) >= at else "false")' "${LIVEUPDATE_VERSION:-}" "$1"; }
   targets=$(since 0.8.0)
   named=$(since 0.9.0)
+  pushed=$(since 0.10.0)
   echo "$named" >"$out/named"
   features=
   [ "$named" = true ] && features="--features platform"
+  if [ "$pushed" = true ]; then
+    features="${features:---features }${features:+,}push"
+    python3 -I - "$out/app/app/src/main/AndroidManifest.xml" <<'PYTHON'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+marker = "        <!-- PUSH: a version that has activities from a push puts its receiver and the library's name here. -->\n"
+assert text.count(marker) == 1, "no place for the push's receiver"
+receiver = """        <meta-data
+            android:name="io.github.eedaegon.liveupdate.LIBRARY"
+            android:value="liveupdate_consumer" />
+        <receiver
+            android:name=".PushReceiver"
+            android:exported="true" />
+"""
+open(path, "w").write(text.replace(marker, receiver, 1))
+PYTHON
+  fi
   if [ "$targets" = true ]; then
     features="${features:---features }${features:+,}targets"
     python3 -I - "$out/app/app/src/main/AndroidManifest.xml" <<'PYTHON'
@@ -112,10 +135,12 @@ PYTHON
   CARGO_TARGET_DIR=$out/rust-target cargo ndk -t "$device_abi" -o "$out/jniLibs" \
     build --release --manifest-path "$out/rust/Cargo.toml" $features
   gradle -p "$out/app" :app:assembleRelease --no-daemon -q \
-    -Pconsumer.aar="$aar" -Pconsumer.jniLibs="$out/jniLibs" -Pconsumer.wear="$wear" -Pconsumer.targets="$targets"
+    -Pconsumer.aar="$aar" -Pconsumer.jniLibs="$out/jniLibs" -Pconsumer.wear="$wear" -Pconsumer.targets="$targets" \
+    -Pconsumer.push="$pushed"
   [ -f "$apk" ] || fail "the build left no $apk"
   echo "$wear" >"$out/wear"
   echo "$targets" >"$out/targets"
+  echo "$pushed" >"$out/push"
   echo "built $apk for $device_abi with $(sed -n 's/^liveupdate = //p' "$out/rust/Cargo.toml")"
 }
 
@@ -209,13 +234,7 @@ EOF
   [ "$(field "$scheduled" "a['ok']['state']")" = scheduled ] || fail "schedule: $scheduled"
   later=$(field "$scheduled" "a['ok']['id']")
   # The application's process ends, as Android ends one in the background: the alarm starts it again.
-  device shell am kill "$package"
-  gone='[ "$(process)" = none ]'
-  if ! (wait_for "the process is gone" "$gone" 6) 2>/dev/null; then
-    [ "$api" -le 27 ] || [ "${KILL_ALL:-}" = 1 ] || fail "am kill left the process; KILL_ALL=1 ends every background process"
-    device shell am kill-all
-    wait_for "the process is gone" "$gone" 20
-  fi
+  end_process
   # The process was gone before: whatever posts it is a process that the alarm started, which may end again at once.
   wait_for "the scheduled start is shown" 'shown "$(dump)" "$later"' 180
   echo "scheduled start: posted by its alarm, in a process that the alarm started"
@@ -226,6 +245,7 @@ EOF
   echo "end: both removed"
 
   recorder_check
+  push_check
 
   if [ "$offered" = True ]; then
     again=$(scenario start)
@@ -245,6 +265,61 @@ EOF
 
 # The notification of the foreground placement, without a tag, under LiveUpdateForeground.NOTIFICATION_ID; and
 # the recorder's own, under its FALLBACK_ID. Each answers whether it is shown and held by the service.
+# Ends the application's process, as Android ends one in the background.
+end_process() {
+  device shell am kill "$package"
+  gone='[ "$(process)" = none ]'
+  if ! (wait_for "the process is gone" "$gone" 6) 2>/dev/null; then
+    [ "$api" -le 27 ] || [ "${KILL_ALL:-}" = 1 ] || fail "am kill left the process; KILL_ALL=1 ends every background process"
+    device shell am kill-all
+    wait_for "the process is gone" "$gone" 20
+  fi
+}
+
+# A message's member, handed to LiveUpdatePush by the application's receiver as a messaging service does; prints
+# the receiver's answer.
+push() {
+  member=$1
+  case $member in *"'"*) fail "the member may not have a single quote" ;; esac
+  nonce=$(od -An -N6 -tu2 /dev/urandom | tr -d ' \n')
+  device shell am broadcast -n "$package/.PushReceiver" --es member "'$member'" --es nonce "$nonce" >/dev/null
+  for _ in $(seq 1 50); do
+    line=$(device logcat -d -v tag -s "$tag:I" | tr -d '\r' | sed -n "s/^I\/$tag: push#$nonce //p" | tail -1)
+    [ -n "$line" ] && { echo "$line"; return 0; }
+    sleep 0.4
+  done
+  fail "no answer to the push"
+}
+
+# A start, an update and an end by data message, each in a process that the message started, and what the
+# application drained of them: one `pushed` event each.
+push_check() {
+  [ "$(cat "$out/push" 2>/dev/null)" = true ] || { echo "push: not in this build"; return 0; }
+  member() {
+    answer=$(scenario payload "$1")
+    [ "$(field "$answer" "'ok' in a")" = True ] || fail "payload: $answer"
+    field "$answer" "a['ok']"
+  }
+  start=$(member '{"command":"start"}')
+  update=$(member '{"command":"update","revision":1}')
+  finish=$(member '{"command":"end"}')
+  since=$(device shell date "+%m-%d_%H:%M:%S.000" | tr -d '\r' | tr _ ' ')
+  end_process
+  [ "$(field "$(push "$start")" "a['handled']")" = True ] || fail "push: the start was not the library's"
+  pushed=$(scenario list)
+  ride=$(field "$pushed" "[r['id'] for r in a['ok'] if r['activityKey'] == 'consumer:ride' and r['state'] not in ('ended', 'dismissed')][0]")
+  wait_for "the pushed start is shown" 'shown "$(dump)" "$ride"'
+  end_process
+  [ "$(field "$(push "$update")" "a['handled']")" = True ] || fail "push: the update was not the library's"
+  wait_for "the pushed revision 1 is shown" 'record "$(dump)" "$ride" | grep -q "\"revision\":1"'
+  end_process
+  [ "$(field "$(push "$finish")" "a['handled']")" = True ] || fail "push: the end was not the library's"
+  wait_for "the pushed end removed it" '! shown "$(dump)" "$ride"'
+  wait_for "the application drained a pushed event of each" \
+    '[ "$(device logcat -d -v tag -T "'$since'" -s "$tag:I" | grep -o "\"kind\":\"pushed\"" | wc -l | tr -d " ")" -ge 3 ]' 20
+  echo "push: a start, an update and an end by data message, each in a process the message started, and their events"
+}
+
 held_by_service() {
   printf '%s\n' "$1" | grep -A 40 "NotificationRecord(.* id=$2 tag=null " | sed '/^ *NotificationRecord(/{1!q;}' |
     grep -q "FOREGROUND_SERVICE"
@@ -326,6 +401,7 @@ case $command in
   build) build ;;
   run) run ;;
   scenario) scenario "$@" ;;
+  push) [ "$#" = 1 ] || fail "push takes the member"; push "$1" ;;
   tap) tap "$@" ;;
   uninstall) device uninstall "$package" ;;
   *) echo "usage: consumer.sh build | run | scenario NAME [JSON] | tap TITLE | uninstall" >&2; exit 2 ;;
