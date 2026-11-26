@@ -625,6 +625,14 @@ pub fn ride_messages() -> Result<Vec<BTreeMap<String, String>>> {
   - FCM delivers nothing to an app that the person force-stopped.
 - `capabilities()?.presentation.push` is true with an AAR that has `LiveUpdatePush`. It does not say
   whether your library was built with the feature.
+- **A layer above liveupdate.** A crate that keeps more of an activity than liveupdate's receipt, as
+  liveactivity keeps a layout, takes its own member, `liveupdate.layer` (`push::LAYER_KEY`).
+  - `LiveUpdatePush.handle` hands that member to the layer's native entry,
+    `Java_io_github_eedaegon_liveupdate_LiveUpdatePush_nativeLayer`, which the layer's crate exports
+    from your library. A message with both members goes to the layer alone.
+  - The layer answers with `push::outcome(command, key, revision, result)`, and the AAR stores the answer
+    as a `pushed` event.
+  - `capabilities()?.presentation.push_layer` says that the AAR hands the member over.
 
 ### Settings and channels
 
