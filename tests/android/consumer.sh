@@ -267,9 +267,10 @@ EOF
 # the recorder's own, under its FALLBACK_ID. Each answers whether it is shown and held by the service.
 # Ends the application's process, as Android ends one in the background.
 end_process() {
-  device shell am kill "$package"
-  gone='[ "$(process)" = none ]'
-  if ! (wait_for "the process is gone" "$gone" 6) 2>/dev/null; then
+  # `am kill` ends only a process that Android counts as in the background: one that a receiver just ran in
+  # gets there within seconds, so it is asked again until then.
+  gone='device shell am kill "$package" && sleep 1 && [ "$(process)" = none ]'
+  if ! (wait_for "the process is gone" "$gone" 30) 2>/dev/null; then
     [ "$api" -le 27 ] || [ "${KILL_ALL:-}" = 1 ] || fail "am kill left the process; KILL_ALL=1 ends every background process"
     device shell am kill-all
     wait_for "the process is gone" "$gone" 20
