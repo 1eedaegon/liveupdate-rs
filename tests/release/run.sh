@@ -237,6 +237,25 @@ test_merge_commit_is_ignored() {
   tests=$((tests + 1))
 }
 
+test_subjects_are_read_while_a_release_waits_for_its_tag() {
+  new_repo subjects
+  empty_commit 'fix: retain event'
+  release prepare 0.1.4 --date 2026-11-11
+  (cd "$repo" && git add . && git commit -q -m 'chore: release v0.1.4')
+  # A pull request made while the version commit waits for its tag: the plan cannot add up yet.
+  empty_commit 'feat: add layout tree'
+  expect_failure 'commit subjects require' release plan
+  local output
+  output=$(release subjects)
+  assert_contains "$output" 'subjects: 3 commits since v0.1.3'
+  empty_commit 'Add layout tree'
+  expect_failure 'non-conventional subject' release subjects
+  new_repo subjects-breaking
+  empty_commit 'feat!: replace presentation schema'
+  expect_failure 'manual major release' release subjects
+  tests=$((tests + 1))
+}
+
 test_minor_wins
 test_internal_commits_do_not_release
 test_breaking_requires_manual_major
@@ -249,5 +268,6 @@ test_unexpected_version_jump_fails
 test_failed_validation_does_not_partially_update_files
 test_invalid_stable_version_is_rejected
 test_merge_commit_is_ignored
+test_subjects_are_read_while_a_release_waits_for_its_tag
 
 echo "release automation: $tests isolated scenarios passed"

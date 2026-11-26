@@ -164,8 +164,8 @@ elif not order.index("Emulator suite") < order.index("Consumer application") < o
 
 # A pull request's commit subjects are read as the release reads them, before a merge can stick a release.
 changes_job = text[text.index("\n  changes:\n"):text.index("\n  spec:\n")]
-if "bash tools/release.sh plan" not in changes_job or "github.event_name == 'pull_request'" not in changes_job:
-    fail("the changes job must run tools/release.sh plan on a pull request")
+if "bash tools/release.sh subjects" not in changes_job or "github.event_name == 'pull_request'" not in changes_job:
+    fail("the changes job must run tools/release.sh subjects on a pull request")
 
 # The mutants left out by their line are where the exclusions say, before any mutant runs.
 mutants_job = text[text.index("\n  mutants:\n"):]

@@ -347,8 +347,25 @@ release_notes() {
   ' CHANGELOG.md || die "CHANGELOG notes for $version are empty"
 }
 
+# Reads the subjects of the commits since the latest tag as a release reads them, without its version
+# arithmetic: a pull request finds a subject the release would refuse, also while a version commit of main
+# still waits for its tag.
+check_subjects() {
+  latest_stable_tag
+  load_commits
+  local sha count=0
+  while IFS= read -r sha; do
+    [[ -n $sha ]] || continue
+    classify_commit "$sha"
+    [[ $class_breaking == false ]] || die 'breaking commit found; dispatch a manual major release'
+    count=$((count + 1))
+  done < "$commits_file"
+  echo "subjects: $count commits since $latest_tag read as a release reads them"
+}
+
 usage() {
   echo 'usage: tools/release.sh plan [--major]' >&2
+  echo '       tools/release.sh subjects' >&2
   echo '       tools/release.sh prepare VERSION [--major] [--date YYYY-MM-DD]' >&2
   echo '       tools/release.sh notes VERSION' >&2
   exit 2
@@ -386,6 +403,10 @@ case $command in
   notes)
     [[ $# == 1 ]] || usage
     release_notes "$1"
+    ;;
+  subjects)
+    (($# == 0)) || usage
+    check_subjects
     ;;
   *) usage ;;
 esac
