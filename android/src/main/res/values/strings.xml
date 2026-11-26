@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    The names and descriptions of the library's two channels, as the system's settings show them. An application
+    The names and descriptions of the library's channels, as the system's settings show them. An application
     overrides them in its own res/values*/strings.xml, in each language it has; an existing channel takes the new
     name.
 -->
@@ -9,4 +9,6 @@
     <string name="liveupdate_channel_description">Activities in progress</string>
     <string name="liveupdate_alert_channel_name">Live update alerts</string>
     <string name="liveupdate_alert_channel_description">Activities in progress that ask for attention</string>
+    <string name="liveupdate_watch_channel_name">Live updates on a watch</string>
+    <string name="liveupdate_watch_channel_description">Activities in progress, for a paired watch</string>
 </resources>

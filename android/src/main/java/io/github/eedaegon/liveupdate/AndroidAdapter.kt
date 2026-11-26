@@ -19,6 +19,9 @@ private const val CHANNEL_ID = "liveupdate-rs.v1"
 /** `Settings.ACTION_MANAGE_APP_PROMOTED_NOTIFICATIONS`, of API 36. */
 private const val PROMOTION_SETTINGS = "android.settings.MANAGE_APP_PROMOTED_NOTIFICATIONS"
 private const val ALERT_CHANNEL_ID = "liveupdate-rs.alerts.v1"
+private const val MIRROR_CHANNEL_ID = "liveupdate-rs.watch.v1"
+/** The activities whose mirror a person dismissed. */
+private const val DISMISSED_MIRRORS_KEY = "mirrorsDismissed"
 private const val PREFERENCES = "io.github.1eedaegon.liveupdate"
 private const val RECORDS_KEY = "records"
 private const val TAG_PREFIX = "liveupdate-rs:"
@@ -57,8 +60,9 @@ internal fun postsClock(sdk: Int, age: Long, margin: Long): Boolean =
  * [sdk] and [manufacturer] describe the device behavior the adapter follows. They use the real
  * device values; tests override them to exercise platform- and vendor-specific paths, and
  * [alertChannelId] to block the alerting channel as a user does. [exactAlarms] says whether an exact alarm may
- * be set, where Android is not to be asked, [listingGrace] how long a post may stay unlisted, and [wearOngoing]
- * whether a watch's Ongoing Activity is offered, where the device is not to be asked.
+ * be set, where Android is not to be asked, [listingGrace] how long a post may stay unlisted, [wearOngoing]
+ * whether a watch's Ongoing Activity is offered, where the device is not to be asked, and [watchMirror] whether a
+ * mirror for a paired watch is: a phone's, not a watch's.
  */
 internal class AndroidAdapter(
     context: Context,
@@ -68,6 +72,7 @@ internal class AndroidAdapter(
     exactAlarms: Boolean? = null,
     listingGrace: Long = LISTING_GRACE,
     wearOngoing: Boolean? = null,
+    watchMirror: Boolean? = null,
 ) : ManagedAdapter {
     private val application = context.applicationContext
     private val manager = application.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -78,6 +83,7 @@ internal class AndroidAdapter(
         sdk,
         ::hasWearOngoingLibrary,
     )
+    private val mirrors = watchMirror ?: !application.packageManager.hasSystemFeature(PackageManager.FEATURE_WATCH)
 
     override fun capabilities(): JSONObject {
         ensureChannel()
@@ -108,7 +114,8 @@ internal class AndroidAdapter(
                 .put("wearOngoingActivity", wearOngoing)
                 .put("actionTargets", true)
                 .put("localOnly", true)
-                .put("push", true))
+                .put("push", true)
+                .put("watchMirror", mirrors))
     }
 
     override fun read(): JSONArray {
@@ -175,7 +182,11 @@ internal class AndroidAdapter(
         }
         val id = record.optionalString("id") ?: invalid()
         if (!validId(id)) invalid()
-        val notification = build(record)
+        val alerting = alertChannel(record)
+        val mirrored = mirrors && record.optJSONObject("snapshot")?.optJSONObject("presentation")
+            ?.opt("watchMirror") == true && id !in dismissedMirrors()
+        // A mirrored activity alerts through its mirror alone: the phone and the watch once each.
+        val notification = renderer().build(record, alerting.takeUnless { mirrored })
         val foreground = isForegroundPlaced(record)
         val removes = !record.isNull("dismissAt") && record.getLong("dismissAt") <= System.currentTimeMillis()
         if (!removes) refuseOldTime(notification)
@@ -189,14 +200,40 @@ internal class AndroidAdapter(
             } else {
                 show(TAG_PREFIX + id, NOTIFICATION_ID, notification)
             }
-            return
+        } else {
+            when {
+                !foreground -> show(TAG_PREFIX + id, NOTIFICATION_ID, notification)
+                // A held activity is updated through its service, never past it.
+                LiveUpdateForeground.update(id, notification) -> Unit
+                else -> show(null, LiveUpdateForeground.NOTIFICATION_ID, notification)
+            }
         }
-        when {
-            !foreground -> show(TAG_PREFIX + id, NOTIFICATION_ID, notification)
-            // A held activity is updated through its service, never past it.
-            LiveUpdateForeground.update(id, notification) -> Unit
-            else -> show(null, LiveUpdateForeground.NOTIFICATION_ID, notification)
+        if (mirrored && !removes) {
+            ensureMirrorChannel()
+            manager.notify(MIRROR_TAG_PREFIX + id, NOTIFICATION_ID, renderer().mirror(record, alerting, MIRROR_CHANNEL_ID))
+        } else {
+            manager.cancel(MIRROR_TAG_PREFIX + id, NOTIFICATION_ID)
         }
+    }
+
+    /**
+     * Keeps that a person dismissed the mirror of [id], on the watch or on the phone: later posts of the activity
+     * post none. Ids that no stored receipt has any more are dropped on the way.
+     */
+    internal fun mirrorDismissed(id: String) {
+        if (!validId(id)) invalid()
+        val records = read()
+        val stored = (0 until records.length()).mapNotNullTo(mutableSetOf()) { records.getJSONObject(it).optionalString("id") }
+        val kept = dismissedMirrors().filterTo(mutableSetOf()) { it in stored } + id
+        if (!preferences.edit().putStringSet(DISMISSED_MIRRORS_KEY, kept).commit()) nativeFailure()
+    }
+
+    private fun dismissedMirrors(): Set<String> = preferences.getStringSet(DISMISSED_MIRRORS_KEY, null) ?: emptySet()
+
+    private fun forgetMirror(id: String) {
+        manager.cancel(MIRROR_TAG_PREFIX + id, NOTIFICATION_ID)
+        val dismissed = dismissedMirrors()
+        if (id in dismissed) preferences.edit().putStringSet(DISMISSED_MIRRORS_KEY, dismissed - id).commit()
     }
 
     /**
@@ -232,6 +269,7 @@ internal class AndroidAdapter(
         scheduled.rearm { manager.cancel(TAG_PREFIX + id, NOTIFICATION_ID) }
         postedOngoing.remove(place(TAG_PREFIX + id, NOTIFICATION_ID))
         cancelForeground(id)
+        forgetMirror(id)
     }
 
     override fun schedule(record: JSONObject) {
@@ -376,6 +414,12 @@ internal class AndroidAdapter(
     }
 
     override fun drainEvents(): JSONObject = EventStore(application).drain()
+
+    private fun ensureMirrorChannel() {
+        manager.createNotificationChannel(
+            channel(MIRROR_CHANNEL_ID, R.string.liveupdate_watch_channel_name, R.string.liveupdate_watch_channel_description, NotificationManager.IMPORTANCE_MIN),
+        )
+    }
 
     private fun ensureChannel() {
         manager.createNotificationChannel(
