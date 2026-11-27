@@ -189,9 +189,9 @@ On 2026-11-26, on the Galaxy S23 (Android 17, One UI 9):
     then `PendingManager.getPendingState-NOT_WEARING_WATCH` and `Adding notification to the queue`. The
     watch's wrist detection was on and the watch was not worn.
 
-  The watch's notifications page stayed empty. Two things decide nothing:
-  - Galaxy Wearable by default sends nothing while the phone is in use (screen on).
-  - `cmd notification post` posts as `com.android.shell`, which is not among the allowed applications.
+  The watch's notifications page stayed empty. A phone in use does not stop the bridge: a mirror reached
+  the watch later with the S23's screen on and unlocked. `cmd notification post` decides nothing: it posts
+  as `com.android.shell`, which is not among the allowed applications.
 
 ### Activities from a push
 
@@ -204,10 +204,30 @@ On 2026-11-27, on this machine:
 - **R8 keeps the entry.** The consumer application, built with R8 and resource shrinking from this
   checkout, keeps `LiveUpdatePush.nativeHandle` (`dexdump`). Its manifest has the receiver that plays a
   messaging service, and the meta-data that names its library.
-- **On a device** (CI's API 37 emulator; not yet the S23), `PushInstrumentationTest` and
+- **On a device** (CI's API 37 emulator, the S23 and the watch), `PushInstrumentationTest` and
   `consumer.sh run`'s push check hand the map over as a messaging service does. The consumer's check is
   a start, an update and an end, each in a process that the message started after `am kill`. A delivery
   by FCM itself needs a Firebase project of the owner's; its keys stay outside the repository.
+
+### The consumer on a watch
+
+On 2026-11-27, `WEAR=1 consumer.sh run` with the published 0.12.0 passed on the Galaxy Watch4 Classic
+(Wear OS 6, API 36, `armeabi-v7a`), and `run` with the published 0.11.0 passed on the S23. Three
+conditions of the watch's own were met first:
+
+- **Galaxy Wearable decides an application installed on the watch.** It adds one to the phone's list as
+  not allowed, and seconds after the install the watch blocks its notifications (`importance=NONE`;
+  `PERMISSION_DENIED` for a post), whatever was granted. The person allows it in Galaxy Wearable's
+  notifications on the phone. The script fails with that instruction.
+- **The watch freezes an application in the background.** `MARsmini_FreecessController` logs
+  `freezePackage … LEV` about ten seconds after the last scenario. A broadcast from adb does not thaw it,
+  with or without `FLAG_RECEIVER_FOREGROUND`: the scenario went unanswered, and Android reported an ANR.
+  On the device-idle allowlist, as an application a person keeps off battery optimization, it was not
+  frozen. The script adds it there on a watch after the install, and the uninstall removes it.
+- **A process killed while frozen never dies.** It stays in `D` state with `SIGKILL` pending, and
+  `ActivityManager` logs that it `refused to die` while it starts the next process of the same uid.
+  A new install's uid is a new one. `pidof` keeps listing these processes until the watch restarts, so the
+  script counts a process with `SIGKILL` pending as gone.
 
 ### The suite of 0.8.1 on older emulators, by hand
 
