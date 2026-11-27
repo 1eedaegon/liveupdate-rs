@@ -184,8 +184,20 @@ record() {
 shown() { [ -n "$(record "$1" "$2")" ]; }
 carries() { record "$1" "$2" | grep -q "android.wearable.ongoingactivities.EXTENSIONS"; }
 
-# The application's process, as `pidof` answers it; "none" when there is none, empty when adb failed.
-process() { device shell "pidof $package || echo none" | tr -d '\r'; }
+# The application's living processes, as `pidof` answers them; "none" when there is none, empty when adb failed.
+# A process with a SIGKILL pending is not one: a Galaxy Watch keeps a killed process frozen, never reaped.
+process() {
+  pids=$(device shell "pidof $package || echo none" | tr -d '\r')
+  case $pids in '' | none) echo "$pids"; return ;; esac
+  living=
+  for pid in $pids; do
+    pending=$(device shell "grep -E '^(SigPnd|ShdPnd):' /proc/$pid/status" | tr -d '\r' | awk '{ print $2 }')
+    killed=false
+    for mask in $pending; do [ $((0x$mask & 0x100)) -ne 0 ] && killed=true; done
+    [ -z "$pending" ] || [ "$killed" = true ] || living="$living $pid"
+  done
+  echo "${living# }" | sed 's/^$/none/'
+}
 
 wait_for() {
   what=$1 condition=$2 seconds=${3:-60}
@@ -213,6 +225,10 @@ run() {
     if device shell dumpsys notification | grep -q "AppSettings: $package (.*) importance=NONE"; then
       fail "the watch blocks the application's notifications: allow LiveUpdate consumer in Galaxy Wearable's notifications on the phone, then run again"
     fi
+    # A Galaxy Watch freezes an application seconds after it goes to the background, and a broadcast from adb does
+    # not thaw it: the scenario is never answered, and the process killed for it never dies. Off the battery
+    # optimization, as an application a person leaves running is, it is not frozen; the uninstall forgets that.
+    device shell cmd deviceidle whitelist "+$package" >/dev/null
   fi
 
   capabilities=$(scenario capabilities)
