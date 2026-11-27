@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.12.1 - 2026-11-27
+
+- test: the consumer's check runs on a watch that freezes an application in the background (`437d90d`)
+- docs: the consumer's check on a watch, and what the watch decides of it (`db40445`)
+
 ## 0.12.0 - 2026-11-26
 
 - test: a layer's member goes to the layer's entry alone and answers in the crate's shape (`2fd1767`)
